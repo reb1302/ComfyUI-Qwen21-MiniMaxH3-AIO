@@ -5,7 +5,11 @@ Automatically installs bundled workflows & embeddings on startup and registers A
 
 import os
 import shutil
-from .aio_nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+from .aio_nodes import NODE_CLASS_MAPPINGS as AIO_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS as AIO_DISPLAY
+from .vstone.node_helper_vstone import VSTONE_NODE_CLASS_MAPPINGS, VSTONE_NODE_DISPLAY_NAME_MAPPINGS
+
+NODE_CLASS_MAPPINGS = {**AIO_MAPPINGS, **VSTONE_NODE_CLASS_MAPPINGS}
+NODE_DISPLAY_NAME_MAPPINGS = {**AIO_DISPLAY, **VSTONE_NODE_DISPLAY_NAME_MAPPINGS}
 
 def _bootstrap_bundled_assets():
     """Copy bundled official workflows and MiniMax-H3 embeddings into ComfyUI on first load."""

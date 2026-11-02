@@ -21,6 +21,8 @@ MODEL_CATALOG = {
     "qwen_image_2.1_vae_bf16.safetensors": ("vae", f"{HF_QWEN_BASE}/vae/qwen_image_2.1_vae_bf16.safetensors"),
     "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors": ("loras", f"{HF_QWEN_BASE}/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"),
     "p_q_image_2.1_8_steps_v0.1_comfyui_bf16.safetensors": ("loras", f"{HF_QWEN_BASE}/loras/p_q_image_2.1_8_steps_v0.1_comfyui_bf16.safetensors"),
+    "qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors": ("model_patches", f"{HF_QWEN_BASE}/model_patches/qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors"),
+    "qwen_image_2.1_fun_controlnet_union_bf16.safetensors": ("model_patches", f"{HF_QWEN_BASE}/model_patches/qwen_image_2.1_fun_controlnet_union_bf16.safetensors"),
 
     # MiniMax-H3 Core Models
     "minimax_h3_fl2va_pruned_int8_convrot.safetensors": ("diffusion_models", f"{HF_MINIMAX_BASE}/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors"),

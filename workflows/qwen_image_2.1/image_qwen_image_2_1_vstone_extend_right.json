@@ -1,0 +1,124 @@
+{
+  "last_node_id": 10,
+  "last_link_id": 10,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [100, 200],
+      "size": [320, 314],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [1, 5], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png", "image"]
+    },
+    {
+      "id": 2,
+      "type": "VStone_Qwen21_ExtendRight_AIO",
+      "pos": [480, 200],
+      "size": [420, 340],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 1}
+      ],
+      "outputs": [
+        {"name": "final_extended_image", "type": "IMAGE", "links": [2], "slot_index": 0},
+        {"name": "padded_preview", "type": "IMAGE", "links": [3], "slot_index": 1},
+        {"name": "outpaint_mask", "type": "MASK", "links": [4], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "VStone_Qwen21_ExtendRight_AIO"},
+      "widgets_values": [
+        1.0,
+        "Seamlessly extend the scene to the right, matching the exact lighting, camera angle, and environment.",
+        true,
+        true,
+        1024,
+        8,
+        1.0,
+        48,
+        42,
+        "fixed"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "SaveImage",
+      "pos": [960, 200],
+      "size": [480, 460],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 2}
+      ],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["vstone_qwen21_extended_right"]
+    },
+    {
+      "id": 4,
+      "type": "PreviewImage",
+      "pos": [960, 720],
+      "size": [360, 260],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 3}
+      ],
+      "properties": {"Node name for S&R": "PreviewImage"}
+    },
+    {
+      "id": 5,
+      "type": "VStone_ImageExtendRight",
+      "pos": [480, 660],
+      "size": [420, 280],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 5}
+      ],
+      "outputs": [
+        {"name": "extended_image", "type": "IMAGE", "links": null, "slot_index": 0},
+        {"name": "outpaint_mask", "type": "MASK", "links": null, "slot_index": 1},
+        {"name": "original_image", "type": "IMAGE", "links": null, "slot_index": 2},
+        {"name": "qwen_extend_prompt", "type": "STRING", "links": null, "slot_index": 3},
+        {"name": "new_width", "type": "INT", "links": null, "slot_index": 4},
+        {"name": "new_height", "type": "INT", "links": null, "slot_index": 5}
+      ],
+      "properties": {"Node name for S&R": "VStone_ImageExtendRight"},
+      "widgets_values": [
+        1.0,
+        0,
+        "mirror_blur (Mượt màu & ánh sáng cho Qwen Edit - Khuyên dùng)",
+        48,
+        16,
+        "seamlessly extend and continue the background environment, lighting, and perspective into the right half of the image."
+      ]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "IMAGE"],
+    [2, 2, 0, 3, 0, "IMAGE"],
+    [3, 2, 1, 4, 0, "IMAGE"],
+    [5, 1, 0, 5, 0, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "title": "VStone Qwen-Image-2.1 Extend Right (Mở rộng 1 khung qua phải)",
+      "bounding": [80, 120, 1400, 900],
+      "color": "#3f789e",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

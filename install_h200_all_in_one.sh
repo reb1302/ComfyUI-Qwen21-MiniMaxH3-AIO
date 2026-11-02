@@ -98,6 +98,12 @@ if [ "$SCRIPT_DIR" != "$TARGET_NODE_DIR" ]; then
     cp -r "$SCRIPT_DIR" "$TARGET_NODE_DIR"
 fi
 
+# Cai dat thu muc custom node doc lap custom_nodes/vstone
+if [ -d "$SCRIPT_DIR/vstone" ]; then
+    rm -rf "$COMFY_DIR/custom_nodes/vstone"
+    cp -r "$SCRIPT_DIR/vstone" "$COMFY_DIR/custom_nodes/vstone"
+fi
+
 # ------------------------------------------------------------------------------
 # BUOC 4: Chep san 12 Workflow chuan & 10 Embeddings vao ComfyUI
 # ------------------------------------------------------------------------------
@@ -143,6 +149,7 @@ dl_model "$HF_QWEN/text_encoders/qwen3vl_8b_int8_convrot.safetensors"           
 dl_model "$HF_QWEN/text_encoders/qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors" "text_encoders" "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors"
 dl_model "$HF_QWEN/vae/qwen_image_2.1_vae_bf16.safetensors"                        "vae"              "qwen_image_2.1_vae_bf16.safetensors"
 dl_model "$HF_QWEN/loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"  "loras"            "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"
+dl_model "$HF_QWEN/model_patches/qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors" "model_patches" "qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors"
 
 # --- B. MiniMax-H3 Core (7 files - 60.49 GB) ---
 dl_model "$HF_MINIMAX/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors" "diffusion_models" "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
