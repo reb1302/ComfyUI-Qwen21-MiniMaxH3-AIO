@@ -164,17 +164,17 @@ if [ "$DOWNLOAD_BF16" = true ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# BUOC 6: Tao script khoi chay start_h200.sh (bat --highvram + --use-sage-attention)
+# BUOC 6: Tao script khoi chay start_h200.sh (bat --highvram)
 # ------------------------------------------------------------------------------
 echo -e "\n[6/6] Tao script khoi chay $COMFY_DIR/start_h200.sh..."
 cat << 'EOF' > "$COMFY_DIR/start_h200.sh"
 #!/usr/bin/env bash
-set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/venv/bin/activate"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 echo "Khoi dong ComfyUI tren NVIDIA H200 (--highvram, port ${1:-8188})..."
-python "$DIR/main.py" --listen 0.0.0.0 --port "${1:-8188}" --highvram --use-sage-attention
+python "$DIR/main.py" --listen 0.0.0.0 --port "${1:-8188}" --highvram
+read -rp "Nhan Enter de dong cua so..."
 EOF
 chmod +x "$COMFY_DIR/start_h200.sh"
 
