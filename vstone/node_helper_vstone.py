@@ -2,6 +2,7 @@
 VStone Node Helper Module (node_helper_vstone.py)
 Chuyên dụng cho bài toán Image-to-Image Extend (Outpainting mở rộng khung ảnh qua phải) với Qwen-Image-2.1.
 """
+from __future__ import annotations
 
 import math
 from typing import Any
