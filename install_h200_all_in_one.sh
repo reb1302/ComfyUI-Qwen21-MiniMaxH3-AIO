@@ -51,7 +51,7 @@ if command -v apt-get &> /dev/null; then
         SUDO="sudo"
     fi
     $SUDO apt-get update -y
-    $SUDO apt-get install -y aria2 git ffmpeg curl wget python3 python3-venv python3-pip libgl1 libglib2.0-0
+    $SUDO apt-get install -y aria2 git ffmpeg curl wget build-essential python3 python3-dev python3-venv python3-pip libgl1 libglib2.0-0
 elif command -v dnf &> /dev/null; then
      dnf install -y aria2 git ffmpeg curl wget python3 python3-pip
 fi
@@ -172,8 +172,15 @@ cat << 'EOF' > "$COMFY_DIR/start_h200.sh"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/venv/bin/activate"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
-echo "Khoi dong ComfyUI tren NVIDIA H200 (--highvram, port ${1:-8188})..."
-python "$DIR/main.py" --listen 0.0.0.0 --port "${1:-8188}" --highvram
+ATTN_FLAG=""
+if python -c "import sageattention" &> /dev/null; then
+    echo "[INFO] SageAttention san sang -> Bat --use-sage-attention"
+    ATTN_FLAG="--use-sage-attention"
+else
+    echo "[INFO] Chay PyTorch Native FlashAttention/SDPA"
+fi
+echo "Khoi dong ComfyUI tren NVIDIA H200 (--highvram $ATTN_FLAG, port ${1:-8188})..."
+python "$DIR/main.py" --listen 0.0.0.0 --port "${1:-8188}" --highvram $ATTN_FLAG
 read -rp "Nhan Enter de dong cua so..."
 EOF
 chmod +x "$COMFY_DIR/start_h200.sh"
