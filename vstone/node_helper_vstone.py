@@ -1,13 +1,23 @@
 """
-VStone Node Helper Module (node_helper_vstone.py)
-Cách cài đặt cực kỳ đơn giản (chọn 1 trong 2 cách đều chạy 100%):
-- Cách 1: Chép trực tiếp file `node_helper_vstone.py` này thả thẳng vào thư mục `ComfyUI/custom_nodes/`
-- Cách 2: Chép thư mục `vstone` (gồm `__init__.py` và `node_helper_vstone.py`) vào `ComfyUI/custom_nodes/vstone/`
-Sau khi chép xong, TẮT và BẬT LẠI ComfyUI (`./start_h200.sh`) để ComfyUI nạp node mới.
+VStone Node Helper & Cloud Sync Hub (node_helper_vstone.py)
+--------------------------------------------------------------------------------
+Tích hợp 2 chức năng cốt lõi:
+1. Bộ Node VStone Outpaint Pad (Tạo vùng bù Trái / Phải, tô màu Xám #808080 / Đỏ #FF0000 / Xanh #00FF00 / Hex, sắc nét 100% không blur).
+2. Đường ống đồng bộ tự động 2 chiều (VStone Cloud Sync Hub & Auto-Sync Daemon 30s):
+   - Tự động kéo Custom Node & Workflow JSON mới nhất từ Laptop (GitHub `reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO`)
+     về thẳng máy H200 Hàn Quốc và nạp nóng (Hot-Reload) vào RAM ComfyUI mà KHÔNG cần khởi động lại Server!
+   - Tải trực tiếp LoRA / Checkpoint / Upscaler tốc độ cao (aria2c 16 luồng) ngay từ giao diện ComfyUI.
 """
 from __future__ import annotations
 
+import json
 import math
+import os
+import shutil
+import subprocess
+import threading
+import time
+import urllib.request
 from typing import Any
 
 try:
@@ -17,6 +27,11 @@ except Exception:
     torch = Any  # type: ignore
     F = None  # type: ignore
 
+
+GITHUB_REPO = "reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO"
+GITHUB_BRANCH = "main"
+GITHUB_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}"
+GITHUB_API_TREE = f"https://api.github.com/repos/{GITHUB_REPO}/git/trees/{GITHUB_BRANCH}?recursive=1"
 
 COLOR_CHOICES = [
     "gray (#808080 - Tô Xám chuẩn Outpaint LoRA)",
@@ -28,22 +43,256 @@ COLOR_CHOICES = [
     "custom_hex (Dùng mã màu Hex bên dưới)",
 ]
 
+# Danh mục LoRA & Model chuẩn để bấm tải 1-click ngay trên máy H200 Hàn Quốc
+PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
+    "none (Không tải thêm model)": ("", "", ""),
+    "Qwen 2.1 Outpaint LoRA v2 (Xám #808080 - 152MB)": (
+        "loras",
+        "qwen-image-2.1-outpaint-v2.safetensors",
+        "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors",
+    ),
+    "Qwen 2.1 Outpaint LoRA v1 (Zoom-out lớn - 152MB)": (
+        "loras",
+        "qwen-image-2.1-outpaint.safetensors",
+        "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint.safetensors",
+    ),
+    "Qwen 2.1 360 Panorama Outpaint LoRA (Xanh #00FF00 - 152MB)": (
+        "loras",
+        "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
+        "https://huggingface.co/nomadoor/qwen-image-2.1-360-panorama-outpaint-lora/resolve/main/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
+    ),
+    "Qwen 2.1 Fun ControlNet Union Inpaint (2.68GB)": (
+        "model_patches",
+        "qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors",
+        "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/model_patches/qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors",
+    ),
+    "MiniMax-H3 3D Latent Upscaler bf16 (691MB)": (
+        "latent_upscale_models",
+        "minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+        "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+    ),
+    "MiniMax-H3 VBVR Motion Consistency LoRA": (
+        "loras",
+        "H3-Licon-VBVR-I2V.safetensors",
+        "https://huggingface.co/LiconStudio/Minimax-H3-VBVR/resolve/main/H3-Licon-VBVR-I2V.safetensors",
+    ),
+    "MiniMax-H3 Fun ControlNet Union 2.0 int8": (
+        "model_patches",
+        "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors",
+        "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/model_patches/minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors",
+    ),
+    "Ostris Qwen Edit Green Screen Inpaint LoRA (563MB)": (
+        "loras",
+        "qwen_image_edit_inpainting.safetensors",
+        "https://huggingface.co/ostris/qwen_image_edit_inpainting/resolve/main/qwen_image_edit_inpainting.safetensors",
+    ),
+}
 
+
+# ==============================================================================
+# 1. CLOUD SYNC & HOT-RELOAD ENGINE (Laptop <-> H200 Korea)
+# ==============================================================================
+_LAST_SYNCED_SHA: str = ""
+
+
+def _http_get_bytes(url: str, timeout: int = 15) -> bytes:
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "VStone-ComfyUI-Sync/1.0", "Cache-Control": "no-cache"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _get_comfy_root() -> str | None:
+    try:
+        import folder_paths
+        return folder_paths.base_path
+    except Exception:
+        return None
+
+
+def sync_from_github_and_hot_reload(force: bool = False) -> str:
+    """
+    Kéo toàn bộ code `vstone/` và `workflows/` mới nhất từ GitHub `reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO`
+    về máy H200 và nạp nóng (Hot-Reload) các node mới vào RAM của ComfyUI.
+    """
+    global _LAST_SYNCED_SHA
+    comfy_root = _get_comfy_root()
+    if not comfy_root:
+        return "[VStone Sync] Không tìm thấy thư mục gốc ComfyUI."
+
+    logs: list[str] = []
+    try:
+        tree_raw = _http_get_bytes(f"{GITHUB_API_TREE}&_t={int(time.time())}", timeout=15)
+        tree_data = json.loads(tree_raw.decode("utf-8"))
+        sha = tree_data.get("sha", "")
+        if not force and sha and sha == _LAST_SYNCED_SHA:
+            return f"[VStone Sync] Đã ở phiên bản mới nhất ({sha[:7]})."
+
+        items = tree_data.get("tree", [])
+        custom_nodes_dir = os.path.join(comfy_root, "custom_nodes")
+        vstone_dir = os.path.join(custom_nodes_dir, "vstone")
+        aio_vstone_dir = os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO", "vstone")
+        workflows_dir = os.path.join(comfy_root, "user", "default", "workflows")
+
+        os.makedirs(vstone_dir, exist_ok=True)
+        os.makedirs(workflows_dir, exist_ok=True)
+
+        updated_py_code: str | None = None
+        wf_count = 0
+
+        for item in items:
+            if item.get("type") != "blob":
+                continue
+            path = item.get("path", "")
+
+            # 1. Đồng bộ các file trong vstone/
+            if path in ("vstone/node_helper_vstone.py", "vstone/__init__.py"):
+                raw_url = f"{GITHUB_RAW_BASE}/{path}?_t={int(time.time())}"
+                content = _http_get_bytes(raw_url, timeout=20)
+                fname = os.path.basename(path)
+
+                # Ghi vào custom_nodes/vstone/
+                dst1 = os.path.join(vstone_dir, fname)
+                with open(dst1, "wb") as f:
+                    f.write(content)
+
+                # Nếu là node_helper_vstone.py, ghi cả vào custom_nodes/node_helper_vstone.py và AIO (nếu có)
+                if fname == "node_helper_vstone.py":
+                    updated_py_code = content.decode("utf-8", errors="replace")
+                    dst_root = os.path.join(custom_nodes_dir, "node_helper_vstone.py")
+                    try:
+                        with open(dst_root, "wb") as f:
+                            f.write(content)
+                    except Exception:
+                        pass
+                    if os.path.isdir(aio_vstone_dir):
+                        try:
+                            with open(os.path.join(aio_vstone_dir, fname), "wb") as f:
+                                f.write(content)
+                        except Exception:
+                            pass
+                logs.append(f"Updated {path}")
+
+            # 2. Đồng bộ mọi file Workflow .json trong workflows/
+            elif path.startswith("workflows/") and path.endswith(".json"):
+                rel_wf = path[len("workflows/"):]
+                dst_wf = os.path.join(workflows_dir, rel_wf)
+                os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
+                raw_url = f"{GITHUB_RAW_BASE}/{path}?_t={int(time.time())}"
+                content = _http_get_bytes(raw_url, timeout=20)
+                with open(dst_wf, "wb") as f:
+                    f.write(content)
+                wf_count += 1
+
+        # 3. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI (không cần tắt bật lại Server!)
+        if updated_py_code:
+            try:
+                import nodes
+                ns: dict[str, Any] = {"__name__": "vstone_hot_reload", "_DISABLE_DAEMON_ON_EXEC": True}
+                exec(compile(updated_py_code, "node_helper_vstone.py", "exec"), ns)
+                new_classes = ns.get("NODE_CLASS_MAPPINGS", {})
+                new_names = ns.get("NODE_DISPLAY_NAME_MAPPINGS", {})
+                if new_classes:
+                    nodes.NODE_CLASS_MAPPINGS.update(new_classes)
+                    nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
+                    logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM")
+            except Exception as e:
+                logs.append(f"Hot-reload warning: {e}")
+
+        _LAST_SYNCED_SHA = sha
+        msg = f"[VStone Cloud Sync] Đồng bộ thành công commit {sha[:7]} ({wf_count} workflows)! Nhấn phím R trên trình duyệt để làm mới."
+        print(msg)
+        return msg + "\n" + "\n".join(logs)
+    except Exception as e:
+        err_msg = f"[VStone Cloud Sync] Lỗi kết nối GitHub: {e}"
+        return err_msg
+
+
+def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> str:
+    """Tải LoRA / Model tốc độ cao bằng aria2c (hoặc curl/urllib) vào đúng thư mục models của ComfyUI."""
+    comfy_root = _get_comfy_root()
+    if not comfy_root:
+        return "[VStone Downloader] Không tìm thấy thư mục ComfyUI."
+
+    target_dir = os.path.join(comfy_root, "models", folder_type)
+    os.makedirs(target_dir, exist_ok=True)
+    target_path = os.path.join(target_dir, filename)
+
+    if os.path.exists(target_path) and os.path.getsize(target_path) > 1024 * 1024:
+        return f"[VStone Downloader] File đã tồn tại sẵn: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
+
+    print(f"[VStone Downloader] Đang tải {filename} vào {target_dir} từ {url} ...")
+    aria2_bin = shutil.which("aria2c")
+    if aria2_bin:
+        cmd = [
+            aria2_bin, "--disable-ipv6=true", "-x", "16", "-s", "16", "-k", "1M",
+            "--allow-overwrite=true", "-d", target_dir, "-o", filename, url
+        ]
+        res = subprocess.run(cmd, check=False)
+        if res.returncode == 0 and os.path.exists(target_path):
+            return f"[VStone Downloader] Tải thành công bằng aria2c: {target_path}"
+
+    curl_bin = shutil.which("curl")
+    if curl_bin:
+        cmd = [curl_bin, "-4", "-L", url, "-o", target_path]
+        res = subprocess.run(cmd, check=False)
+        if res.returncode == 0 and os.path.exists(target_path):
+            return f"[VStone Downloader] Tải thành công bằng curl: {target_path}"
+
+    urllib.request.urlretrieve(url, target_path)
+    return f"[VStone Downloader] Tải thành công: {target_path}"
+
+
+def _start_background_sync_daemon(interval_sec: int = 30):
+    """Chạy ngầm kiểm tra GitHub mỗi 30 giây khi đang chạy trong ComfyUI trên máy H200."""
+    if globals().get("_DISABLE_DAEMON_ON_EXEC"):
+        return
+    if _get_comfy_root() is None:
+        return
+    if getattr(sys_mod := __import__("sys"), "_vstone_sync_daemon_started", False):
+        return
+    setattr(sys_mod, "_vstone_sync_daemon_started", True)
+
+    def _loop():
+        time.sleep(3)
+        sync_from_github_and_hot_reload(force=False)
+        while True:
+            time.sleep(interval_sec)
+            try:
+                sync_from_github_and_hot_reload(force=False)
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_loop, name="VStoneAutoSyncDaemon", daemon=True)
+    t.start()
+
+
+try:
+    _start_background_sync_daemon(30)
+except Exception:
+    pass
+
+
+# ==============================================================================
+# 2. CORE HELPER FUNCTIONS (VStone Outpaint Pad)
+# ==============================================================================
 def _parse_fill_rgb(fill_color: str, custom_hex: str = "#808080") -> tuple[float, float, float]:
     """Chuyển lựa chọn màu tô sang bộ 3 giá trị RGB trong khoảng [0.0, 1.0]."""
     fc = (fill_color or "").lower()
     if fc.startswith("gray") or "#808080" in fc:
-        return (128.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0)  # Chuẩn #808080
+        return (128.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0)
     if fc.startswith("red") or "#ff0000" in fc:
-        return (1.0, 0.0, 0.0)  # #FF0000
+        return (1.0, 0.0, 0.0)
     if fc.startswith("green") or "#00ff00" in fc:
-        return (0.0, 1.0, 0.0)  # #00FF00
+        return (0.0, 1.0, 0.0)
     if fc.startswith("blue") or "#0000ff" in fc:
-        return (0.0, 0.0, 1.0)  # #0000FF
+        return (0.0, 0.0, 1.0)
     if fc.startswith("white") or "#ffffff" in fc:
-        return (1.0, 1.0, 1.0)  # #FFFFFF
+        return (1.0, 1.0, 1.0)
     if fc.startswith("black") or "#000000" in fc:
-        return (0.0, 0.0, 0.0)  # #000000
+        return (0.0, 0.0, 0.0)
 
     hx = (custom_hex or "#808080").strip().lstrip("#")
     if len(hx) == 3:
@@ -119,19 +368,16 @@ def vstone_outpaint_pad_tensor(
 
     rgb = _parse_fill_rgb(fill_color, custom_hex)
 
-    # 1. Ghép mở rộng chiều ngang [Vùng bù Trái | Ảnh gốc | Vùng bù Phải] cùng chiều cao H
     left_block = create_solid_pad_tensor(B, H, pad_left, C, rgb, device, dtype)
     right_block = create_solid_pad_tensor(B, H, pad_right, C, rgb, device, dtype)
     row_img = torch.cat([left_block, orig_rgb, right_block], dim=2)
     new_W = pad_left + W + pad_right
 
-    # 2. Ghép mở rộng Trên / Dưới (nếu có)
     top_block = create_solid_pad_tensor(B, pad_top, new_W, C, rgb, device, dtype)
     bottom_block = create_solid_pad_tensor(B, pad_bottom, new_W, C, rgb, device, dtype)
     padded_image = torch.cat([top_block, row_img, bottom_block], dim=1)
     new_H = pad_top + H + pad_bottom
 
-    # 3. Tạo Mask: 1.0 tại vùng vừa bù thêm, 0.0 tại vùng ảnh gốc
     mask = torch.ones((B, new_H, new_W), dtype=dtype, device=device)
     mask[:, pad_top : pad_top + H, pad_left : pad_left + W] = 0.0
 
@@ -390,7 +636,7 @@ class VStone_ExtendRight_1xWidth:
 
 
 # ==============================================================================
-# NODE 4: Ghép khôi phục ảnh gốc (Nếu cần Stitch Inpaint sau khi qua KSampler)
+# NODE 4: Ghép khôi phục ảnh gốc (Seamless Restore)
 # ==============================================================================
 class VStone_SeamlessRestore:
     @classmethod
@@ -422,7 +668,90 @@ class VStone_SeamlessRestore:
         return (blended,)
 
 
-# Giữ đầy đủ tên class cũ làm alias để mọi workflow cũ không bao giờ báo Missing Node Type
+# ==============================================================================
+# NODE 5: VStone Cloud Sync & Model Downloader (Cầu nối Laptop <-> H200 Hàn Quốc)
+# ==============================================================================
+class VStone_CloudSyncHub:
+    """
+    Node điều khiển đồng bộ trực tiếp giữa Laptop (Antigravity) và Server H200 Hàn Quốc:
+    - Tự kéo Custom Node & Workflow JSON mới nhất từ GitHub và nạp nóng vào RAM ComfyUI.
+    - Tải trực tiếp các LoRA / Upscaler chuẩn về đúng thư mục `ComfyUI/models/` trên H200.
+    Chỉ cần đặt node này ra màn hình và bấm Queue Prompt!
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "action": ([
+                    "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)",
+                    "2. Download Selected Model / LoRA (Tải Model/LoRA đã chọn bên dưới)",
+                    "3. Pull Code + Download Model (Cập nhật tất cả)",
+                ], {
+                    "default": "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)"
+                }),
+                "preset_model": (list(PRESET_DOWNLOAD_CATALOG.keys()), {
+                    "default": "Qwen 2.1 Outpaint LoRA v2 (Xám #808080 - 152MB)"
+                }),
+                "custom_url": ("STRING", {
+                    "default": "",
+                    "tooltip": "Tùy chọn: Dán link HuggingFace bất kỳ vào đây nếu muốn tải file ngoài danh sách."
+                }),
+                "custom_target_folder": ([
+                    "loras",
+                    "diffusion_models",
+                    "vae",
+                    "text_encoders",
+                    "model_patches",
+                    "controlnet",
+                    "latent_upscale_models",
+                    "upscale_models",
+                    "embeddings",
+                ], {
+                    "default": "loras"
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("status_report",)
+    FUNCTION = "run_sync"
+    OUTPUT_NODE = True
+    CATEGORY = "vstone"
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+
+    def run_sync(
+        self,
+        action: str,
+        preset_model: str,
+        custom_url: str = "",
+        custom_target_folder: str = "loras",
+    ):
+        reports: list[str] = []
+
+        if action.startswith("1.") or action.startswith("3."):
+            reports.append(sync_from_github_and_hot_reload(force=True))
+
+        if action.startswith("2.") or action.startswith("3."):
+            if preset_model in PRESET_DOWNLOAD_CATALOG:
+                folder, fname, url = PRESET_DOWNLOAD_CATALOG[preset_model]
+                if folder and fname and url:
+                    reports.append(download_file_to_comfy_models(folder, fname, url))
+            if custom_url and custom_url.strip().startswith("http"):
+                u = custom_url.strip()
+                fn = u.split("?")[0].rstrip("/").split("/")[-1]
+                if fn:
+                    reports.append(download_file_to_comfy_models(custom_target_folder, fn, u))
+
+        final_report = "\n".join(reports) if reports else "Done."
+        print(final_report)
+        return {"ui": {"text": [final_report]}, "result": (final_report,)}
+
+
+# Giữ đầy đủ tên class cũ làm alias tương thích ngược
 VStone_ScreenX_ExtendCanvas = VStone_Outpaint_Pad
 VStone_ImageExtendRight = VStone_ExtendRight_1xWidth
 VStone_SeamlessRestoreLeft = VStone_SeamlessRestore
@@ -433,6 +762,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_ExtendLeft_1xWidth": VStone_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": VStone_ExtendRight_1xWidth,
     "VStone_SeamlessRestore": VStone_SeamlessRestore,
+    "VStone_CloudSyncHub": VStone_CloudSyncHub,
     "VStone_ScreenX_ExtendCanvas": VStone_ScreenX_ExtendCanvas,
     "VStone_ImageExtendRight": VStone_ImageExtendRight,
     "VStone_SeamlessRestoreLeft": VStone_SeamlessRestoreLeft,
@@ -443,11 +773,11 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "VStone_ExtendLeft_1xWidth": "VStone: Outpaint +Qua Trái 1 Lần Chiều Rộng (Chọn Màu Tô)",
     "VStone_ExtendRight_1xWidth": "VStone: Outpaint +Qua Phải 1 Lần Chiều Rộng (Chọn Màu Tô)",
     "VStone_SeamlessRestore": "VStone: Ghép Khôi Phục Ảnh Gốc (Seamless Restore)",
+    "VStone_CloudSyncHub": "VStone: Cloud Sync & Model Downloader (Laptop <-> H200)",
     "VStone_ScreenX_ExtendCanvas": "VStone: Screen X Mở Rộng Khung Ngang (Trái + Phải)",
     "VStone_ImageExtendRight": "VStone: Extend Image Right (1 Frame Outpaint Pad)",
     "VStone_SeamlessRestoreLeft": "VStone: Seamless Restore Left (Blend Original)",
 }
 
-# Cho phép ComfyUI load trực tiếp file `node_helper_vstone.py` nếu bỏ thẳng vào `ComfyUI/custom_nodes/`
 NODE_CLASS_MAPPINGS = VSTONE_NODE_CLASS_MAPPINGS
 NODE_DISPLAY_NAME_MAPPINGS = VSTONE_NODE_DISPLAY_NAME_MAPPINGS
