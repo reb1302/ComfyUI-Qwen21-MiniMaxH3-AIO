@@ -1,0 +1,13 @@
+# Ignore heavy checkpoints/models (downloaded automatically by install_h200_all_in_one.sh)
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+models/diffusion_models/*.safetensors
+models/text_encoders/*.safetensors
+models/vae/*.safetensors
+models/loras/*.safetensors
+models/model_patches/*.safetensors
+*.7z
+*.tar.gz
+*.zip
