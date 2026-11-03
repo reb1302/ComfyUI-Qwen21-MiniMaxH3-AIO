@@ -423,14 +423,14 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-VSTONE_RUNTIME_PATCH_VER = 4
+VSTONE_RUNTIME_PATCH_VER = 5
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
+_DOWNLOAD_LOCK = threading.Lock()
 
 
 def _vstone_free_vram(unload_models: bool = False) -> None:
-    """Giải phóng bộ nhớ đệm CUDA và (tuỳ chọn) gỡ các model cũ khỏi VRAM để tránh tràn VRAM trên H200."""
     try:
         import gc
         import comfy.model_management
@@ -444,28 +444,38 @@ def _vstone_free_vram(unload_models: bool = False) -> None:
         pass
 
 
-def _get_unwrapped_orig(cls, attr_name: str, is_classmethod: bool = True):
-    """Lấy hàm gốc chưa bị bọc để có thể nâng cấp bản vá nóng (v1 -> v2) ngay trong RAM mà không cần restart ComfyUI."""
+def _unwrap_to_true_orig(cls, attr_name: str):
+    """Unwrap any _vstone_orig_* or _safe_* closure wrappers back to the original ComfyUI function."""
     store_key = f"_vstone_orig_{attr_name}"
-    if hasattr(cls, store_key):
-        return getattr(cls, store_key)
-    cur = getattr(cls, attr_name)
-    raw_fn = cur.__func__ if (is_classmethod and hasattr(cur, "__func__")) else cur
-    if getattr(cls, "_vstone_patched", False) and getattr(raw_fn, "__closure__", None):
-        for cell in raw_fn.__closure__:
-            try:
-                contents = cell.cell_contents
-                if callable(contents):
-                    raw_fn = contents
-                    break
-            except Exception:
-                pass
-    setattr(cls, store_key, raw_fn)
-    return raw_fn
+    fn = cls.__dict__.get(store_key) or getattr(cls, store_key, None) or cls.__dict__.get(attr_name) or getattr(cls, attr_name, None)
+    seen: set[int] = set()
+    while fn is not None and id(fn) not in seen:
+        seen.add(id(fn))
+        if isinstance(fn, classmethod):
+            fn = fn.__func__
+            continue
+        if hasattr(fn, "__func__"):
+            fn = fn.__func__
+            continue
+        fn_name = getattr(fn, "__name__", "") or ""
+        if fn_name.startswith("_safe_") and getattr(fn, "__closure__", None):
+            inner = None
+            for cell in fn.__closure__:
+                try:
+                    c = cell.cell_contents
+                    if callable(c) or isinstance(c, classmethod):
+                        inner = c
+                        break
+                except Exception:
+                    pass
+            if inner is not None:
+                fn = inner
+                continue
+        break
+    return fn
 
 
 def _chunked_cpu_resize(images: torch.Tensor, width: int, height: int, method: str = "lanczos", crop: str = "center", chunk_size: int = 16) -> torch.Tensor:
-    """Phóng to/thu nhỏ tensor video [N, H, W, C] theo từng cụm 16 frame trên CPU để không làm vọt VRAM/RAM."""
     import comfy.utils
     if images is None or not hasattr(images, "shape") or images.ndim != 4:
         return images
@@ -480,443 +490,277 @@ def _chunked_cpu_resize(images: torch.Tensor, width: int, height: int, method: s
     return torch.cat(out_chunks, dim=0)
 
 
+def _recover_comfy_queue_and_worker() -> list[str]:
+    """
+    Ensure ComfyUI's prompt_worker thread and PromptExecutor are healthy:
+    1. Guard PromptExecutor.execute so exceptions inside cache.set_prompt never kill prompt_worker.
+    2. Clear stale NODE_CLASS_CONTAINS_UNIQUE_ID cache entries.
+    3. Rebind PromptServer.instance.client_id to an active WebSocket if the user refreshed the browser (F5).
+    4. If prompt_worker thread died earlier, clear orphaned currently_running items and respawn an immortal prompt_worker.
+    """
+    notes: list[str] = []
+    try:
+        import sys
+        import traceback
+        import nodes
+        import execution
+        import server
+
+        try:
+            import comfy_execution.caching as _ce_caching
+            if hasattr(_ce_caching, "NODE_CLASS_CONTAINS_UNIQUE_ID"):
+                _ce_caching.NODE_CLASS_CONTAINS_UNIQUE_ID.clear()
+        except Exception:
+            pass
+
+        # 1. Guard PromptExecutor.execute against unhandled exceptions
+        if not getattr(execution.PromptExecutor, "_vstone_exec_guarded", False):
+            orig_pe_exec = execution.PromptExecutor.execute
+
+            def _safe_pe_execute(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+                try:
+                    return orig_pe_exec(self, prompt, prompt_id, extra_data, execute_outputs)
+                except BaseException as ex:
+                    print(f"[VStone Queue Guard] Caught exception in PromptExecutor.execute ({prompt_id}): {ex}")
+                    traceback.print_exc()
+                    self.success = False
+                    self.history_result = {"outputs": {}, "meta": {}}
+                    try:
+                        self.add_message(
+                            "execution_error",
+                            {
+                                "prompt_id": prompt_id,
+                                "node_id": "0",
+                                "node_type": "PromptExecutor",
+                                "executed": [],
+                                "exception_message": str(ex),
+                                "exception_type": type(ex).__name__,
+                                "traceback": traceback.format_tb(ex.__traceback__),
+                                "current_inputs": {},
+                                "current_outputs": [],
+                            },
+                            broadcast=True,
+                        )
+                    except Exception:
+                        pass
+
+            execution.PromptExecutor.execute = _safe_pe_execute
+            setattr(execution.PromptExecutor, "_vstone_exec_guarded", True)
+            notes.append("Guarded PromptExecutor.execute")
+
+        ps = getattr(server.PromptServer, "instance", None)
+        if ps is None:
+            return notes
+
+        # 2. If browser tab refreshed (F5), point ps.client_id to the active socket so progress bars work
+        try:
+            sockets = getattr(ps, "sockets", None)
+            if isinstance(sockets, dict) and len(sockets) > 0:
+                if getattr(ps, "client_id", None) not in sockets:
+                    ps.client_id = list(sockets.keys())[-1]
+        except Exception:
+            pass
+
+        # 3. Check if prompt_worker thread is alive
+        worker_thread = None
+        for t in threading.enumerate():
+            if not t.is_alive():
+                continue
+            t_name = getattr(t, "name", "") or ""
+            t_target = getattr(t, "_target", None)
+            t_target_name = getattr(t_target, "__name__", "") if t_target is not None else ""
+            if (
+                getattr(t, "_vstone_is_prompt_worker", False)
+                or "prompt_worker" in t_name
+                or t_target_name in ("prompt_worker", "_vstone_immortal_prompt_worker")
+            ):
+                worker_thread = t
+                break
+
+        q = getattr(ps, "prompt_queue", None)
+        am = getattr(ps, "asset_manager", None)
+
+        if worker_thread is None and q is not None:
+            # prompt_worker died! Clean up orphaned currently_running items and respawn worker
+            with q.mutex:
+                if q.currently_running:
+                    dead_ids = list(q.currently_running.keys())
+                    for did in dead_ids:
+                        q.currently_running.pop(did, None)
+                    ps.queue_updated()
+                    notes.append(f"Cleared orphaned running queue items: {dead_ids}")
+            try:
+                if getattr(ps, "client_id", None) is not None:
+                    ps.send_sync("executing", {"node": None, "prompt_id": None}, ps.client_id)
+            except Exception:
+                pass
+
+            main_mod = sys.modules.get("__main__")
+            orig_pw = getattr(main_mod, "prompt_worker", None) if main_mod is not None else None
+
+            def _vstone_immortal_prompt_worker():
+                print("[VStone Queue Guard] Respawned immortal prompt_worker thread!")
+                while True:
+                    try:
+                        if callable(orig_pw):
+                            orig_pw(q, ps, am)
+                        else:
+                            e = execution.PromptExecutor(ps, asset_manager=am)
+                            while True:
+                                queue_item = q.get(timeout=1000.0)
+                                if queue_item is not None:
+                                    item, item_id = queue_item
+                                    prompt_id = item[1]
+                                    ps.last_prompt_id = prompt_id
+                                    extra_data = item[3].copy()
+                                    for k in item[5]:
+                                        extra_data[k] = item[5][k]
+                                    e.execute(item[2], prompt_id, extra_data, item[4])
+                                    remove_sensitive = lambda p: p[:5] + p[6:]
+                                    q.task_done(
+                                        item_id,
+                                        e.history_result,
+                                        status=execution.PromptQueue.ExecutionStatus(
+                                            status_str="success" if e.success else "error",
+                                            completed=e.success,
+                                            messages=e.status_messages,
+                                        ),
+                                        process_item=remove_sensitive,
+                                    )
+                                    if getattr(ps, "client_id", None) is not None:
+                                        ps.send_sync("executing", {"node": None, "prompt_id": prompt_id}, ps.client_id)
+                    except BaseException as ex:
+                        print(f"[VStone Queue Guard] prompt_worker exception recovered: {ex}")
+                        traceback.print_exc()
+                        try:
+                            with q.mutex:
+                                for did in list(q.currently_running.keys()):
+                                    q.currently_running.pop(did, None)
+                                ps.queue_updated()
+                        except Exception:
+                            pass
+                        time.sleep(1.0)
+
+            new_wt = threading.Thread(target=_vstone_immortal_prompt_worker, name="prompt_worker", daemon=True)
+            setattr(new_wt, "_vstone_is_prompt_worker", True)
+            new_wt.start()
+            notes.append("Respawned dead prompt_worker thread")
+        elif worker_thread is not None and q is not None:
+            # One-time recovery on v5 upgrade if an old job was stuck in currently_running
+            if getattr(sys, "_vstone_queue_recovery_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                setattr(sys, "_vstone_queue_recovery_ver", VSTONE_RUNTIME_PATCH_VER)
+                with q.mutex:
+                    running_count = len(q.currently_running)
+                    pending_count = len(q.queue)
+                if running_count > 0:
+                    try:
+                        frames = sys._current_frames()
+                        wf = frames.get(worker_thread.ident)
+                        if wf is not None:
+                            stack_summary = " -> ".join(
+                                f"{os.path.basename(f.filename)}:{f.lineno}({f.name})"
+                                for f in traceback.extract_stack(wf)[-5:]
+                            )
+                            print(f"[VStone Queue Guard] Active prompt_worker stack (running={running_count}, pending={pending_count}): {stack_summary}")
+                        nodes.interrupt_processing(True)
+                        notes.append(f"Interrupted stuck running job (running={running_count}, pending={pending_count})")
+                    except Exception:
+                        pass
+    except Exception as e:
+        notes.append(f"Queue check error: {e}")
+    return notes
+
+
 def apply_comfy_runtime_fixes() -> str:
     """
-    Vá nóng (Hot-Patch v2 - H200 VRAM Guard) trực tiếp trong RAM của ComfyUI:
-    1. `ImageScale`: Chấp nhận `' center'` + chia nhỏ theo cụm 16 frame trên CPU để không ngốn VRAM khi upscale video.
-    2. `GetVideoComponents`: Tự động hạ FPS > 30 về ~24fps, giới hạn tối đa 73 frames (chuẩn 17k+5 của MiniMax-H3), tự sinh/cắt âm thanh Stereo 32kHz khớp thời lượng video.
-    3. `VAEEncodeAudio`: Tự động tạo âm thanh tĩnh Stereo 32kHz khi `audio is None`, giới hạn thời lượng hợp lý để tránh tràn VRAM.
-    4. `VAEEncode` & `VAEDecode`: Tự động đưa độ phân giải vào vùng an toàn chuẩn DiT (`1280x704`) khi encode bằng MiniMax VideoVAE, xả sạch model cũ trước khi chạy `ViT3DDecoder`, và tự động phóng to hậu kỳ lên Full HD (`1920x1088`).
-    5. `LTXVConcatAVLatent`: Tự động căn chỉnh độ dài `audio_latent` khớp chuẩn `round(frame_count / 24 * 40)` với `video_latent`.
-    6. `MiniMaxH3ReferenceToVideo` & `KSampler`: Giữ nguyên ảnh và video tham chiếu, tự động xả `Qwen3-VL-32B` (22GB) và `Qwen-Image` khỏi VRAM trước khi chạy Sampler.
+    Restore all built-in ComfyUI nodes to their original unpatched functions and
+    ensure the ComfyUI prompt queue & prompt_worker thread are healthy and unblocked.
     """
-    patched: list[str] = []
+    restored: list[str] = []
 
-    # 1. Patch ImageScale (fix ' center' leading space + chunked CPU video scaling)
+    # 1. Restore V1 instance methods if previously monkey-patched
+    v1_targets = [
+        ("ImageScale", None, "upscale"),
+        ("VAEEncode", None, "encode"),
+        ("VAEDecode", None, "decode"),
+        ("KSampler", None, "sample"),
+        ("LoraLoader", None, "load_lora"),
+    ]
+    for cls_name, mod_name, attr_name in v1_targets:
+        try:
+            for c in _get_target_node_classes(cls_name, mod_name):
+                if getattr(c, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                    if getattr(c, "_vstone_patched", False) or f"_vstone_orig_{attr_name}" in c.__dict__:
+                        orig_fn = _unwrap_to_true_orig(c, attr_name)
+                        if callable(orig_fn):
+                            setattr(c, attr_name, orig_fn)
+                        if "VALIDATE_INPUTS" in c.__dict__:
+                            try:
+                                delattr(c, "VALIDATE_INPUTS")
+                            except Exception:
+                                pass
+                        setattr(c, "_vstone_patched", False)
+                        restored.append(cls_name)
+                    setattr(c, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
+        except Exception:
+            pass
+
+    # Restore LoraLoaderModelOnly (inherits load_lora from LoraLoader)
     try:
-        for img_scale_cls in _get_target_node_classes("ImageScale"):
-            if hasattr(img_scale_cls, "crop_methods") and isinstance(img_scale_cls.crop_methods, list):
-                for v in (" center", "center ", " disabled", "disabled "):
-                    if v not in img_scale_cls.crop_methods:
-                        img_scale_cls.crop_methods.append(v)
-            if getattr(img_scale_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_upscale = _get_unwrapped_orig(img_scale_cls, "upscale", is_classmethod=False)
-
-                def _make_safe_upscale(_orig):
-                    def _safe_upscale(self, image, upscale_method, width, height, crop="center"):
-                        if isinstance(crop, str):
-                            crop = crop.strip() or "center"
-                        if crop not in ("disabled", "center"):
-                            crop = "center"
-                        if image is not None and hasattr(image, "shape") and image.ndim == 4 and image.shape[0] > 8:
-                            return (_chunked_cpu_resize(image, int(width), int(height), upscale_method, crop, chunk_size=16),)
-                        return _orig(self, image, upscale_method, width, height, crop)
-                    return _safe_upscale
-
-                @classmethod  # type: ignore
-                def _validate_image_scale(cls, **kwargs):
-                    return True
-
-                img_scale_cls.upscale = _make_safe_upscale(orig_upscale)
-                img_scale_cls.VALIDATE_INPUTS = _validate_image_scale
-                setattr(img_scale_cls, "_vstone_patched", True)
-                setattr(img_scale_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "ImageScale" not in patched:
-                    patched.append("ImageScale")
+        for c in _get_target_node_classes("LoraLoaderModelOnly", None):
+            if getattr(c, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                if "load_lora" in c.__dict__:
+                    try:
+                        delattr(c, "load_lora")
+                    except Exception:
+                        pass
+                if "VALIDATE_INPUTS" in c.__dict__:
+                    try:
+                        delattr(c, "VALIDATE_INPUTS")
+                    except Exception:
+                        pass
+                setattr(c, "_vstone_patched", False)
+                setattr(c, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
     except Exception:
         pass
 
-    # 2. Patch GetVideoComponents (cap frames to 73 / 17k+5 & synthesize/trim stereo 32kHz audio)
-    try:
-        for gvc_cls in _get_target_node_classes("GetVideoComponents", "comfy_extras.nodes_video"):
-            if getattr(gvc_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_gvc_func = _get_unwrapped_orig(gvc_cls, "execute", is_classmethod=True)
+    # 2. Restore V3 ComfyNode classmethods if previously monkey-patched
+    v3_targets = [
+        ("GetVideoComponents", "comfy_extras.nodes_video", "execute"),
+        ("VAEEncodeAudio", "comfy_extras.nodes_audio", "execute"),
+        ("LTXVConcatAVLatent", "comfy_extras.nodes_lt", "execute"),
+        ("MiniMaxH3ReferenceToVideo", "comfy_extras.nodes_minimax_h3", "execute"),
+    ]
+    for cls_name, mod_name, attr_name in v3_targets:
+        try:
+            for c in _get_target_node_classes(cls_name, mod_name):
+                if getattr(c, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                    if getattr(c, "_vstone_patched", False) or f"_vstone_orig_{attr_name}" in c.__dict__:
+                        orig_fn = _unwrap_to_true_orig(c, attr_name)
+                        if callable(orig_fn):
+                            cm = orig_fn if isinstance(orig_fn, classmethod) else classmethod(orig_fn)
+                            setattr(c, attr_name, cm)
+                            if cls_name == "VAEEncodeAudio":
+                                setattr(c, "encode", cm)
+                        setattr(c, "_vstone_patched", False)
+                        restored.append(cls_name)
+                    setattr(c, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
+        except Exception:
+            pass
 
-                def _make_safe_gvc(_orig_fn):
-                    @classmethod  # type: ignore
-                    def _safe_gvc_execute(cls, video):
-                        res = _orig_fn(cls, video)
-                        try:
-                            args = list(res.args) if hasattr(res, "args") else list(res)
-                            if len(args) >= 3:
-                                imgs, aud, fps_val = args[0], args[1], float(args[2] or 24.0)
-                                if imgs is not None and hasattr(imgs, "shape") and imgs.ndim == 4:
-                                    if fps_val > 30.0 and imgs.shape[0] > 24:
-                                        step = max(1, int(round(fps_val / 24.0)))
-                                        if step > 1:
-                                            imgs = imgs[::step].contiguous()
-                                            fps_val = fps_val / float(step)
-                                            args[2] = fps_val
-                                    if imgs.shape[0] > MINIMAX_SAFE_MAX_FRAMES:
-                                        imgs = imgs[:MINIMAX_SAFE_MAX_FRAMES].contiguous()
-                                    if imgs.shape[0] < 5:
-                                        rep = (5 + imgs.shape[0] - 1) // max(1, imgs.shape[0])
-                                        imgs = imgs.repeat(rep, 1, 1, 1)[:5].contiguous()
-                                    else:
-                                        valid_n = imgs.shape[0]
-                                        while valid_n > 5 and valid_n % 17 != 5:
-                                            valid_n -= 1
-                                        if valid_n != imgs.shape[0]:
-                                            imgs = imgs[:valid_n].contiguous()
-                                    args[0] = imgs
+    # 3. Check and recover ComfyUI prompt_worker & queue
+    q_notes = _recover_comfy_queue_and_worker()
+    all_notes = []
+    if restored:
+        all_notes.append(f"Restored native nodes: {', '.join(restored)}")
+    if q_notes:
+        all_notes.extend(q_notes)
 
-                                n_frames = int(imgs.shape[0]) if (imgs is not None and hasattr(imgs, "shape")) else 24
-                                dur_sec = max(0.25, float(n_frames) / 24.0)
-                                sr = 32000
-                                n_samples = max(1600, int(round(dur_sec * sr)))
-                                if aud is None or not isinstance(aud, dict) or aud.get("waveform") is None:
-                                    aud = {
-                                        "waveform": torch.zeros((1, 2, n_samples), dtype=torch.float32),
-                                        "sample_rate": sr,
-                                    }
-                                else:
-                                    wf = aud["waveform"]
-                                    cur_sr = int(aud.get("sample_rate", sr))
-                                    target_samples = max(1600, int(round(dur_sec * cur_sr)))
-                                    if wf.ndim == 2:
-                                        wf = wf.unsqueeze(0)
-                                    if wf.shape[1] == 1:
-                                        wf = wf.repeat(1, 2, 1)
-                                    elif wf.shape[1] > 2:
-                                        wf = wf[:, :2, :]
-                                    if wf.shape[-1] == 0:
-                                        wf = torch.zeros((1, 2, target_samples), dtype=torch.float32)
-                                    elif wf.shape[-1] > target_samples:
-                                        wf = wf[..., :target_samples]
-                                    elif wf.shape[-1] < target_samples:
-                                        wf = F.pad(wf, (0, target_samples - wf.shape[-1]))
-                                    aud = {
-                                        "waveform": wf.contiguous(),
-                                        "sample_rate": cur_sr,
-                                    }
-                                args[1] = aud
-                                if hasattr(res, "args"):
-                                    res.args = tuple(args)
-                                else:
-                                    return tuple(args)
-                        except Exception:
-                            pass
-                        return res
-                    return _safe_gvc_execute
-
-                gvc_cls.execute = _make_safe_gvc(orig_gvc_func)
-                setattr(gvc_cls, "_vstone_patched", True)
-                setattr(gvc_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "GetVideoComponents" not in patched:
-                    patched.append("GetVideoComponents")
-    except Exception:
-        pass
-
-    # 3. Patch VAEEncodeAudio (fix ValueError: input audio is None on silent videos & cap audio length)
-    try:
-        for vae_aud_cls in _get_target_node_classes("VAEEncodeAudio", "comfy_extras.nodes_audio"):
-            if getattr(vae_aud_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_aud_func = _get_unwrapped_orig(vae_aud_cls, "execute", is_classmethod=True)
-
-                def _make_safe_vae_aud(_orig_fn):
-                    @classmethod  # type: ignore
-                    def _safe_vae_encode_audio_execute(cls, vae, audio=None):
-                        vae_sr = int(getattr(vae, "audio_sample_rate", 32000))
-                        default_samples = int(round((MINIMAX_SAFE_MAX_FRAMES / 24.0) * vae_sr))
-                        if audio is None or not isinstance(audio, dict) or audio.get("waveform") is None:
-                            audio = {
-                                "waveform": torch.zeros((1, 2, default_samples), dtype=torch.float32),
-                                "sample_rate": vae_sr,
-                            }
-                        else:
-                            wf = audio["waveform"]
-                            cur_sr = int(audio.get("sample_rate", vae_sr))
-                            max_cur = cur_sr * 6
-                            if wf.ndim == 2:
-                                wf = wf.unsqueeze(0)
-                            if wf.shape[1] == 1:
-                                wf = wf.repeat(1, 2, 1)
-                            elif wf.shape[1] > 2:
-                                wf = wf[:, :2, :]
-                            if wf.shape[-1] > max_cur:
-                                wf = wf[..., :max_cur]
-                            elif wf.shape[-1] < 1600:
-                                wf = F.pad(wf, (0, 1600 - wf.shape[-1]))
-                            audio = {
-                                "waveform": wf.contiguous(),
-                                "sample_rate": cur_sr,
-                            }
-                        return _orig_fn(cls, vae, audio)
-                    return _safe_vae_encode_audio_execute
-
-                safe_fn = _make_safe_vae_aud(orig_aud_func)
-                vae_aud_cls.execute = safe_fn
-                vae_aud_cls.encode = safe_fn
-                setattr(vae_aud_cls, "_vstone_patched", True)
-                setattr(vae_aud_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "VAEEncodeAudio" not in patched:
-                    patched.append("VAEEncodeAudio")
-    except Exception:
-        pass
-
-    # 4. Patch VAEEncode & VAEDecode (auto-cap MiniMax-H3 video resolution to 1280x704 during DiT & restore 1920x1088 after decode)
-    try:
-        for vae_enc_cls in _get_target_node_classes("VAEEncode"):
-            if getattr(vae_enc_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_enc = _get_unwrapped_orig(vae_enc_cls, "encode", is_classmethod=False)
-
-                def _make_safe_vae_enc(_orig):
-                    def _safe_vae_enc(self, vae, pixels):
-                        try:
-                            is_minimax_vae = (
-                                getattr(vae, "latent_channels", 0) == 24
-                                and getattr(vae, "latent_dim", 0) == 3
-                            )
-                            if is_minimax_vae and pixels is not None and hasattr(pixels, "shape") and pixels.ndim == 4 and pixels.shape[0] > 1:
-                                _vstone_free_vram(unload_models=False)
-                                if pixels.shape[0] > MINIMAX_SAFE_MAX_FRAMES:
-                                    pixels = pixels[:MINIMAX_SAFE_MAX_FRAMES].contiguous()
-                                h, w = int(pixels.shape[1]), int(pixels.shape[2])
-                                if w * h > 1344 * 768:
-                                    setattr(vae, "_vstone_upscale_target", (w, h))
-                                    ratio = float(w) / max(1.0, float(h))
-                                    if ratio >= 1.0:
-                                        tw, th = MINIMAX_SAFE_DI_W, MINIMAX_SAFE_DI_H
-                                    else:
-                                        tw, th = MINIMAX_SAFE_DI_H, MINIMAX_SAFE_DI_W
-                                    pixels = _chunked_cpu_resize(pixels, tw, th, "lanczos", "center", chunk_size=16)
-                                else:
-                                    setattr(vae, "_vstone_upscale_target", None)
-                        except Exception:
-                            pass
-                        res = _orig(self, vae, pixels)
-                        _vstone_free_vram(unload_models=False)
-                        return res
-                    return _safe_vae_enc
-
-                vae_enc_cls.encode = _make_safe_vae_enc(orig_enc)
-                setattr(vae_enc_cls, "_vstone_patched", True)
-                setattr(vae_enc_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "VAEEncode" not in patched:
-                    patched.append("VAEEncode")
-    except Exception:
-        pass
-
-    try:
-        for vae_dec_cls in _get_target_node_classes("VAEDecode"):
-            if getattr(vae_dec_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_dec = _get_unwrapped_orig(vae_dec_cls, "decode", is_classmethod=False)
-
-                def _make_safe_vae_dec(_orig):
-                    def _safe_vae_dec(self, vae, samples):
-                        is_minimax_vae = (
-                            getattr(vae, "latent_channels", 0) == 24
-                            and getattr(vae, "latent_dim", 0) == 3
-                        )
-                        if is_minimax_vae:
-                            # Giải phóng DiT (28GB) khỏi VRAM trước khi chạy ViT3DDecoder
-                            _vstone_free_vram(unload_models=True)
-                        res = _orig(self, vae, samples)
-                        try:
-                            if is_minimax_vae:
-                                _vstone_free_vram(unload_models=False)
-                                target_wh = getattr(vae, "_vstone_upscale_target", None)
-                                if target_wh is not None and isinstance(res, tuple) and len(res) >= 1:
-                                    imgs = res[0]
-                                    tw, th = int(target_wh[0]), int(target_wh[1])
-                                    if imgs is not None and hasattr(imgs, "shape") and imgs.ndim == 4:
-                                        if int(imgs.shape[2]) != tw or int(imgs.shape[1]) != th:
-                                            imgs = _chunked_cpu_resize(imgs, tw, th, "lanczos", "center", chunk_size=16)
-                                            res = (imgs,) + tuple(res[1:])
-                                    setattr(vae, "_vstone_upscale_target", None)
-                        except Exception:
-                            pass
-                        return res
-                    return _safe_vae_dec
-
-                vae_dec_cls.decode = _make_safe_vae_dec(orig_dec)
-                setattr(vae_dec_cls, "_vstone_patched", True)
-                setattr(vae_dec_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "VAEDecode" not in patched:
-                    patched.append("VAEDecode")
-    except Exception:
-        pass
-
-    # 5. Patch LTXVConcatAVLatent (auto-fit audio_latent length to MiniMax-H3 video_latent)
-    try:
-        for concat_cls in _get_target_node_classes("LTXVConcatAVLatent", "comfy_extras.nodes_lt"):
-            if getattr(concat_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_concat_func = _get_unwrapped_orig(concat_cls, "execute", is_classmethod=True)
-
-                def _make_safe_concat(_orig_fn):
-                    @classmethod  # type: ignore
-                    def _safe_concat_av_execute(cls, video_latent, audio_latent):
-                        try:
-                            v_samp = video_latent.get("samples") if isinstance(video_latent, dict) else None
-                            a_samp = audio_latent.get("samples") if isinstance(audio_latent, dict) else None
-                            if (
-                                v_samp is not None
-                                and a_samp is not None
-                                and not getattr(v_samp, "is_nested", False)
-                                and v_samp.ndim == 5
-                                and v_samp.shape[1] == 24
-                                and a_samp.ndim == 4
-                            ):
-                                latent_t = int(v_samp.shape[2])
-                                frame_per_tok = (1, 4, 4, 4, 4)
-                                frame_count = sum(frame_per_tok[k % 5] for k in range(latent_t))
-                                target_audio_t = max(1, int(round((frame_count / 24.0) * 40.0)))
-                                if a_samp.shape[2] == 1:
-                                    a_samp = a_samp.repeat(1, 1, 2, 1)
-                                elif a_samp.shape[2] > 2:
-                                    a_samp = a_samp[:, :, :2, :]
-                                cur_t = int(a_samp.shape[-1])
-                                if cur_t > target_audio_t:
-                                    a_samp = a_samp[..., :target_audio_t].contiguous()
-                                elif cur_t < target_audio_t:
-                                    pad_t = target_audio_t - cur_t
-                                    last_frame = a_samp[..., -1:] if cur_t > 0 else torch.zeros_like(a_samp[..., :1])
-                                    a_samp = torch.cat([a_samp, last_frame.repeat(1, 1, 1, pad_t)], dim=-1).contiguous()
-                                audio_latent = dict(audio_latent)
-                                audio_latent["samples"] = a_samp
-                        except Exception:
-                            pass
-                        return _orig_fn(cls, video_latent, audio_latent)
-                    return _safe_concat_av_execute
-
-                concat_cls.execute = _make_safe_concat(orig_concat_func)
-                setattr(concat_cls, "_vstone_patched", True)
-                setattr(concat_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "LTXVConcatAVLatent" not in patched:
-                    patched.append("LTXVConcatAVLatent")
-    except Exception:
-        pass
-
-    # 6. Patch MiniMaxH3ReferenceToVideo (unload Qwen3-VL-32B after conditioning, references pass through unchanged)
-    try:
-        for r2v_cls in _get_target_node_classes("MiniMaxH3ReferenceToVideo", "comfy_extras.nodes_minimax_h3"):
-            if getattr(r2v_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_r2v_func = _get_unwrapped_orig(r2v_cls, "execute", is_classmethod=True)
-
-                def _make_safe_r2v(_orig_fn):
-                    @classmethod  # type: ignore
-                    def _safe_r2v_execute(
-                        cls,
-                        clip,
-                        prompt,
-                        width,
-                        height,
-                        length,
-                        ref_image_size="match",
-                        vae=None,
-                        audio_vae=None,
-                        ref_images=None,
-                        ref_videos=None,
-                        ref_video_audios=None,
-                        ref_audios=None,
-                        **kwargs,
-                    ):
-                        _vstone_free_vram(unload_models=True)
-
-                        if ref_videos is None:
-                            ref_videos = {}
-                        else:
-                            ref_videos = dict(ref_videos)
-                        if ref_video_audios is None:
-                            ref_video_audios = {}
-                        else:
-                            ref_video_audios = dict(ref_video_audios)
-
-                        for k, v in list(kwargs.items()):
-                            if k.startswith("ref_videos.") or k.startswith("ref_video_"):
-                                short_k = k.split(".")[-1]
-                                ref_videos[short_k] = v
-                            elif k.startswith("ref_video_audios.") or k.startswith("ref_video_audio_"):
-                                short_k = k.split(".")[-1]
-                                ref_video_audios[short_k] = v
-
-                        res = _orig_fn(
-                            cls,
-                            clip=clip,
-                            prompt=prompt,
-                            width=width,
-                            height=height,
-                            length=length,
-                            ref_image_size=ref_image_size,
-                            vae=vae,
-                            audio_vae=audio_vae,
-                            ref_images=ref_images,
-                            ref_videos=ref_videos,
-                            ref_video_audios=ref_video_audios,
-                            ref_audios=ref_audios,
-                        )
-                        # Giải phóng ngay Qwen3-VL-32B (22GB) khỏi VRAM trước khi KSampler nạp MiniMax-H3 DiT
-                        _vstone_free_vram(unload_models=True)
-                        return res
-                    return _safe_r2v_execute
-
-                r2v_cls.execute = _make_safe_r2v(orig_r2v_func)
-                setattr(r2v_cls, "_vstone_patched", True)
-                setattr(r2v_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "MiniMaxH3ReferenceToVideo" not in patched:
-                    patched.append("MiniMaxH3ReferenceToVideo")
-    except Exception:
-        pass
-
-    # 7. Patch KSampler (flush VRAM before and after sampling so Qwen/VAE and DiT never collide in VRAM)
-    try:
-        for ks_cls in _get_target_node_classes("KSampler"):
-            if getattr(ks_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                orig_sample = _get_unwrapped_orig(ks_cls, "sample", is_classmethod=False)
-
-                def _make_safe_ks(_orig):
-                    def _safe_ks_sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=1.0):
-                        _vstone_free_vram(unload_models=True)
-                        res = _orig(self, model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=denoise)
-                        _vstone_free_vram(unload_models=False)
-                        return res
-                    return _safe_ks_sample
-
-                ks_cls.sample = _make_safe_ks(orig_sample)
-                setattr(ks_cls, "_vstone_patched", True)
-                setattr(ks_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                if "KSampler" not in patched:
-                    patched.append("KSampler")
-    except Exception:
-        pass
-
-    # 8. Patch LoraLoader & LoraLoaderModelOnly (tự động ánh xạ tên file & tự tải LoRA như Kijai DMAD nếu trên H200 chưa có)
-    try:
-        import folder_paths
-        for lora_cls_name in ("LoraLoader", "LoraLoaderModelOnly"):
-            for l_cls in _get_target_node_classes(lora_cls_name):
-                if getattr(l_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-                    orig_load = _get_unwrapped_orig(l_cls, "load_lora", is_classmethod=False)
-
-                    def _make_safe_lora(_orig):
-                        def _safe_load_lora(self, model, clip, lora_name, strength_model, strength_clip):
-                            clean_name = str(lora_name).replace("\\", "/").split("/")[-1]
-                            if folder_paths.get_full_path("loras", lora_name) is None:
-                                if folder_paths.get_full_path("loras", clean_name) is not None:
-                                    lora_name = clean_name
-                                else:
-                                    for _k, (fld, fn, url) in PRESET_DOWNLOAD_CATALOG.items():
-                                        if fld == "loras" and fn == clean_name and url:
-                                            download_file_to_comfy_models("loras", clean_name, url)
-                                            lora_name = clean_name
-                                            break
-                            return _orig(self, model, clip, lora_name, strength_model, strength_clip)
-                        return _safe_load_lora
-
-                    l_cls.load_lora = _make_safe_lora(orig_load)
-                    l_cls.VALIDATE_INPUTS = classmethod(lambda cls, **kwargs: True)
-                    setattr(l_cls, "_vstone_patched", True)
-                    setattr(l_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
-                    if lora_cls_name not in patched:
-                        patched.append(lora_cls_name)
-    except Exception:
-        pass
-
-    if patched:
-        msg = f"[VStone Runtime Fix v{VSTONE_RUNTIME_PATCH_VER}] Đã vá nóng & bật H200 VRAM Guard trong RAM: {', '.join(patched)}"
+    if all_notes:
+        msg = f"[VStone Runtime v{VSTONE_RUNTIME_PATCH_VER}] " + " | ".join(all_notes)
         print(msg)
         return msg
-    return f"[VStone Runtime Fix v{VSTONE_RUNTIME_PATCH_VER}] H200 VRAM Guard đã hoạt động sẵn."
+    return f"[VStone Runtime v{VSTONE_RUNTIME_PATCH_VER}] Native ComfyUI nodes & queue healthy."
 
 
 def _clear_comfy_model_cache() -> None:
@@ -929,41 +773,54 @@ def _clear_comfy_model_cache() -> None:
 
 
 def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> str:
-    """Tải LoRA / Model tốc độ cao bằng aria2c (hoặc curl/urllib) vào đúng thư mục models của ComfyUI."""
+    """Download model/LoRA safely using a lock and temporary .part file with timeouts."""
     comfy_root = _get_comfy_root()
     if not comfy_root:
-        return "[VStone Downloader] Không tìm thấy thư mục ComfyUI."
+        return "[VStone Downloader] ComfyUI root not found."
 
     target_dir = os.path.join(comfy_root, "models", folder_type)
     os.makedirs(target_dir, exist_ok=True)
     target_path = os.path.join(target_dir, filename)
 
     if os.path.exists(target_path) and os.path.getsize(target_path) > 1024 * 1024:
-        return f"[VStone Downloader] File đã tồn tại sẵn: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
+        return f"[VStone Downloader] Exists: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
 
-    print(f"[VStone Downloader] Đang tải {filename} vào {target_dir} từ {url} ...")
-    aria2_bin = shutil.which("aria2c")
-    if aria2_bin:
-        cmd = [
-            aria2_bin, "--disable-ipv6=true", "-x", "16", "-s", "16", "-k", "1M",
-            "--allow-overwrite=true", "-d", target_dir, "-o", filename, url
-        ]
-        res = subprocess.run(cmd, check=False)
-        if res.returncode == 0 and os.path.exists(target_path):
-            _clear_comfy_model_cache()
-            return f"[VStone Downloader] Tải thành công bằng aria2c: {target_path}"
+    with _DOWNLOAD_LOCK:
+        if os.path.exists(target_path) and os.path.getsize(target_path) > 1024 * 1024:
+            return f"[VStone Downloader] Exists: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
 
-    curl_bin = shutil.which("curl")
-    if curl_bin:
-        cmd = [curl_bin, "-4", "-L", url, "-o", target_path]
-        res = subprocess.run(cmd, check=False)
-        if res.returncode == 0 and os.path.exists(target_path):
-            _clear_comfy_model_cache()
-            return f"[VStone Downloader] Tải thành công bằng curl: {target_path}"
+        tmp_name = f"{filename}.part"
+        tmp_path = os.path.join(target_dir, tmp_name)
+        print(f"[VStone Downloader] Downloading {filename} to {target_dir} from {url} ...")
 
-    urllib.request.urlretrieve(url, target_path)
-    _clear_comfy_model_cache()
-    return f"[VStone Downloader] Tải thành công: {target_path}"
+        aria2_bin = shutil.which("aria2c")
+        if aria2_bin:
+            cmd = [
+                aria2_bin, "--disable-ipv6=true", "-x", "16", "-s", "16", "-k", "1M",
+                "--allow-overwrite=true", "-d", target_dir, "-o", tmp_name, url
+            ]
+            res = subprocess.run(cmd, check=False, timeout=300)
+            if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
+                os.replace(tmp_path, target_path)
+                _clear_comfy_model_cache()
+                return f"[VStone Downloader] Downloaded via aria2c: {target_path}"
+
+        curl_bin = shutil.which("curl")
+        if curl_bin:
+            cmd = [curl_bin, "-4", "-L", "--max-time", "300", url, "-o", tmp_path]
+            res = subprocess.run(cmd, check=False, timeout=310)
+            if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
+                os.replace(tmp_path, target_path)
+                _clear_comfy_model_cache()
+                return f"[VStone Downloader] Downloaded via curl: {target_path}"
+
+        req = urllib.request.Request(url, headers={"User-Agent": "VStone-ComfyUI-Sync/2.0"})
+        with urllib.request.urlopen(req, timeout=120) as resp, open(tmp_path, "wb") as out_f:
+            shutil.copyfileobj(resp, out_f)
+        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
+            os.replace(tmp_path, target_path)
+        _clear_comfy_model_cache()
+        return f"[VStone Downloader] Downloaded: {target_path}"
 
 
 def _start_background_sync_daemon(interval_sec: int = 30):
