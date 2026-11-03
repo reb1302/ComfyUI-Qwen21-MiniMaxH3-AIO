@@ -492,7 +492,6 @@ def vstone_outpaint_pad_tensor(
     add_left_ratio: float = 0.0,
     add_right_ratio: float = 0.0,
     outer_height_ratio: float = 1.3,
-    outer_bg_color: str = OUTER_BG_CHOICES[0],
     extra_left_px: int = 0,
     extra_right_px: int = 0,
     extra_top_px: int = 0,
@@ -501,15 +500,16 @@ def vstone_outpaint_pad_tensor(
     custom_hex: str = "#808080",
     feather_mask_px: int = 0,
     base_image_for_width: torch.Tensor | None = None,
+    **kwargs,
 ) -> tuple[torch.Tensor, torch.Tensor, int, int]:
     """
-    Nhận 1 tấm ảnh gốc [B, H, W, C] (Tấm 1 ở giữa):
-    - Giữ nguyên 100% từng pixel của tấm gốc 1 (không resize, không blur).
-    - Mở rộng tạo vùng bù cánh Trái (2) và/hoặc cánh Phải (3):
-      + Cạnh sát mép tấm 1 có chiều cao = 1.0 * H (bằng khung rộng gốc).
-      + Cạnh biên ngoài cùng bung rộng theo `outer_height_ratio` (ví dụ 1.3 * H).
-      + Vùng bù hình thang được tô màu đã chọn (Xám #808080 / Đỏ / Xanh).
-    - Trả về (padded_image [B, new_H, new_W, 3], outpaint_mask [B, new_H, new_W], new_W, new_H).
+    Nhận 1 tấm ảnh gốc [B, H, W, C] (khung xanh lá trong Hình 2):
+    - Giữ nguyên 100% từng pixel của ảnh gốc (không resize, không blur).
+    - Mở rộng khung chữ nhật tổng cao `outer_height_ratio * H` (ví dụ 1.3 * H -> dư trên 0.15H, dư dưới 0.15H)
+      và rộng thêm qua Trái / Phải.
+    - Tô màu Xám #808080 (hoặc Đỏ / Xanh) phủ KÍN toàn bộ vùng bao quanh (cả phần mở rộng ngang lẫn 2 dải trên/dưới
+      của ảnh gốc - đúng như vùng vẽ màu đỏ trong Hình 2) để AI vẽ liền mạch không bị viền đen.
+    - Việc cắt vát thành hình thang ScreenX (như Hình 1) sẽ do node cuối `VStone_ScreenX_Combine3` đảm nhiệm!
     """
     if image.ndim != 4:
         raise ValueError(f"Expected 4D IMAGE tensor [B, H, W, C], got shape {tuple(image.shape)}")
@@ -524,8 +524,8 @@ def vstone_outpaint_pad_tensor(
     pad_left = max(0, int(round(unit_W * float(add_left_ratio))) + int(extra_left_px))
     pad_right = max(0, int(round(unit_W * float(add_right_ratio))) + int(extra_right_px))
 
-    # Tính độ bung chiều cao ở cạnh biên theo outer_height_ratio (ví dụ 1.3x)
-    effective_ratio = max(1.0, float(outer_height_ratio)) if (pad_left > 0 or pad_right > 0) else 1.0
+    # Tính chiều cao tổng theo outer_height_ratio (ví dụ 1.3 * H -> mở đều lên trên và xuống dưới)
+    effective_ratio = max(1.0, float(outer_height_ratio))
     target_outer_H = max(H, int(round(H * effective_ratio)))
     flare_extra_H = max(0, target_outer_H - H)
     flare_top = flare_extra_H // 2
@@ -538,47 +538,12 @@ def vstone_outpaint_pad_tensor(
     new_H = pad_top + H + pad_bottom
 
     pad_rgb = _parse_fill_rgb(fill_color, custom_hex)
-    bg_rgb = _parse_outer_bg_rgb(outer_bg_color, pad_rgb)
-    is_full_wing_fill = (outer_bg_color or "").lower().startswith("fill_full_wing")
 
-    # Khởi tạo toàn bộ khung nền bằng màu nền ngoài (Đen / Trắng)
-    padded_image = create_solid_pad_tensor(B, new_H, new_W, C, bg_rgb, device, dtype)
-    mask = torch.zeros((B, new_H, new_W), dtype=dtype, device=device)
+    # Tô kín toàn bộ khung chữ nhật [new_H, new_W] bằng màu vùng bù (Xám #808080 / Đỏ / Xanh) như Hình 2
+    padded_image = create_solid_pad_tensor(B, new_H, new_W, C, pad_rgb, device, dtype)
+    mask = torch.ones((B, new_H, new_W), dtype=dtype, device=device)
 
-    fill_pixel = torch.tensor(pad_rgb[:C], dtype=dtype, device=device).view(1, 1, 1, C)
-
-    # Tô vùng bù hình thang bên Trái (Cánh 2: cạnh sát tấm 1 = H, cạnh biên trái = new_H)
-    if pad_left > 0:
-        trap_l = _build_screenx_wing_trapezoid_mask(new_H, pad_left, pad_top, H, pad_bottom, "left", device, dtype)
-        if is_full_wing_fill:
-            padded_image[:, :, :pad_left, :] = fill_pixel
-            mask[:, :, :pad_left] = 1.0
-        else:
-            trap_l_4d = trap_l.unsqueeze(0).unsqueeze(-1)
-            padded_image[:, :, :pad_left, :] = padded_image[:, :, :pad_left, :] * (1.0 - trap_l_4d) + fill_pixel * trap_l_4d
-            mask[:, :, :pad_left] = trap_l.unsqueeze(0).expand(B, -1, -1)
-
-    # Tô vùng bù hình thang bên Phải (Cánh 3: cạnh sát tấm 1 = H, cạnh biên phải = new_H)
-    if pad_right > 0:
-        trap_r = _build_screenx_wing_trapezoid_mask(new_H, pad_right, pad_top, H, pad_bottom, "right", device, dtype)
-        x0 = pad_left + W
-        if is_full_wing_fill:
-            padded_image[:, :, x0:, :] = fill_pixel
-            mask[:, :, x0:] = 1.0
-        else:
-            trap_r_4d = trap_r.unsqueeze(0).unsqueeze(-1)
-            padded_image[:, :, x0:, :] = padded_image[:, :, x0:, :] * (1.0 - trap_r_4d) + fill_pixel * trap_r_4d
-            mask[:, :, x0:] = trap_r.unsqueeze(0).expand(B, -1, -1)
-
-    # Nếu người dùng cộng thêm extra_top_px / extra_bottom_px trực tiếp ở vùng giữa
-    if extra_top_px > 0 and flare_extra_H == 0:
-        padded_image[:, :pad_top, pad_left : pad_left + W, :] = fill_pixel
-        mask[:, :pad_top, pad_left : pad_left + W] = 1.0
-    if extra_bottom_px > 0 and flare_extra_H == 0:
-        padded_image[:, pad_top + H :, pad_left : pad_left + W, :] = fill_pixel
-        mask[:, pad_top + H :, pad_left : pad_left + W] = 1.0
-
-    # Đặt tấm ảnh gốc (1) vào chính giữa (giữ nguyên 100% độ nét gốc, mask = 0.0)
+    # Đặt tấm ảnh gốc (khung xanh lá) vào đúng vị trí, giữ nguyên 100% độ nét gốc, mask = 0.0
     padded_image[:, pad_top : pad_top + H, pad_left : pad_left + W, :] = orig_rgb
     mask[:, pad_top : pad_top + H, pad_left : pad_left + W] = 0.0
 
@@ -832,7 +797,7 @@ def blend_restore_original_tensor(
 
 
 # ==============================================================================
-# NODE 1: VStone Outpaint (Tạo vùng bù Hình Thang ScreenX Trái / Phải & Chọn màu tô)
+# NODE 1: VStone Outpaint (Tạo vùng bù kiểu Hình 2: Phủ kín Xám bao quanh khung gốc)
 # ==============================================================================
 class VStone_Outpaint_Pad:
     @classmethod
@@ -859,13 +824,10 @@ class VStone_Outpaint_Pad:
                     "min": 1.0,
                     "max": 2.5,
                     "step": 0.05,
-                    "tooltip": "Tỉ số bung rộng cạnh biên ngoài chuẩn ScreenX (1.3 = cạnh sát tấm 1 cao 1.0xH, cạnh biên bung ra 1.3xH; để 1.0 nếu muốn khung phẳng)."
+                    "tooltip": "Tỉ số bung rộng chiều cao tổng chuẩn ScreenX (1.3 = cao 1.3xH, tô xám kín cả phần mở rộng lẫn 2 dải trên/dưới như Hình 2)."
                 }),
                 "fill_color": (COLOR_CHOICES, {
                     "default": COLOR_CHOICES[0],
-                }),
-                "outer_bg_color": (OUTER_BG_CHOICES, {
-                    "default": OUTER_BG_CHOICES[0],
                 }),
                 "custom_hex": ("STRING", {
                     "default": "#808080",
@@ -893,7 +855,6 @@ class VStone_Outpaint_Pad:
         add_right_widths: float = 1.0,
         outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
-        outer_bg_color: str = OUTER_BG_CHOICES[0],
         custom_hex: str = "#808080",
         extra_left_px: int = 0,
         extra_right_px: int = 0,
@@ -908,7 +869,6 @@ class VStone_Outpaint_Pad:
             add_left_ratio=add_left_widths,
             add_right_ratio=add_right_widths,
             outer_height_ratio=outer_height_ratio,
-            outer_bg_color=outer_bg_color,
             extra_left_px=extra_left_px,
             extra_right_px=extra_right_px,
             extra_top_px=extra_top_px,
@@ -922,7 +882,7 @@ class VStone_Outpaint_Pad:
 
 
 # ==============================================================================
-# NODE 2: VStone +Qua Trái 1 Lần Chiều Rộng (ScreenX Bung Cạnh Biên 1.3x)
+# NODE 2: VStone +Qua Trái 1 Lần Chiều Rộng (Tạo vùng xám kiểu Hình 2 - Cao 1.3x)
 # ==============================================================================
 class VStone_ExtendLeft_1xWidth:
     @classmethod
@@ -936,10 +896,9 @@ class VStone_ExtendLeft_1xWidth:
                     "min": 1.0,
                     "max": 2.5,
                     "step": 0.05,
-                    "tooltip": "Tỉ số bung rộng cạnh biên trái chuẩn ScreenX (1.3 = cạnh sát tấm 1 cao 1.0xH, cạnh biên trái bung ra 1.3xH)."
+                    "tooltip": "Tỉ số bung chiều cao tổng (1.3 = cao 1.3xH, tô kín vùng xám cả bên trái lẫn 2 dải trên/dưới như Hình 2)."
                 }),
                 "fill_color": (COLOR_CHOICES, {"default": COLOR_CHOICES[0]}),
-                "outer_bg_color": (OUTER_BG_CHOICES, {"default": OUTER_BG_CHOICES[0]}),
                 "custom_hex": ("STRING", {"default": "#808080"}),
                 "extra_left_px": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 8}),
                 "feather_mask_px": ("INT", {"default": 0, "min": 0, "max": 512, "step": 4}),
@@ -960,7 +919,6 @@ class VStone_ExtendLeft_1xWidth:
         width_multiplier_left: float = 1.0,
         outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
-        outer_bg_color: str = OUTER_BG_CHOICES[0],
         custom_hex: str = "#808080",
         extra_left_px: int = 0,
         feather_mask_px: int = 0,
@@ -972,7 +930,6 @@ class VStone_ExtendLeft_1xWidth:
             add_left_ratio=width_multiplier_left,
             add_right_ratio=0.0,
             outer_height_ratio=outer_height_ratio,
-            outer_bg_color=outer_bg_color,
             extra_left_px=extra_left_px,
             fill_color=fill_color,
             custom_hex=custom_hex,
@@ -983,7 +940,7 @@ class VStone_ExtendLeft_1xWidth:
 
 
 # ==============================================================================
-# NODE 3: VStone +Qua Phải 1 Lần Chiều Rộng (ScreenX Bung Cạnh Biên 1.3x)
+# NODE 3: VStone +Qua Phải 1 Lần Chiều Rộng (Tạo vùng xám kiểu Hình 2 - Cao 1.3x)
 # ==============================================================================
 class VStone_ExtendRight_1xWidth:
     @classmethod
@@ -997,10 +954,9 @@ class VStone_ExtendRight_1xWidth:
                     "min": 1.0,
                     "max": 2.5,
                     "step": 0.05,
-                    "tooltip": "Tỉ số bung rộng cạnh biên phải chuẩn ScreenX (1.3 = cạnh sát tấm 1 cao 1.0xH, cạnh biên phải bung ra 1.3xH)."
+                    "tooltip": "Tỉ số bung chiều cao tổng (1.3 = cao 1.3xH, tô kín vùng xám cả bên phải lẫn 2 dải trên/dưới như Hình 2)."
                 }),
                 "fill_color": (COLOR_CHOICES, {"default": COLOR_CHOICES[0]}),
-                "outer_bg_color": (OUTER_BG_CHOICES, {"default": OUTER_BG_CHOICES[0]}),
                 "custom_hex": ("STRING", {"default": "#808080"}),
                 "extra_right_px": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 8}),
                 "feather_mask_px": ("INT", {"default": 0, "min": 0, "max": 512, "step": 4}),
@@ -1021,7 +977,6 @@ class VStone_ExtendRight_1xWidth:
         width_multiplier_right: float = 1.0,
         outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
-        outer_bg_color: str = OUTER_BG_CHOICES[0],
         custom_hex: str = "#808080",
         extra_right_px: int = 0,
         feather_mask_px: int = 0,
@@ -1033,7 +988,6 @@ class VStone_ExtendRight_1xWidth:
             add_left_ratio=0.0,
             add_right_ratio=width_multiplier_right,
             outer_height_ratio=outer_height_ratio,
-            outer_bg_color=outer_bg_color,
             extra_right_px=extra_right_px,
             fill_color=fill_color,
             custom_hex=custom_hex,
