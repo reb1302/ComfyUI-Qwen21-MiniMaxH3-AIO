@@ -1,36 +1,38 @@
 {
-    "updated_at":  "2026-11-03T10:36:28.5644488+07:00",
-    "loras":  [
-                  {
-                      "filename":  "High quality.safetensors",
-                      "url":  "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/High_quality.safetensors",
-                      "folder":  "loras"
-                  },
-                  {
-                      "filename":  "qwen-image-2.1-outpaint-v2.safetensors",
-                      "url":  "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen-image-2.1-outpaint-v2.safetensors",
-                      "folder":  "loras"
-                  },
-                  {
-                      "filename":  "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
-                      "url":  "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
-                      "folder":  "loras"
-                  }
-              ],
-    "workflows":  [
-                      "workflows/minimax_h3/image_minimax_h3_t2i.json",
-                      "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
-                      "workflows/minimax_h3/video_minimax_h3_fun_controlnet_union.json",
-                      "workflows/minimax_h3/video_minimax_h3_i2v.json",
-                      "workflows/minimax_h3/video_minimax_h3_i2v_continuation.json",
-                      "workflows/minimax_h3/video_minimax_h3_multiframe_reference.json",
-                      "workflows/minimax_h3/video_minimax_h3_r2v.json",
-                      "workflows/minimax_h3/video_minimax_h3_t2v.json",
-                      "workflows/qwen_image_2.1/image_qwen_image_2_1_background_removal.json",
-                      "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit.json",
-                      "workflows/qwen_image_2.1/image_qwen_image_2_1_t2i.json",
-                      "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_image_edit.json",
-                      "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
-                      "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json"
-                  ]
+  "updated_at": "2026-11-03T14:27:00+07:00",
+  "loras": [
+    {
+      "filename": "High quality.safetensors",
+      "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/High_quality.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "qwen-image-2.1-outpaint-v2.safetensors",
+      "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen-image-2.1-outpaint-v2.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
+      "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
+      "folder": "loras"
+    }
+  ],
+  "workflows": [
+    "workflows/minimax_h3/image_minimax_h3_t2i.json",
+    "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
+    "workflows/minimax_h3/video_minimax_h3_stoneV_outpaint_ref.json",
+    "workflows/minimax_h3/video_minimax_h3_fun_controlnet_union.json",
+    "workflows/minimax_h3/video_minimax_h3_i2v.json",
+    "workflows/minimax_h3/video_minimax_h3_i2v_continuation.json",
+    "workflows/minimax_h3/video_minimax_h3_multiframe_reference.json",
+    "workflows/minimax_h3/video_minimax_h3_r2v.json",
+    "workflows/minimax_h3/video_minimax_h3_t2v.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_background_removal.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_t2i.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_image_edit.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json"
+  ]
 }

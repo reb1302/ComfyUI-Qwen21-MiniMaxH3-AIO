@@ -1,0 +1,281 @@
+{
+  "last_node_id": 15,
+  "last_link_id": 18,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [60, 180],
+      "size": [320, 314],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [1, 14], "slot_index": 0},
+        {"name": "MASK", "type": "MASK", "links": null}
+      ],
+      "properties": {"Node name for S&R": "LoadImage"},
+      "widgets_values": ["example.png", "image"]
+    },
+    {
+      "id": 2,
+      "type": "VStone_ExtendRight_1xWidth",
+      "pos": [430, 180],
+      "size": [430, 290],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 1},
+        {"name": "base_image_for_width", "type": "IMAGE", "link": null},
+        {"name": "previous_mask", "type": "MASK", "link": null}
+      ],
+      "outputs": [
+        {"name": "extended_image", "type": "IMAGE", "links": [2, 10, 13], "slot_index": 0},
+        {"name": "outpaint_mask", "type": "MASK", "links": [11], "slot_index": 1},
+        {"name": "original_image", "type": "IMAGE", "links": null, "slot_index": 2},
+        {"name": "qwen_extend_prompt", "type": "STRING", "links": [3], "slot_index": 3},
+        {"name": "new_width", "type": "INT", "links": null, "slot_index": 4},
+        {"name": "locked_height", "type": "INT", "links": null, "slot_index": 5}
+      ],
+      "properties": {"Node name for S&R": "VStone_ExtendRight_1xWidth"},
+      "widgets_values": [
+        1.0,
+        0,
+        "gray_0.5 (#808080 Xám chuẩn Qwen 2.1 Outpaint LoRA & ControlNet - Sắc nét)",
+        32,
+        8,
+        "natural continuation of the background environment, lighting, and perspective on the right side."
+      ]
+    },
+    {
+      "id": 3,
+      "type": "VStone_ExtendLeft_1xWidth",
+      "pos": [430, 540],
+      "size": [430, 290],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 14},
+        {"name": "base_image_for_width", "type": "IMAGE", "link": null},
+        {"name": "previous_mask", "type": "MASK", "link": null}
+      ],
+      "outputs": [
+        {"name": "extended_image", "type": "IMAGE", "links": null, "slot_index": 0},
+        {"name": "outpaint_mask", "type": "MASK", "links": null, "slot_index": 1},
+        {"name": "original_image", "type": "IMAGE", "links": null, "slot_index": 2},
+        {"name": "qwen_extend_prompt", "type": "STRING", "links": null, "slot_index": 3},
+        {"name": "new_width", "type": "INT", "links": null, "slot_index": 4},
+        {"name": "locked_height", "type": "INT", "links": null, "slot_index": 5}
+      ],
+      "properties": {"Node name for S&R": "VStone_ExtendLeft_1xWidth"},
+      "widgets_values": [
+        1.0,
+        0,
+        "gray_0.5 (#808080 Xám chuẩn Qwen 2.1 Outpaint LoRA & ControlNet - Sắc nét)",
+        32,
+        8,
+        "natural continuation of the background environment, lighting, and perspective on the left side."
+      ]
+    },
+    {
+      "id": 4,
+      "type": "UNETLoader",
+      "pos": [60, 560],
+      "size": [330, 82],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [4], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "UNETLoader"},
+      "widgets_values": ["qwen_image_2.1_int8_convrot.safetensors", "default"]
+    },
+    {
+      "id": 5,
+      "type": "LoraLoaderModelOnly",
+      "pos": [60, 690],
+      "size": [330, 82],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 4}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [5], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
+      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 1.0]
+    },
+    {
+      "id": 6,
+      "type": "CLIPLoader",
+      "pos": [60, 820],
+      "size": [330, 106],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "outputs": [
+        {"name": "CLIP", "type": "CLIP", "links": [6], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPLoader"},
+      "widgets_values": ["qwen3vl_8b_int8_convrot.safetensors", "qwen_image", "default"]
+    },
+    {
+      "id": 7,
+      "type": "VAELoader",
+      "pos": [60, 970],
+      "size": [330, 58],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "outputs": [
+        {"name": "VAE", "type": "VAE", "links": [7, 9], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAELoader"},
+      "widgets_values": ["qwen_image_2.1_vae_bf16.safetensors"]
+    },
+    {
+      "id": 8,
+      "type": "TextEncodeQwenImage21",
+      "pos": [920, 180],
+      "size": [420, 260],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 6},
+        {"name": "vae", "type": "VAE", "link": 7},
+        {"name": "images.image_1", "type": "IMAGE", "link": 2},
+        {"name": "prompt", "type": "STRING", "widget": {"name": "prompt"}, "link": 3}
+      ],
+      "outputs": [
+        {"name": "positive", "type": "CONDITIONING", "links": [15], "slot_index": 0},
+        {"name": "negative", "type": "CONDITIONING", "links": [16], "slot_index": 1},
+        {"name": "latent", "type": "LATENT", "links": [17], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "TextEncodeQwenImage21"},
+      "widgets_values": [
+        "Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.",
+        "",
+        0
+      ]
+    },
+    {
+      "id": 9,
+      "type": "KSampler",
+      "pos": [920, 500],
+      "size": [320, 262],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 5},
+        {"name": "positive", "type": "CONDITIONING", "link": 15},
+        {"name": "negative", "type": "CONDITIONING", "link": 16},
+        {"name": "latent_image", "type": "LATENT", "link": 17}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [8], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "KSampler"},
+      "widgets_values": [42, "fixed", 25, 1.0, "euler", "simple", 1.0]
+    },
+    {
+      "id": 10,
+      "type": "VAEDecode",
+      "pos": [1280, 500],
+      "size": [210, 46],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 8},
+        {"name": "vae", "type": "VAE", "link": 9}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [12], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAEDecode"}
+    },
+    {
+      "id": 11,
+      "type": "VStone_SeamlessRestore",
+      "pos": [1530, 320],
+      "size": [360, 120],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {"name": "original_image", "type": "IMAGE", "link": 10},
+        {"name": "generated_extended_image", "type": "IMAGE", "link": 12},
+        {"name": "outpaint_mask", "type": "MASK", "link": 11}
+      ],
+      "outputs": [
+        {"name": "final_extended_image", "type": "IMAGE", "links": [18], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VStone_SeamlessRestore"}
+    },
+    {
+      "id": 12,
+      "type": "SaveImage",
+      "pos": [1930, 180],
+      "size": [520, 460],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 18}
+      ],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["vstone_qwen21_outpaint_sharp"]
+    },
+    {
+      "id": 13,
+      "type": "PreviewImage",
+      "pos": [1530, 520],
+      "size": [360, 260],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 13}
+      ],
+      "properties": {"Node name for S&R": "PreviewImage"}
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "IMAGE"],
+    [2, 2, 0, 8, 2, "IMAGE"],
+    [3, 2, 3, 8, 3, "STRING"],
+    [4, 4, 0, 5, 0, "MODEL"],
+    [5, 5, 0, 9, 0, "MODEL"],
+    [6, 6, 0, 8, 0, "CLIP"],
+    [7, 7, 0, 8, 1, "VAE"],
+    [8, 9, 0, 10, 0, "LATENT"],
+    [9, 7, 0, 10, 1, "VAE"],
+    [10, 2, 0, 11, 0, "IMAGE"],
+    [11, 2, 1, 11, 2, "MASK"],
+    [12, 10, 0, 11, 1, "IMAGE"],
+    [13, 2, 0, 13, 0, "IMAGE"],
+    [14, 1, 0, 3, 0, "IMAGE"],
+    [15, 8, 0, 9, 1, "CONDITIONING"],
+    [16, 8, 1, 9, 2, "CONDITIONING"],
+    [17, 8, 2, 9, 3, "LATENT"],
+    [18, 11, 0, 12, 0, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "title": "VStone Screen X Outpaint Chuẩn Sắc Nét (Qwen 2.1 + Outpaint LoRA v2 + Resolution=0)",
+      "bounding": [40, 110, 2440, 960],
+      "color": "#3f789e",
+      "font_size": 24
+    }
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
