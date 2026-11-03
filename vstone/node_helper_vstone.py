@@ -423,7 +423,7 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-VSTONE_RUNTIME_PATCH_VER = 3
+VSTONE_RUNTIME_PATCH_VER = 4
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -488,7 +488,7 @@ def apply_comfy_runtime_fixes() -> str:
     3. `VAEEncodeAudio`: Tự động tạo âm thanh tĩnh Stereo 32kHz khi `audio is None`, giới hạn thời lượng hợp lý để tránh tràn VRAM.
     4. `VAEEncode` & `VAEDecode`: Tự động đưa độ phân giải vào vùng an toàn chuẩn DiT (`1280x704`) khi encode bằng MiniMax VideoVAE, xả sạch model cũ trước khi chạy `ViT3DDecoder`, và tự động phóng to hậu kỳ lên Full HD (`1920x1088`).
     5. `LTXVConcatAVLatent`: Tự động căn chỉnh độ dài `audio_latent` khớp chuẩn `round(frame_count / 24 * 40)` với `video_latent`.
-    6. `MiniMaxH3ReferenceToVideo` & `KSampler`: Thu gọn `ref_videos` xuống `512x288` (5 frames) để giảm 99% token thừa trong DiT, đồng thời tự động xả `Qwen3-VL-32B` (22GB) và `Qwen-Image` khỏi VRAM trước khi chạy Sampler.
+    6. `MiniMaxH3ReferenceToVideo` & `KSampler`: Giữ nguyên ảnh và video tham chiếu, tự động xả `Qwen3-VL-32B` (22GB) và `Qwen-Image` khỏi VRAM trước khi chạy Sampler.
     """
     patched: list[str] = []
 
@@ -787,7 +787,7 @@ def apply_comfy_runtime_fixes() -> str:
     except Exception:
         pass
 
-    # 6. Patch MiniMaxH3ReferenceToVideo (VRAM-safe ref_videos 512x288x5 + unload Qwen3-VL-32B after conditioning)
+    # 6. Patch MiniMaxH3ReferenceToVideo (unload Qwen3-VL-32B after conditioning, references pass through unchanged)
     try:
         for r2v_cls in _get_target_node_classes("MiniMaxH3ReferenceToVideo", "comfy_extras.nodes_minimax_h3"):
             if getattr(r2v_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
@@ -812,9 +812,6 @@ def apply_comfy_runtime_fixes() -> str:
                         **kwargs,
                     ):
                         _vstone_free_vram(unload_models=True)
-                        width = min(int(width), MINIMAX_SAFE_DI_W) if int(width) >= int(height) else min(int(width), MINIMAX_SAFE_DI_H)
-                        height = min(int(height), MINIMAX_SAFE_DI_H) if int(width) >= int(height) else min(int(height), MINIMAX_SAFE_DI_W)
-                        length = min(int(length), MINIMAX_SAFE_MAX_FRAMES)
 
                         if ref_videos is None:
                             ref_videos = {}
@@ -833,49 +830,6 @@ def apply_comfy_runtime_fixes() -> str:
                                 short_k = k.split(".")[-1]
                                 ref_video_audios[short_k] = v
 
-                        for v_key, v_frames in list(ref_videos.items()):
-                            if v_frames is not None and hasattr(v_frames, "shape") and v_frames.ndim == 4:
-                                # Chỉ lấy 5 frame đại diện ở độ phân giải 512x288 để Qwen3-VL-32B và DiT giảm 99% VRAM
-                                if v_frames.shape[0] < 5:
-                                    rep = (5 + v_frames.shape[0] - 1) // max(1, v_frames.shape[0])
-                                    v_frames = v_frames.repeat(rep, 1, 1, 1)[:5]
-                                elif v_frames.shape[0] > 5:
-                                    idx = torch.linspace(0, v_frames.shape[0] - 1, steps=5).round().long()
-                                    v_frames = v_frames[idx]
-                                vh, vw = int(v_frames.shape[1]), int(v_frames.shape[2])
-                                if vw * vh > 512 * 288:
-                                    v_frames = _chunked_cpu_resize(v_frames, 512, 288, "bilinear", "center", chunk_size=5)
-                                ref_videos[v_key] = v_frames.contiguous()
-
-                                suffix = v_key.rsplit("_", 1)[-1]
-                                aud_key = f"ref_video_audio_{suffix}"
-                                aud_val = ref_video_audios.get(aud_key)
-                                ref_samples_len = int(round((5.0 / 24.0) * 32000))
-                                if aud_val is None or not isinstance(aud_val, dict) or aud_val.get("waveform") is None:
-                                    if "<Audio" in (prompt or ""):
-                                        ref_video_audios[aud_key] = {
-                                            "waveform": torch.zeros((1, 2, ref_samples_len), dtype=torch.float32),
-                                            "sample_rate": 32000,
-                                        }
-                                else:
-                                    wf = aud_val["waveform"]
-                                    cur_sr = int(aud_val.get("sample_rate", 32000))
-                                    max_ref_aud = max(6400, int(round((5.0 / 24.0) * cur_sr)))
-                                    if wf.ndim == 2:
-                                        wf = wf.unsqueeze(0)
-                                    if wf.shape[1] == 1:
-                                        wf = wf.repeat(1, 2, 1)
-                                    elif wf.shape[1] > 2:
-                                        wf = wf[:, :2, :]
-                                    if wf.shape[-1] > max_ref_aud:
-                                        wf = wf[..., :max_ref_aud]
-                                    elif wf.shape[-1] == 0:
-                                        wf = torch.zeros((1, 2, max_ref_aud), dtype=torch.float32)
-                                    ref_video_audios[aud_key] = {
-                                        "waveform": wf.contiguous(),
-                                        "sample_rate": cur_sr,
-                                    }
-
                         res = _orig_fn(
                             cls,
                             clip=clip,
@@ -883,9 +837,9 @@ def apply_comfy_runtime_fixes() -> str:
                             width=width,
                             height=height,
                             length=length,
-                            ref_image_size="match",
-                            vae=None,
-                            audio_vae=None,
+                            ref_image_size=ref_image_size,
+                            vae=vae,
+                            audio_vae=audio_vae,
                             ref_images=ref_images,
                             ref_videos=ref_videos,
                             ref_video_audios=ref_video_audios,

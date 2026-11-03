@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-03T16:45:00+07:00",
+  "updated_at": "2026-11-03T17:05:00+07:00",
   "loras": [
     {
       "filename": "High quality.safetensors",
@@ -63,6 +63,7 @@
     }
   ],
   "workflows": [
+    "workflows/minimax_h3/video_minimax_h3_r2v_video_reference.json",
     "workflows/minimax_h3/video_minimax_h3_stoneV_gen_video.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
