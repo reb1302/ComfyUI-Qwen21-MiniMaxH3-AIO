@@ -290,7 +290,7 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 except Exception as e:
                     logs.append(f"LoRA sync skip {fname}: {e}")
 
-        # 4. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI
+        # 4. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI (dọn sạch các tên node cũ trùng lặp)
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
         try:
             import nodes
@@ -299,6 +299,10 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             new_classes = ns.get("NODE_CLASS_MAPPINGS", {})
             new_names = ns.get("NODE_DISPLAY_NAME_MAPPINGS", {})
             if new_classes:
+                for old_k in list(nodes.NODE_CLASS_MAPPINGS.keys()):
+                    if old_k.startswith("VStone_") and old_k not in new_classes:
+                        nodes.NODE_CLASS_MAPPINGS.pop(old_k, None)
+                        nodes.NODE_DISPLAY_NAME_MAPPINGS.pop(old_k, None)
                 nodes.NODE_CLASS_MAPPINGS.update(new_classes)
                 nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
                 logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM: {list(new_classes.keys())}")
@@ -491,6 +495,7 @@ def vstone_outpaint_pad_tensor(
     image: torch.Tensor,
     add_left_ratio: float = 0.0,
     add_right_ratio: float = 0.0,
+    keep_orig_ratio: float = 0.5,
     outer_height_ratio: float = 1.3,
     extra_left_px: int = 0,
     extra_right_px: int = 0,
@@ -503,13 +508,14 @@ def vstone_outpaint_pad_tensor(
     **kwargs,
 ) -> tuple[torch.Tensor, torch.Tensor, int, int]:
     """
-    Nhận 1 tấm ảnh gốc [B, H, W, C] (khung xanh lá trong Hình 2):
-    - Giữ nguyên 100% từng pixel của ảnh gốc (không resize, không blur).
-    - Mở rộng khung chữ nhật tổng cao `outer_height_ratio * H` (ví dụ 1.3 * H -> dư trên 0.15H, dư dưới 0.15H)
-      và rộng thêm qua Trái / Phải.
+    Nhận 1 tấm ảnh gốc [B, H, W, C] (khung xanh lá):
+    - Để giảm diện tích thừa khi paint với Qwen (kết hợp đưa ảnh gốc nguyên vẹn vào `image2` làm ref thứ 2),
+      chỉ cắt lấy phần ảnh gốc nằm sát phía cần vẽ theo `keep_orig_ratio` (mặc định `0.5` = lấy đúng 1/2 tấm gốc):
+      + Nếu mở rộng bên TRÁI: chỉ lấy nửa bên TRÁI của tấm gốc (`0.5 * W`) ghép với vùng xám bên trái (`1.0 * W`).
+      + Nếu mở rộng bên PHẢI: chỉ lấy nửa bên PHẢI của tấm gốc (`0.5 * W`) ghép với vùng xám bên phải (`1.0 * W`).
     - Tô màu Xám #808080 (hoặc Đỏ / Xanh) phủ KÍN toàn bộ vùng bao quanh (cả phần mở rộng ngang lẫn 2 dải trên/dưới
-      của ảnh gốc - đúng như vùng vẽ màu đỏ trong Hình 2) để AI vẽ liền mạch không bị viền đen.
-    - Việc cắt vát thành hình thang ScreenX (như Hình 1) sẽ do node cuối `VStone_ScreenX_Combine3` đảm nhiệm!
+      theo `outer_height_ratio = 1.3`).
+    - Node cuối `VStone_ScreenX_Combine3` sẽ tự động ghép trả lại vào tấm gốc đầy đủ và cắt hình thang ScreenX!
     """
     if image.ndim != 4:
         raise ValueError(f"Expected 4D IMAGE tensor [B, H, W, C], got shape {tuple(image.shape)}")
@@ -524,6 +530,18 @@ def vstone_outpaint_pad_tensor(
     pad_left = max(0, int(round(unit_W * float(add_left_ratio))) + int(extra_left_px))
     pad_right = max(0, int(round(unit_W * float(add_right_ratio))) + int(extra_right_px))
 
+    # Cắt lấy phần ảnh gốc sát bên cần vẽ (mặc định keep_orig_ratio = 0.5 -> lấy nửa tấm đúng bên cần vẽ)
+    keep_ratio = max(0.1, min(1.0, float(keep_orig_ratio)))
+    if pad_left > 0 and pad_right == 0 and keep_ratio < 0.999:
+        keep_W = max(1, min(W, int(round(W * keep_ratio))))
+        kept_orig = orig_rgb[:, :, :keep_W, :]
+    elif pad_right > 0 and pad_left == 0 and keep_ratio < 0.999:
+        keep_W = max(1, min(W, int(round(W * keep_ratio))))
+        kept_orig = orig_rgb[:, :, W - keep_W :, :]
+    else:
+        keep_W = W
+        kept_orig = orig_rgb
+
     # Tính chiều cao tổng theo outer_height_ratio (ví dụ 1.3 * H -> mở đều lên trên và xuống dưới)
     effective_ratio = max(1.0, float(outer_height_ratio))
     target_outer_H = max(H, int(round(H * effective_ratio)))
@@ -534,23 +552,23 @@ def vstone_outpaint_pad_tensor(
     pad_top = flare_top + max(0, int(extra_top_px))
     pad_bottom = flare_bottom + max(0, int(extra_bottom_px))
 
-    new_W = pad_left + W + pad_right
+    new_W = pad_left + keep_W + pad_right
     new_H = pad_top + H + pad_bottom
 
     pad_rgb = _parse_fill_rgb(fill_color, custom_hex)
 
-    # Tô kín toàn bộ khung chữ nhật [new_H, new_W] bằng màu vùng bù (Xám #808080 / Đỏ / Xanh) như Hình 2
+    # Tô kín toàn bộ khung chữ nhật [new_H, new_W] bằng màu vùng bù (Xám #808080 / Đỏ / Xanh)
     padded_image = create_solid_pad_tensor(B, new_H, new_W, C, pad_rgb, device, dtype)
     mask = torch.ones((B, new_H, new_W), dtype=dtype, device=device)
 
-    # Đặt tấm ảnh gốc (khung xanh lá) vào đúng vị trí, giữ nguyên 100% độ nét gốc, mask = 0.0
-    padded_image[:, pad_top : pad_top + H, pad_left : pad_left + W, :] = orig_rgb
-    mask[:, pad_top : pad_top + H, pad_left : pad_left + W] = 0.0
+    # Đặt phần ảnh gốc được giữ lại (`kept_orig`, giữ nguyên 100% độ nét gốc, mask = 0.0)
+    padded_image[:, pad_top : pad_top + H, pad_left : pad_left + keep_W, :] = kept_orig
+    mask[:, pad_top : pad_top + H, pad_left : pad_left + keep_W] = 0.0
 
     if feather_mask_px > 0:
         f = int(feather_mask_px)
         if pad_left > 0 and f > 0:
-            f_len = min(f, W)
+            f_len = min(f, keep_W)
             t = torch.linspace(0.0, 1.0, steps=f_len, dtype=dtype, device=device)
             ramp = 0.5 * (1.0 + torch.cos(math.pi * t))
             mask[:, pad_top : pad_top + H, pad_left : pad_left + f_len] = torch.maximum(
@@ -558,11 +576,11 @@ def vstone_outpaint_pad_tensor(
                 ramp.view(1, 1, f_len),
             )
         if pad_right > 0 and f > 0:
-            f_len = min(f, W)
+            f_len = min(f, keep_W)
             t = torch.linspace(0.0, 1.0, steps=f_len, dtype=dtype, device=device)
             ramp = 0.5 * (1.0 - torch.cos(math.pi * t))
-            mask[:, pad_top : pad_top + H, pad_left + W - f_len : pad_left + W] = torch.maximum(
-                mask[:, pad_top : pad_top + H, pad_left + W - f_len : pad_left + W],
+            mask[:, pad_top : pad_top + H, pad_left + keep_W - f_len : pad_left + keep_W] = torch.maximum(
+                mask[:, pad_top : pad_top + H, pad_left + keep_W - f_len : pad_left + keep_W],
                 ramp.view(1, 1, f_len),
             )
 
@@ -581,6 +599,7 @@ def vstone_screenx_combine3_tensor(
     center_image: torch.Tensor,
     left_image: torch.Tensor | None = None,
     right_image: torch.Tensor | None = None,
+    keep_orig_ratio: float = 0.5,
     outer_height_ratio: float = 1.3,
     wing_width_ratio: float = 1.0,
     blend_width_px: int = 32,
@@ -590,11 +609,13 @@ def vstone_screenx_combine3_tensor(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Ghép 3 tấm chuẩn ScreenX [2 Trái | 1 Giữa Gốc | 3 Phải]:
-    - Tấm 1 (center_image): Giữ nguyên 100% ảnh gốc ở trung tâm.
-    - Tấm 2 (left_image) & Tấm 3 (right_image): Tự động nhận diện dù đầu vào là ảnh 2W (vừa gen từ Extend Left/Right)
-      hay ảnh 1W (chỉ riêng cánh), trích xuất đúng cánh 2 & 3.
-    - Hòa trộn nhẹ (blend) ở 2 đường giáp mí (2 <-> 1 và 1 <-> 3) với đường cong ưu tiên giữ tấm giữa 1 (`center_priority`).
-    - Cắt khung hình thang bung rộng `1.0 * H -> outer_height_ratio * H` (ví dụ 1.3x) ở 2 cánh.
+    - Tấm 1 (center_image): Giữ nguyên 100% ảnh gốc đầy đủ (W x H) ở trung tâm.
+    - Tấm 2 (left_image) & Tấm 3 (right_image): Tự động nhận diện dù đầu vào là:
+      + Ảnh 1.5W (chế độ lấy 1/2 tấm gốc `keep_orig_ratio = 0.5`: `[1.0W Wing | 0.5W Half-Orig]`),
+      + Ảnh 2.0W (chế độ lấy cả tấm gốc `keep_orig_ratio = 1.0`: `[1.0W Wing | 1.0W Full-Orig]`),
+      + Hoặc ảnh 1.0W (chỉ riêng cánh).
+    - Hòa trộn nhẹ (blend) ở 2 đường giáp mí (2 <-> 1 và 1 <-> 3) ưu tiên giữ tấm giữa 1 (`center_priority`).
+    - Cắt vát thành đúng khung hình thang ScreenX (cạnh sát tấm 1 = 1.0xH, cạnh biên ngoài bung 1.3xH).
     """
     center_rgb = center_image[:, :, :, :3]
     B, H, W, C = center_rgb.shape
@@ -602,6 +623,7 @@ def vstone_screenx_combine3_tensor(
     dtype = center_rgb.dtype
 
     wing_W = max(1, int(round(W * float(wing_width_ratio))))
+    keep_W = max(1, min(W, int(round(W * max(0.1, min(1.0, float(keep_orig_ratio)))))))
     eff_ratio = max(1.0, float(outer_height_ratio))
     new_H = max(H, int(round(H * eff_ratio)))
     flare_extra = new_H - H
@@ -627,12 +649,16 @@ def vstone_screenx_combine3_tensor(
             # Trường hợp ảnh 3 màn (3W)
             l_full = _resize_bhwc(l_rgb, new_H, total_W)
             left_wing = l_full[:, :, :wing_W, :]
-            left_center_overlap = l_full[:, :, wing_W : wing_W + W, pad_top : pad_top + H] if False else l_full[:, pad_top : pad_top + H, wing_W : wing_W + W, :]
-        elif norm_l_W >= (wing_W + 0.45 * W):
-            # Trường hợp ảnh 2W từ nhánh Extend Left: [Cánh Trái 2 | Tấm Giữa 1_AI]
-            l_ext = _resize_bhwc(l_rgb, new_H, wing_W + W)
+            left_center_overlap = l_full[:, pad_top : pad_top + H, wing_W : wing_W + W, :]
+        elif norm_l_W >= (wing_W + 0.15 * W):
+            # Tự động phân biệt ảnh (wing_W + keep_W, ví dụ 1.5W) hay ảnh (wing_W + W, 2.0W)
+            if abs(norm_l_W - (wing_W + keep_W)) <= abs(norm_l_W - (wing_W + W)):
+                target_ext_W = wing_W + keep_W
+            else:
+                target_ext_W = wing_W + W
+            l_ext = _resize_bhwc(l_rgb, new_H, target_ext_W)
             left_wing = l_ext[:, :, :wing_W, :]
-            left_center_overlap = l_ext[:, pad_top : pad_top + H, wing_W : wing_W + W, :]
+            left_center_overlap = l_ext[:, pad_top : pad_top + H, wing_W:, :]
         else:
             # Trường hợp ảnh 1W chỉ chứa riêng Cánh Trái 2
             left_wing = _resize_bhwc(l_rgb, new_H, wing_W)
@@ -653,18 +679,25 @@ def vstone_screenx_combine3_tensor(
             r_full = _resize_bhwc(r_rgb, new_H, total_W)
             right_wing = r_full[:, :, wing_W + W :, :]
             right_center_overlap = r_full[:, pad_top : pad_top + H, wing_W : wing_W + W, :]
-        elif norm_r_W >= (wing_W + 0.45 * W):
-            # Trường hợp ảnh 2W từ nhánh Extend Right: [Tấm Giữa 1_AI | Cánh Phải 3]
-            r_ext = _resize_bhwc(r_rgb, new_H, W + wing_W)
-            right_wing = r_ext[:, :, W : W + wing_W, :]
-            right_center_overlap = r_ext[:, pad_top : pad_top + H, :W, :]
+        elif norm_r_W >= (wing_W + 0.15 * W):
+            # Tự động phân biệt ảnh (keep_W + wing_W, ví dụ 1.5W) hay ảnh (W + wing_W, 2.0W)
+            if abs(norm_r_W - (keep_W + wing_W)) <= abs(norm_r_W - (W + wing_W)):
+                target_ext_W = keep_W + wing_W
+            else:
+                target_ext_W = W + wing_W
+            ov_W = target_ext_W - wing_W
+            r_ext = _resize_bhwc(r_rgb, new_H, target_ext_W)
+            right_wing = r_ext[:, :, ov_W:, :]
+            right_center_overlap = r_ext[:, pad_top : pad_top + H, :ov_W, :]
         else:
             # Trường hợp ảnh 1W chỉ chứa riêng Cánh Phải 3
             right_wing = _resize_bhwc(r_rgb, new_H, wing_W)
 
     # --- 3. Hòa trộn nhẹ ở mép nối (2 <-> 1 và 1 <-> 3) ưu tiên giữ Tấm Giữa (1) ---
     center_blended = center_rgb.clone()
-    b_px = max(0, min(int(blend_width_px), W // 2, wing_W // 2))
+    max_ov_l = left_center_overlap.shape[2] if left_center_overlap is not None else (W // 2)
+    max_ov_r = right_center_overlap.shape[2] if right_center_overlap is not None else (W // 2)
+    b_px = max(0, min(int(blend_width_px), max_ov_l, max_ov_r, W // 2, wing_W // 2))
     prio = max(0.50, min(0.98, float(center_priority)))
 
     if b_px > 0:
@@ -797,7 +830,7 @@ def blend_restore_original_tensor(
 
 
 # ==============================================================================
-# NODE 1: VStone Outpaint (Tạo vùng bù kiểu Hình 2: Phủ kín Xám bao quanh khung gốc)
+# NODE 1: VStone Outpaint (Tạo vùng bù tổng hợp)
 # ==============================================================================
 class VStone_Outpaint_Pad:
     @classmethod
@@ -819,12 +852,19 @@ class VStone_Outpaint_Pad:
                     "step": 0.1,
                     "tooltip": "Số lần chiều rộng cộng thêm qua bên PHẢI (1.0 = +1 lần chiều rộng)."
                 }),
+                "keep_orig_ratio": ("FLOAT", {
+                    "default": 0.5,
+                    "min": 0.1,
+                    "max": 1.0,
+                    "step": 0.05,
+                    "tooltip": "Tỉ lệ phần ảnh gốc giữ lại sát bên cần vẽ (0.5 = chỉ lấy 1/2 tấm gốc sát bên cần vẽ để tiết kiệm diện tích paint, 1.0 = giữ nguyên cả tấm)."
+                }),
                 "outer_height_ratio": ("FLOAT", {
                     "default": 1.3,
                     "min": 1.0,
                     "max": 2.5,
                     "step": 0.05,
-                    "tooltip": "Tỉ số bung rộng chiều cao tổng chuẩn ScreenX (1.3 = cao 1.3xH, tô xám kín cả phần mở rộng lẫn 2 dải trên/dưới như Hình 2)."
+                    "tooltip": "Tỉ số bung rộng chiều cao tổng chuẩn ScreenX (1.3 = cao 1.3xH, tô xám kín cả phần mở rộng lẫn 2 dải trên/dưới)."
                 }),
                 "fill_color": (COLOR_CHOICES, {
                     "default": COLOR_CHOICES[0],
@@ -853,6 +893,7 @@ class VStone_Outpaint_Pad:
         image: torch.Tensor,
         add_left_widths: float = 0.0,
         add_right_widths: float = 1.0,
+        keep_orig_ratio: float = 0.5,
         outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
         custom_hex: str = "#808080",
@@ -868,6 +909,7 @@ class VStone_Outpaint_Pad:
             image=image,
             add_left_ratio=add_left_widths,
             add_right_ratio=add_right_widths,
+            keep_orig_ratio=keep_orig_ratio,
             outer_height_ratio=outer_height_ratio,
             extra_left_px=extra_left_px,
             extra_right_px=extra_right_px,
@@ -882,7 +924,7 @@ class VStone_Outpaint_Pad:
 
 
 # ==============================================================================
-# NODE 2: VStone +Qua Trái 1 Lần Chiều Rộng (Tạo vùng xám kiểu Hình 2 - Cao 1.3x)
+# NODE 1A: VStone Mở Rộng Trái (Lấy 1/2 Tấm Gốc Bên Trái + Vùng Xám 1.3x)
 # ==============================================================================
 class VStone_ExtendLeft_1xWidth:
     @classmethod
@@ -891,12 +933,19 @@ class VStone_ExtendLeft_1xWidth:
             "required": {
                 "image": ("IMAGE",),
                 "width_multiplier_left": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.1}),
+                "keep_orig_ratio": ("FLOAT", {
+                    "default": 0.5,
+                    "min": 0.1,
+                    "max": 1.0,
+                    "step": 0.05,
+                    "tooltip": "0.5 = Chỉ lấy nửa bên TRÁI của tấm gốc (0.5xW) ghép với vùng xám cần vẽ (1.0xW) -> Tổng rộng 1.5xW nhẹ và nét hơn."
+                }),
                 "outer_height_ratio": ("FLOAT", {
                     "default": 1.3,
                     "min": 1.0,
                     "max": 2.5,
                     "step": 0.05,
-                    "tooltip": "Tỉ số bung chiều cao tổng (1.3 = cao 1.3xH, tô kín vùng xám cả bên trái lẫn 2 dải trên/dưới như Hình 2)."
+                    "tooltip": "Tỉ số bung chiều cao tổng (1.3 = cao 1.3xH, tô kín vùng xám cả bên trái lẫn 2 dải trên/dưới)."
                 }),
                 "fill_color": (COLOR_CHOICES, {"default": COLOR_CHOICES[0]}),
                 "custom_hex": ("STRING", {"default": "#808080"}),
@@ -917,6 +966,7 @@ class VStone_ExtendLeft_1xWidth:
         self,
         image: torch.Tensor,
         width_multiplier_left: float = 1.0,
+        keep_orig_ratio: float = 0.5,
         outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
         custom_hex: str = "#808080",
@@ -929,6 +979,7 @@ class VStone_ExtendLeft_1xWidth:
             image=image,
             add_left_ratio=width_multiplier_left,
             add_right_ratio=0.0,
+            keep_orig_ratio=keep_orig_ratio,
             outer_height_ratio=outer_height_ratio,
             extra_left_px=extra_left_px,
             fill_color=fill_color,
@@ -940,7 +991,7 @@ class VStone_ExtendLeft_1xWidth:
 
 
 # ==============================================================================
-# NODE 3: VStone +Qua Phải 1 Lần Chiều Rộng (Tạo vùng xám kiểu Hình 2 - Cao 1.3x)
+# NODE 1B: VStone Mở Rộng Phải (Lấy 1/2 Tấm Gốc Bên Phải + Vùng Xám 1.3x)
 # ==============================================================================
 class VStone_ExtendRight_1xWidth:
     @classmethod
@@ -949,12 +1000,19 @@ class VStone_ExtendRight_1xWidth:
             "required": {
                 "image": ("IMAGE",),
                 "width_multiplier_right": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.1}),
+                "keep_orig_ratio": ("FLOAT", {
+                    "default": 0.5,
+                    "min": 0.1,
+                    "max": 1.0,
+                    "step": 0.05,
+                    "tooltip": "0.5 = Chỉ lấy nửa bên PHẢI của tấm gốc (0.5xW) ghép với vùng xám cần vẽ (1.0xW) -> Tổng rộng 1.5xW nhẹ và nét hơn."
+                }),
                 "outer_height_ratio": ("FLOAT", {
                     "default": 1.3,
                     "min": 1.0,
                     "max": 2.5,
                     "step": 0.05,
-                    "tooltip": "Tỉ số bung chiều cao tổng (1.3 = cao 1.3xH, tô kín vùng xám cả bên phải lẫn 2 dải trên/dưới như Hình 2)."
+                    "tooltip": "Tỉ số bung chiều cao tổng (1.3 = cao 1.3xH, tô kín vùng xám cả bên phải lẫn 2 dải trên/dưới)."
                 }),
                 "fill_color": (COLOR_CHOICES, {"default": COLOR_CHOICES[0]}),
                 "custom_hex": ("STRING", {"default": "#808080"}),
@@ -975,6 +1033,7 @@ class VStone_ExtendRight_1xWidth:
         self,
         image: torch.Tensor,
         width_multiplier_right: float = 1.0,
+        keep_orig_ratio: float = 0.5,
         outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
         custom_hex: str = "#808080",
@@ -987,6 +1046,7 @@ class VStone_ExtendRight_1xWidth:
             image=image,
             add_left_ratio=0.0,
             add_right_ratio=width_multiplier_right,
+            keep_orig_ratio=keep_orig_ratio,
             outer_height_ratio=outer_height_ratio,
             extra_right_px=extra_right_px,
             fill_color=fill_color,
@@ -998,14 +1058,14 @@ class VStone_ExtendRight_1xWidth:
 
 
 # ==============================================================================
-# NODE 4: VStone ScreenX Combine 3 Tấm (2 Trái + 1 Giữa Gốc + 3 Phải)
+# NODE 2: VStone ScreenX Combine 3 Tấm (2 Trái + 1 Giữa Gốc + 3 Phải)
 # ==============================================================================
 class VStone_ScreenX_Combine3:
     """
     Ghép 3 tấm ảnh chuẩn ScreenX [2 Trái | 1 Giữa Gốc | 3 Phải]:
-    - Giữ nguyên tấm giữa (1) gốc.
-    - Hai tấm hai bên Trái (2) và Phải (3) được blend nhẹ với tấm giữa, ưu tiên giữ tấm giữa (`center_priority`).
-    - Cắt khung hình thang bung rộng từ 1.0x (sát mép tấm 1) ra `outer_height_ratio` (ví dụ 1.3x ở cạnh biên ngoài).
+    - Giữ nguyên tấm giữa (1) gốc đầy đủ (W x H).
+    - Tự động nhận diện ảnh nhánh Trái (2) và Phải (3) dù ở chế độ lấy 1/2 tấm gốc (1.5W) hay cả tấm (2.0W).
+    - Blend nhẹ 2 mép nối ưu tiên giữ tấm giữa (`center_priority`) và cắt khung hình thang ScreenX 1.3x.
     """
 
     @classmethod
@@ -1015,6 +1075,13 @@ class VStone_ScreenX_Combine3:
                 "center_image_1": ("IMAGE",),
                 "left_image_2": ("IMAGE",),
                 "right_image_3": ("IMAGE",),
+                "keep_orig_ratio": ("FLOAT", {
+                    "default": 0.5,
+                    "min": 0.1,
+                    "max": 1.0,
+                    "step": 0.05,
+                    "tooltip": "Tỉ lệ phần ảnh gốc đã giữ lại ở bước 1A/1B (mặc định 0.5 = nửa tấm gốc)."
+                }),
                 "outer_height_ratio": ("FLOAT", {
                     "default": 1.3,
                     "min": 1.0,
@@ -1063,17 +1130,20 @@ class VStone_ScreenX_Combine3:
         center_image_1: torch.Tensor,
         left_image_2: torch.Tensor,
         right_image_3: torch.Tensor,
+        keep_orig_ratio: float = 0.5,
         outer_height_ratio: float = 1.3,
         wing_width_ratio: float = 1.0,
         blend_width_px: int = 32,
         center_priority: float = 0.75,
         apply_trapezoid_clip: bool = True,
         outer_bg_color: str = OUTER_BG_CHOICES[0],
+        **kwargs,
     ):
         combined, left_wing, center_orig, right_wing, sx_mask = vstone_screenx_combine3_tensor(
             center_image=center_image_1,
             left_image=left_image_2,
             right_image=right_image_3,
+            keep_orig_ratio=keep_orig_ratio,
             outer_height_ratio=outer_height_ratio,
             wing_width_ratio=wing_width_ratio,
             blend_width_px=blend_width_px,
@@ -1085,40 +1155,7 @@ class VStone_ScreenX_Combine3:
 
 
 # ==============================================================================
-# NODE 5: Ghép khôi phục ảnh gốc (Seamless Restore)
-# ==============================================================================
-class VStone_SeamlessRestore:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "original_image": ("IMAGE",),
-                "generated_extended_image": ("IMAGE",),
-                "outpaint_mask": ("MASK",),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
-    FUNCTION = "restore_seamless"
-    CATEGORY = "vstone"
-
-    def restore_seamless(
-        self,
-        original_image: torch.Tensor,
-        generated_extended_image: torch.Tensor,
-        outpaint_mask: torch.Tensor,
-    ):
-        blended = blend_restore_original_tensor(
-            reference_or_original_image=original_image,
-            generated_extended_image=generated_extended_image,
-            outpaint_mask=outpaint_mask,
-        )
-        return (blended,)
-
-
-# ==============================================================================
-# NODE 6: VStone Cloud Sync & Model Downloader (Cầu nối Laptop <-> H200 Hàn Quốc)
+# NODE 3: VStone Cloud Sync & Model Downloader (Cầu nối Laptop <-> H200 Hàn Quốc)
 # ==============================================================================
 class VStone_CloudSyncHub:
     """
@@ -1205,34 +1242,21 @@ class VStone_CloudSyncHub:
         return {"ui": {"text": [final_report]}, "result": (final_report,)}
 
 
-# Giữ đầy đủ tên class cũ làm alias tương thích ngược
-VStone_ScreenX_ExtendCanvas = VStone_Outpaint_Pad
-VStone_ImageExtendRight = VStone_ExtendRight_1xWidth
-VStone_SeamlessRestoreLeft = VStone_SeamlessRestore
-
-
+# Danh sách Node tinh gọn chuẩn ScreenX (đánh số thứ tự 1A -> 1B -> 2 -> 3)
 VSTONE_NODE_CLASS_MAPPINGS = {
-    "VStone_Outpaint_Pad": VStone_Outpaint_Pad,
     "VStone_ExtendLeft_1xWidth": VStone_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": VStone_ExtendRight_1xWidth,
     "VStone_ScreenX_Combine3": VStone_ScreenX_Combine3,
-    "VStone_SeamlessRestore": VStone_SeamlessRestore,
     "VStone_CloudSyncHub": VStone_CloudSyncHub,
-    "VStone_ScreenX_ExtendCanvas": VStone_ScreenX_ExtendCanvas,
-    "VStone_ImageExtendRight": VStone_ImageExtendRight,
-    "VStone_SeamlessRestoreLeft": VStone_SeamlessRestoreLeft,
+    "VStone_Outpaint_Pad": VStone_Outpaint_Pad,
 }
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
-    "VStone_Outpaint_Pad": "VStone: Outpaint Tạo Vùng Bù (Chọn Màu Xám / Đỏ / Xanh)",
-    "VStone_ExtendLeft_1xWidth": "VStone: Outpaint +Qua Trái 1 Lần Chiều Rộng (ScreenX 1.3x)",
-    "VStone_ExtendRight_1xWidth": "VStone: Outpaint +Qua Phải 1 Lần Chiều Rộng (ScreenX 1.3x)",
-    "VStone_ScreenX_Combine3": "VStone: ScreenX Combine 3 Tấm (2 Trái + 1 Giữa Gốc + 3 Phải)",
-    "VStone_SeamlessRestore": "VStone: Ghép Khôi Phục Ảnh Gốc (Seamless Restore)",
-    "VStone_CloudSyncHub": "VStone: Cloud Sync & Model Downloader (Laptop <-> H200)",
-    "VStone_ScreenX_ExtendCanvas": "VStone: Screen X Mở Rộng Khung Ngang (Trái + Phải)",
-    "VStone_ImageExtendRight": "VStone: Extend Image Right (1 Frame Outpaint Pad)",
-    "VStone_SeamlessRestoreLeft": "VStone: Seamless Restore Left (Blend Original)",
+    "VStone_ExtendLeft_1xWidth": "VStone 1A: Mở Rộng Trái (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
+    "VStone_ExtendRight_1xWidth": "VStone 1B: Mở Rộng Phải (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
+    "VStone_ScreenX_Combine3": "VStone 2: Combine 3 Tấm Thành ScreenX (2 Trái + 1 Giữa + 3 Phải)",
+    "VStone_CloudSyncHub": "VStone 3: Cloud Sync & Tải LoRA (Laptop <-> H200)",
+    "VStone_Outpaint_Pad": "VStone: Outpaint Tạo Vùng Bù (Tùy Chỉnh Trái / Phải)",
 }
 
 NODE_CLASS_MAPPINGS = VSTONE_NODE_CLASS_MAPPINGS
