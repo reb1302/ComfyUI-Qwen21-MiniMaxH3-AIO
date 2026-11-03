@@ -1763,24 +1763,24 @@
         "Node name for S&R": "MinimaxH3LatentUpscaler3D"
       },
       "widgets_values": [
-        "minimax_h3_latent_upscaler_3d_fp16.safetensors",
+        "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
         "target dimensions",
         1280,
         704,
         32,
         false,
         "cuda",
-        "fp16"
+        "bf16"
       ],
       "widgets_values_named": {
-        "model_name": "minimax_h3_latent_upscaler_3d_fp16.safetensors",
+        "model_name": "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
         "mode": "target dimensions",
         "mode.width": 1280,
         "mode.height": 704,
         "align": 32,
         "keep_proportion": false,
         "device": "cuda",
-        "precision": "fp16"
+        "precision": "bf16"
       }
     },
     {

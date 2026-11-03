@@ -57,6 +57,11 @@ PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
         "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
         "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
     ),
+    "MiniMax-H3 3D Latent Upscaler Asirus BF16-MAXQUALITY v5 (658MB)": (
+        "latent_upscale_models",
+        "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
+        "https://huggingface.co/Asirus/Minimax-H3-Latent-Upscaler-BF16-MAXQUALITY/resolve/main/minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
+    ),
     "MiniMax-H3 3D Latent Upscaler fp16 (Chuẩn Seed Hunter v2.5.1 - 658MB)": (
         "latent_upscale_models",
         "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
@@ -176,6 +181,11 @@ DEFAULT_AUTO_SYNC_LORAS: list[dict[str, str]] = [
         "folder": "loras",
         "filename": "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
         "url": "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
+    },
+    {
+        "folder": "latent_upscale_models",
+        "filename": "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
+        "url": "https://huggingface.co/Asirus/Minimax-H3-Latent-Upscaler-BF16-MAXQUALITY/resolve/main/minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
     },
     {
         "folder": "latent_upscale_models",
@@ -2258,6 +2268,7 @@ def _mmh3_scan_models() -> list[str]:
     except Exception:
         pass
     for default_m in (
+        "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
         "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
         "minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
     ):
@@ -2291,14 +2302,21 @@ class _ResBlockEmb3D(nn.Module):
         self.skip = nn.Conv3d(channels, self.out_channels, 1) if self.out_channels != channels else nn.Identity()
 
     def forward(self, x: torch.Tensor, emb: torch.Tensor) -> torch.Tensor:
-        h = self.in_layers(x)
-        emb_out = self.emb_layers(emb).type(h.dtype)
+        in_norm, in_act, in_conv = self.in_layers[0], self.in_layers[1], self.in_layers[2]
+        h = in_act(in_norm(x.to(in_norm.weight.dtype)))
+        h = in_conv(h.to(in_conv.weight.dtype))
+        emb_dtype = self.emb_layers[1].weight.dtype
+        emb_out = self.emb_layers(emb.to(emb_dtype))
         while len(emb_out.shape) < len(h.shape):
             emb_out = emb_out[..., None]
         scale, shift = torch.chunk(emb_out, 2, dim=1)
-        h = self.out_norm(h) * (1 + scale) + shift
-        h = self.out_layers(h)
-        return self.skip(x) + h
+        out_norm_dtype = self.out_norm.weight.dtype
+        h = self.out_norm(h.to(out_norm_dtype)) * (1 + scale.to(out_norm_dtype)) + shift.to(out_norm_dtype)
+        out_act, out_drop, out_conv = self.out_layers[0], self.out_layers[1], self.out_layers[2]
+        h = out_drop(out_act(h))
+        h = out_conv(h.to(out_conv.weight.dtype))
+        skip_x = self.skip(x.to(self.skip.weight.dtype)) if isinstance(self.skip, nn.Conv3d) else x
+        return skip_x.to(h.dtype) + h
 
 
 class _TemporalConv3D(nn.Module):
@@ -2318,8 +2336,10 @@ class _TemporalConv3D(nn.Module):
         nn.init.zeros_(self.pwconv.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        h = F.silu(self.norm(x))
-        return x + self.pwconv(self.dwconv(h))
+        h = F.silu(self.norm(x.to(self.norm.weight.dtype)))
+        h = self.dwconv(h.to(self.dwconv.weight.dtype))
+        h = self.pwconv(h.to(self.pwconv.weight.dtype))
+        return x.to(h.dtype) + h
 
 
 class _LatentResizer3D(nn.Module):
@@ -2351,9 +2371,11 @@ class _LatentResizer3D(nn.Module):
         self.conv_out = nn.Conv3d(channels, in_channels, 3, padding=1)
 
     def _forward_seg(self, x: torch.Tensor, scale: float, size: tuple[int, int, int]) -> torch.Tensor:
-        scale_emb = torch.tensor([scale - 1.0], dtype=x.dtype, device=x.device).unsqueeze(0)
+        in_dtype = x.dtype
+        embed_dtype = self.embed[0].weight.dtype
+        scale_emb = torch.tensor([scale - 1.0], dtype=embed_dtype, device=x.device).unsqueeze(0)
         emb = self.embed(scale_emb)
-        x = self.conv_in(x)
+        x = self.conv_in(x.to(self.conv_in.weight.dtype))
         for b in self.in_blocks:
             if isinstance(b, _ResBlockEmb3D):
                 x = b(x, emb.expand(x.shape[0], -1))
@@ -2365,7 +2387,9 @@ class _LatentResizer3D(nn.Module):
                 x = b(x, emb.expand(x.shape[0], -1))
             else:
                 x = b(x)
-        return self.conv_out(F.silu(self.norm_out(x)))
+        h = F.silu(self.norm_out(x.to(self.norm_out.weight.dtype)))
+        out = self.conv_out(h.to(self.conv_out.weight.dtype))
+        return out.to(in_dtype)
 
     def forward(self, x: torch.Tensor, scale: float, target_size: tuple[int, int, int], enable_chunking: bool = True) -> torch.Tensor:
         import gc
@@ -2438,7 +2462,10 @@ def _load_or_download_mmh3_3d_upscaler(model_name: str, device: torch.device, pr
     clean_name = os.path.basename(str(model_name).replace("\\", "/"))
     path = folder_paths.get_full_path(_MMH3_LATENT_UPSCALE_FOLDER, model_name) or folder_paths.get_full_path(_MMH3_LATENT_UPSCALE_FOLDER, clean_name)
     if not path or not os.path.exists(path):
-        if "bf16" in clean_name:
+        if "conservative" in clean_name.lower() or "v5" in clean_name.lower():
+            dl_name = "minimax_h3_bf16_CONSERVATIVE_v5.safetensors"
+            url = "https://huggingface.co/Asirus/Minimax-H3-Latent-Upscaler-BF16-MAXQUALITY/resolve/main/minimax_h3_bf16_CONSERVATIVE_v5.safetensors"
+        elif "bf16" in clean_name.lower():
             dl_name = "minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors"
             url = "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors"
         else:
@@ -2475,11 +2502,23 @@ def _load_or_download_mmh3_3d_upscaler(model_name: str, device: torch.device, pr
         temporal_every=2 if has_temp else 0,
         temporal_kernel=tk,
     )
+    sd_dtypes = {v.dtype for v in sd.values() if isinstance(v, torch.Tensor)}
+    is_mixed_bf16_fp16 = (len(sd_dtypes) > 1 and precision == "bf16")
     model.load_state_dict(sd, strict=True)
-    dtype = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}.get(precision, torch.float16)
-    model = model.to(device=device, dtype=dtype).eval().requires_grad_(False)
+    if is_mixed_bf16_fp16:
+        for name, param in model.named_parameters():
+            if name in sd:
+                param.data = sd[name].to(device=device)
+        for name, buf in model.named_buffers():
+            if name in sd:
+                buf.data = sd[name].to(device=device)
+        model = model.to(device=device).eval().requires_grad_(False)
+        print(f"[MinimaxH3-3D] Loaded mixed-precision upscale model: {clean_name} (BF16+FP16 fallback on {device})")
+    else:
+        dtype = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}.get(precision, torch.float16)
+        model = model.to(device=device, dtype=dtype).eval().requires_grad_(False)
+        print(f"[MinimaxH3-3D] Loaded upscale model: {clean_name} ({precision} on {device})")
     _MMH3_3D_MODEL_CACHE[cache_key] = model
-    print(f"[MinimaxH3-3D] Loaded upscale model: {clean_name} ({precision} on {device})")
     return model
 
 
@@ -2605,14 +2644,14 @@ class MinimaxH3LatentUpscaler3D:
         return {
             "required": {
                 "latent": ("LATENT",),
-                "model_name": (_mmh3_scan_models(), {"default": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors"}),
+                "model_name": (_mmh3_scan_models(), {"default": "minimax_h3_bf16_CONSERVATIVE_v5.safetensors"}),
                 "mode": (["megapixels", "scale by multiplier", "target dimensions"], {"default": "megapixels"}),
                 "megapixels": ("FLOAT", {"default": 2.0, "min": 0.1, "max": 16.0, "step": 0.1}),
                 "align": ("INT", {"default": 32, "min": 1, "max": 512, "step": 1}),
                 "enable_temporal_chunking": ("BOOLEAN", {"default": True}),
                 "force_unload": ("BOOLEAN", {"default": False}),
                 "device": (["cuda", "rocm", "cpu"], {"default": "cuda"}),
-                "precision": (["fp32", "fp16", "bf16"], {"default": "fp16"}),
+                "precision": (["fp32", "fp16", "bf16"], {"default": "bf16"}),
             }
         }
 
@@ -2628,14 +2667,14 @@ class MinimaxH3LatentUpscaler3D:
     def execute_v1(
         self,
         latent: dict,
-        model_name: str = "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+        model_name: str = "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
         mode: Any = "megapixels",
         megapixels: float = 2.0,
         align: int = 32,
         enable_temporal_chunking: bool = True,
         force_unload: bool = False,
         device: str = "cuda",
-        precision: str = "fp16",
+        precision: str = "bf16",
         **kwargs,
     ):
         out_dict = _execute_mmh3_latent_upscaler_3d(

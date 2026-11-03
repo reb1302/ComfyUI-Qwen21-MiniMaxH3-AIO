@@ -5144,24 +5144,24 @@
         }
       },
       "widgets_values": [
-        "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+        "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
         "megapixels",
         2,
         32,
         true,
         false,
         "cuda",
-        "fp16"
+        "bf16"
       ],
       "widgets_values_named": {
-        "model_name": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+        "model_name": "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
         "mode": "megapixels",
         "mode.megapixels": 2,
         "align": 32,
         "enable_temporal_chunking": true,
         "force_unload": false,
         "device": "cuda",
-        "precision": "fp16"
+        "precision": "bf16"
       },
       "color": "#332922",
       "bgcolor": "#593930"
