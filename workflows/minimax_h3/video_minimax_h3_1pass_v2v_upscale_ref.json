@@ -158,34 +158,23 @@
       "order": 9,
       "mode": 0,
       "inputs": [
-        {"name": "latent", "type": "*", "link": 15},
-        {"label": "upscale model", "name": "model_name", "type": "COMBO", "widget": {"name": "model_name"}, "link": null}
+        {"name": "latent", "type": "LATENT", "link": 15}
       ],
       "outputs": [
-        {"name": "latent", "type": "*", "links": [16], "slot_index": 0}
+        {"name": "latent", "type": "LATENT", "links": [16], "slot_index": 0}
       ],
       "title": "3. Minimax H3 Latent Upscaler (3D) -> 2.0 MP",
       "properties": {"Node name for S&R": "MinimaxH3LatentUpscaler3D"},
       "widgets_values": [
         "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
         "megapixels",
-        2,
+        2.0,
         32,
         true,
         false,
         "cuda",
         "fp16"
       ],
-      "widgets_values_named": {
-        "model_name": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
-        "mode": "megapixels",
-        "mode.megapixels": 2,
-        "align": 32,
-        "enable_temporal_chunking": true,
-        "force_unload": false,
-        "device": "cuda",
-        "precision": "fp16"
-      },
       "color": "#332922",
       "bgcolor": "#593930"
     },

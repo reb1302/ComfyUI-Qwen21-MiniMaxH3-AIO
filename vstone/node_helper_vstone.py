@@ -351,19 +351,7 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             except Exception:
                 pass
 
-        # 3b. Tự động tải các LoRA từ Laptop (GitHub Release v1.0-loras) về ComfyUI/models/loras/ nếu chưa có
-        for l_item in lora_list:
-            folder = l_item.get("folder", "loras")
-            fname = l_item.get("filename", "")
-            url = l_item.get("url", "")
-            if folder and fname and url:
-                try:
-                    dl_res = download_file_to_comfy_models(folder, fname, url)
-                    logs.append(dl_res)
-                except Exception as e:
-                    logs.append(f"LoRA sync skip {fname}: {e}")
-
-        # 4. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI (dọn sạch các tên node cũ trùng lặp)
+        # 3b. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI TRƯỚC khi tải file nặng
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
         try:
             import nodes
@@ -372,6 +360,12 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             new_classes = ns.get("NODE_CLASS_MAPPINGS", {})
             new_names = ns.get("NODE_DISPLAY_NAME_MAPPINGS", {})
             if new_classes:
+                for _k, _cls in new_classes.items():
+                    try:
+                        if not getattr(_cls, "RELATIVE_PYTHON_MODULE", None):
+                            _cls.RELATIVE_PYTHON_MODULE = "custom_nodes.vstone"
+                    except Exception:
+                        pass
                 for old_k in list(nodes.NODE_CLASS_MAPPINGS.keys()):
                     if old_k.startswith(("VStone_", "stoneV_")) and old_k not in new_classes:
                         nodes.NODE_CLASS_MAPPINGS.pop(old_k, None)
@@ -385,6 +379,18 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                     logs.append(patch_msg)
         except Exception as e:
             logs.append(f"Hot-reload warning: {e}")
+
+        # 4. Tự động tải các LoRA / Upscaler về ComfyUI/models/ nếu chưa có
+        for l_item in lora_list:
+            folder = l_item.get("folder", "loras")
+            fname = l_item.get("filename", "")
+            url = l_item.get("url", "")
+            if folder and fname and url:
+                try:
+                    dl_res = download_file_to_comfy_models(folder, fname, url)
+                    logs.append(dl_res)
+                except Exception as e:
+                    logs.append(f"LoRA sync skip {fname}: {e}")
 
         _LAST_SYNCED_HASH = new_hash
         msg = f"[VStone Cloud Sync] Đồng bộ thành công commit {new_hash} ({wf_count} workflows)! Nhấn phím R hoặc F5 trên trình duyệt để làm mới."
@@ -486,7 +492,6 @@ def apply_comfy_runtime_fixes() -> str:
     5. `LTXVConcatAVLatent`: Tự động căn chỉnh độ dài `audio_latent` khớp chuẩn `round(frame_count / 24 * 40)` với `video_latent`.
     6. `MiniMaxH3ReferenceToVideo` & `KSampler`: Thu gọn `ref_videos` xuống `512x288` (5 frames) để giảm 99% token thừa trong DiT, đồng thời tự động xả `Qwen3-VL-32B` (22GB) và `Qwen-Image` khỏi VRAM trước khi chạy Sampler.
     """
-    _vstone_free_vram(unload_models=True)
     patched: list[str] = []
 
     # 1. Patch ImageScale (fix ' center' leading space + chunked CPU video scaling)
@@ -967,8 +972,6 @@ def _clear_comfy_model_cache() -> None:
         import folder_paths
         if hasattr(folder_paths, "filename_list_cache"):
             folder_paths.filename_list_cache.clear()
-        if hasattr(folder_paths, "cache_helper"):
-            folder_paths.cache_helper.clear()
     except Exception:
         pass
 
@@ -984,7 +987,6 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
     target_path = os.path.join(target_dir, filename)
 
     if os.path.exists(target_path) and os.path.getsize(target_path) > 1024 * 1024:
-        _clear_comfy_model_cache()
         return f"[VStone Downloader] File đã tồn tại sẵn: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
 
     print(f"[VStone Downloader] Đang tải {filename} vào {target_dir} từ {url} ...")
@@ -2050,18 +2052,6 @@ except Exception:
         ModuleList = list
     nn = _DummyNN()  # type: ignore
 
-try:
-    from comfy_api.latest import ComfyExtension, io as _comfy_io
-    _USE_COMFY_V3_API = hasattr(_comfy_io, "DynamicCombo")
-except Exception:
-    _USE_COMFY_V3_API = False
-    class _comfy_io:  # type: ignore
-        class ComfyNode:
-            pass
-        class NodeOutput:
-            def __init__(self, *args):
-                self.args = args
-
 _MMH3_LATENT_UPSCALE_FOLDER = "latent_upscale_models"
 _MMH3_VAE_DOWNSAMPLE = 16
 
@@ -2437,127 +2427,61 @@ def _execute_mmh3_latent_upscaler_3d(
     return {"samples": out}
 
 
-if _USE_COMFY_V3_API:
-    class MinimaxH3LatentUpscaler3D(_comfy_io.ComfyNode):
-        """Minimax H3 latent upscaler with Temporal Chunking and pixel-space alignment."""
+class MinimaxH3LatentUpscaler3D:
+    """Minimax H3 latent upscaler with Temporal Chunking and pixel-space alignment."""
 
-        @classmethod
-        def define_schema(cls):
-            return _comfy_io.Schema(
-                node_id="MinimaxH3LatentUpscaler3D",
-                display_name="Minimax H3 Latent Upscaler (3D)",
-                category="video/MinimaxH3",
-                search_aliases=["minimax", "h3", "latent", "upscale", "3d"],
-                inputs=[
-                    _comfy_io.AnyType.Input("latent", tooltip="Input latent (image or video)."),
-                    _comfy_io.Combo.Input("model_name", options=_mmh3_scan_models(), tooltip="Minimax H3 upscale model."),
-                    _comfy_io.DynamicCombo.Input(
-                        "mode",
-                        tooltip="How the target size is computed.",
-                        options=[
-                            _comfy_io.DynamicCombo.Option("scale by multiplier", [
-                                _comfy_io.Float.Input("scale", default=2.0, min=1.0, max=4.0, step=0.05, tooltip="Upscale factor."),
-                            ]),
-                            _comfy_io.DynamicCombo.Option("target dimensions", [
-                                _comfy_io.Int.Input("width", default=1280, min=64, max=8192, step=8, tooltip="Target pixel width."),
-                                _comfy_io.Int.Input("height", default=704, min=64, max=8192, step=8, tooltip="Target pixel height."),
-                            ]),
-                            _comfy_io.DynamicCombo.Option("megapixels", [
-                                _comfy_io.Float.Input("megapixels", default=1.0, min=0.1, max=16.0, step=0.1, tooltip="Target megapixels."),
-                            ]),
-                        ],
-                    ),
-                    _comfy_io.Int.Input("align", default=32, min=1, max=512, step=1, tooltip="Pixel-space alignment. 32 is strictly recommended."),
-                    _comfy_io.Boolean.Input("enable_temporal_chunking", default=True, tooltip="Enable temporal chunking to save VRAM for long videos and fix end-frame flickering."),
-                    _comfy_io.Boolean.Input("force_unload", default=True, tooltip="Unload model to CPU after inference to free VRAM for subsequent nodes."),
-                    _comfy_io.Combo.Input("device", options=["cuda", "rocm", "cpu"], default="cuda"),
-                    _comfy_io.Combo.Input("precision", options=["fp32", "fp16", "bf16"], default="fp16"),
-                ],
-                outputs=[
-                    _comfy_io.AnyType.Output("latent", tooltip="Upscaled latent."),
-                ],
-            )
+    RELATIVE_PYTHON_MODULE = "custom_nodes.vstone"
 
-        @classmethod
-        def VALIDATE_INPUTS(cls, **kwargs):
-            return True
-
-        @classmethod
-        def execute(
-            cls,
-            latent: dict,
-            model_name: str,
-            mode: Any,
-            align: int,
-            enable_temporal_chunking: bool,
-            force_unload: bool,
-            device: str,
-            precision: str,
-        ) -> _comfy_io.NodeOutput:
-            out_dict = _execute_mmh3_latent_upscaler_3d(
-                latent=latent,
-                model_name=model_name,
-                mode=mode,
-                align=align,
-                enable_temporal_chunking=enable_temporal_chunking,
-                force_unload=force_unload,
-                device=device,
-                precision=precision,
-            )
-            return _comfy_io.NodeOutput(out_dict)
-else:
-    class MinimaxH3LatentUpscaler3D:
-        """Minimax H3 latent upscaler with Temporal Chunking and pixel-space alignment (V1 API fallback)."""
-
-        @classmethod
-        def INPUT_TYPES(cls):
-            return {
-                "required": {
-                    "latent": ("LATENT",),
-                    "model_name": (_mmh3_scan_models(), {"default": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors"}),
-                    "mode": (["megapixels", "scale by multiplier", "target dimensions"], {"default": "megapixels"}),
-                    "megapixels": ("FLOAT", {"default": 2.0, "min": 0.1, "max": 16.0, "step": 0.1}),
-                    "align": ("INT", {"default": 32, "min": 1, "max": 512, "step": 1}),
-                    "enable_temporal_chunking": ("BOOLEAN", {"default": True}),
-                    "force_unload": ("BOOLEAN", {"default": False}),
-                    "device": (["cuda", "rocm", "cpu"], {"default": "cuda"}),
-                    "precision": (["fp32", "fp16", "bf16"], {"default": "fp16"}),
-                }
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT",),
+                "model_name": (_mmh3_scan_models(), {"default": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors"}),
+                "mode": (["megapixels", "scale by multiplier", "target dimensions"], {"default": "megapixels"}),
+                "megapixels": ("FLOAT", {"default": 2.0, "min": 0.1, "max": 16.0, "step": 0.1}),
+                "align": ("INT", {"default": 32, "min": 1, "max": 512, "step": 1}),
+                "enable_temporal_chunking": ("BOOLEAN", {"default": True}),
+                "force_unload": ("BOOLEAN", {"default": False}),
+                "device": (["cuda", "rocm", "cpu"], {"default": "cuda"}),
+                "precision": (["fp32", "fp16", "bf16"], {"default": "fp16"}),
             }
+        }
 
-        RETURN_TYPES = ("LATENT",)
-        RETURN_NAMES = ("latent",)
-        FUNCTION = "execute_v1"
-        CATEGORY = "video/MinimaxH3"
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
+    FUNCTION = "execute_v1"
+    CATEGORY = "video/MinimaxH3"
 
-        @classmethod
-        def VALIDATE_INPUTS(cls, **kwargs):
-            return True
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
 
-        def execute_v1(
-            self,
-            latent: dict,
-            model_name: str = "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
-            mode: Any = "megapixels",
-            megapixels: float = 2.0,
-            align: int = 32,
-            enable_temporal_chunking: bool = True,
-            force_unload: bool = False,
-            device: str = "cuda",
-            precision: str = "fp16",
-        ):
-            out_dict = _execute_mmh3_latent_upscaler_3d(
-                latent=latent,
-                model_name=model_name,
-                mode=mode,
-                align=align,
-                enable_temporal_chunking=enable_temporal_chunking,
-                force_unload=force_unload,
-                device=device,
-                precision=precision,
-                megapixels=megapixels,
-            )
-            return (out_dict,)
+    def execute_v1(
+        self,
+        latent: dict,
+        model_name: str = "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+        mode: Any = "megapixels",
+        megapixels: float = 2.0,
+        align: int = 32,
+        enable_temporal_chunking: bool = True,
+        force_unload: bool = False,
+        device: str = "cuda",
+        precision: str = "fp16",
+        **kwargs,
+    ):
+        out_dict = _execute_mmh3_latent_upscaler_3d(
+            latent=latent,
+            model_name=model_name,
+            mode=mode,
+            align=align,
+            enable_temporal_chunking=enable_temporal_chunking,
+            force_unload=force_unload,
+            device=device,
+            precision=precision,
+            megapixels=megapixels,
+        )
+        return (out_dict,)
 
 
 
@@ -3186,6 +3110,13 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "VStone_SeamlessRestore": "stoneV: Ghép Khôi Phục Nét Gốc (Image / Video)",
     "VStone_Video_Outpaint_Prepare": "stoneV: Chuẩn Bị Video Outpaint (1 Ảnh Mở Rộng + 1 Video Hẹp)",
 }
+
+for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
+    try:
+        if not getattr(_node_cls, "RELATIVE_PYTHON_MODULE", None):
+            _node_cls.RELATIVE_PYTHON_MODULE = "custom_nodes.vstone"
+    except Exception:
+        pass
 
 NODE_CLASS_MAPPINGS = VSTONE_NODE_CLASS_MAPPINGS
 NODE_DISPLAY_NAME_MAPPINGS = VSTONE_NODE_DISPLAY_NAME_MAPPINGS
