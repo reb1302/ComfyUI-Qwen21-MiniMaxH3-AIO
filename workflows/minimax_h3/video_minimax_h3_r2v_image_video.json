@@ -355,7 +355,7 @@
         "Node name for S&R": "BasicScheduler"
       },
       "widgets_values": [
-        "beta",
+        "simple",
         20,
         1
       ],
@@ -743,7 +743,7 @@
         "Node name for S&R": "PrimitiveFloat"
       },
       "widgets_values": [
-        3
+        5
       ],
       "widgets_values_named": {
         "value": 5
@@ -786,7 +786,7 @@
           "name": "ref_images.ref_image_0",
           "shape": 7,
           "type": "IMAGE",
-          "link": null
+          "link": 278
         },
         {
           "label": "ref_image_1",
@@ -881,7 +881,7 @@
         "",
         1632,
         608,
-        73,
+        124,
         "match"
       ],
       "widgets_values_named": {
@@ -891,6 +891,50 @@
         "length": 124,
         "ref_image_size": "match"
       }
+    },
+    {
+      "id": 137,
+      "type": "LoadImage",
+      "pos": [
+        -1050,
+        5960
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            278
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "long_image.png",
+        "image"
+      ],
+      "widgets_values_named": {
+        "image": "red_superboy_on_city_roof.png",
+        "upload": "image"
+      },
+      "title": "Long Image (<Picture 1>)"
     },
     {
       "id": 138,
@@ -923,7 +967,7 @@
         "Node name for S&R": "PrimitiveStringMultiline"
       },
       "widgets_values": [
-        "<Video 1> is the camera and motion reference: keep its exact camera movement, timing and subject action. Generate a wider view of the same scene, with the same location, lighting, color and lens look, extending naturally beyond the left and right edges of <Video 1>. No new main characters, no text, no cuts."
+        "<Picture 1> is the full wide frame: keep its location, composition, lighting and color. <Video 1> is the motion reference: keep its exact camera movement, timing and subject action. Generate <Picture 1> moving with the motion of <Video 1>. No cuts."
       ],
       "widgets_values_named": {
         "value": "Bold comic-book ink style, heavy linework, red and blue-black palette, night city. Use <Picture 2> and <Picture 1> as reference frames and <Audio 1> exactly as it is.\nCUT 1: top-down view of the little boy superhero on the rooftop — red cape fluttering in the wind, hands planted on his hips, freckles and a cocky grin as he looks straight up into the camera. The camera slowly descends toward him as he delivers his line — as he speaks, comic-book graphic overlay text word by word in sync with his voice: \"GET READY TO\" - \"MEET\" — \"YOUR\" — \"MAKER\" — huge jagged comic lettering, white with heavy black outlines and red drop shadows, tilted at scrappy angles, until the three words hang stacked in the air above him between his face and the lens.\nTRANSITION: a violent WHIP PAN off the rooftop that SMEARS the floating words away with it, motion-streaked —\nCUT 2: low hero angle on the colossal black mech-kaiju towering over the skyline as it rears back and unleashes a GIANT terrifying ROAR — jaws wide with fangs, red eyes and chest-core flaring blinding bright, blue lightning arcing off its head, the roar's shockwave rippling dust and rattling windows down the buildings, comic-style speed-lines and ink splatter bursting from the impact of the sound. It leans INTO the camera as the roar peaks. Hold on the roar."
@@ -1243,15 +1287,15 @@
       "id": 147,
       "type": "LoadVideo",
       "pos": [
-        -1380,
-        5420
+        -1050,
+        6380
       ],
       "size": [
         320,
         320
       ],
       "flags": {},
-      "order": 26,
+      "order": 27,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -1263,12 +1307,12 @@
           ]
         }
       ],
-      "title": "Load Video (<Video 1>)",
+      "title": "Reference Video (<Video 1>)",
       "properties": {
         "Node name for S&R": "LoadVideo"
       },
       "widgets_values": [
-        "center_shot.mp4",
+        "reference_video.mp4",
         "image"
       ]
     },
@@ -1276,15 +1320,15 @@
       "id": 148,
       "type": "GetVideoComponents",
       "pos": [
-        -1020,
-        5420
+        -1050,
+        6740
       ],
       "size": [
         240,
         130
       ],
       "flags": {},
-      "order": 27,
+      "order": 28,
       "mode": 0,
       "inputs": [
         {
@@ -1463,6 +1507,14 @@
       136,
       12,
       "INT"
+    ],
+    [
+      278,
+      137,
+      0,
+      136,
+      3,
+      "IMAGE"
     ],
     [
       279,
