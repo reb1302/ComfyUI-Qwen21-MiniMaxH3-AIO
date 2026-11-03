@@ -45,21 +45,26 @@ COLOR_CHOICES = [
 
 # Danh mục LoRA & Model chuẩn để bấm tải 1-click ngay trên máy H200 Hàn Quốc
 PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
-    "none (Không tải thêm model)": ("", "", ""),
+    "ALL Laptop LoRAs (Tự tải High quality + Outpaint v2 + 360)": ("__ALL_LAPTOP_LORAS__", "", ""),
+    "High quality.safetensors (LoRA từ Laptop - 76MB)": (
+        "loras",
+        "High quality.safetensors",
+        "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/High_quality.safetensors",
+    ),
     "Qwen 2.1 Outpaint LoRA v2 (Xám #808080 - 152MB)": (
         "loras",
         "qwen-image-2.1-outpaint-v2.safetensors",
-        "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors",
+        "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen-image-2.1-outpaint-v2.safetensors",
+    ),
+    "Qwen 2.1 360 Panorama Outpaint LoRA (Xanh #00FF00 - 152MB)": (
+        "loras",
+        "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
+        "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
     ),
     "Qwen 2.1 Outpaint LoRA v1 (Zoom-out lớn - 152MB)": (
         "loras",
         "qwen-image-2.1-outpaint.safetensors",
         "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint.safetensors",
-    ),
-    "Qwen 2.1 360 Panorama Outpaint LoRA (Xanh #00FF00 - 152MB)": (
-        "loras",
-        "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
-        "https://huggingface.co/nomadoor/qwen-image-2.1-360-panorama-outpaint-lora/resolve/main/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
     ),
     "Qwen 2.1 Fun ControlNet Union Inpaint (2.68GB)": (
         "model_patches",
@@ -86,7 +91,27 @@ PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
         "qwen_image_edit_inpainting.safetensors",
         "https://huggingface.co/ostris/qwen_image_edit_inpainting/resolve/main/qwen_image_edit_inpainting.safetensors",
     ),
+    "none (Không tải thêm model)": ("", "", ""),
 }
+
+# Danh sách LoRA trên Laptop được tự động đồng bộ sang ComfyUI/models/loras/ trên H200
+DEFAULT_AUTO_SYNC_LORAS: list[dict[str, str]] = [
+    {
+        "folder": "loras",
+        "filename": "High quality.safetensors",
+        "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/High_quality.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "qwen-image-2.1-outpaint-v2.safetensors",
+        "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen-image-2.1-outpaint-v2.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
+        "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
+    },
+]
 
 
 # ==============================================================================
@@ -222,13 +247,16 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         except Exception:
             pass
 
-        # 3. Đồng bộ danh sách Workflows theo commit mới nhất
+        # 3. Đồng bộ danh sách Workflows & LoRAs theo commit mới nhất
         wf_list = list(DEFAULT_SYNC_WORKFLOWS)
+        lora_list = list(DEFAULT_AUTO_SYNC_LORAS)
         try:
             manifest_bytes = _http_get_bytes(f"{raw_ref_base}/sync_manifest.json?_t={ts}", timeout=10)
             manifest_data = json.loads(manifest_bytes.decode("utf-8"))
             if isinstance(manifest_data.get("workflows"), list):
                 wf_list = manifest_data["workflows"]
+            if isinstance(manifest_data.get("loras"), list):
+                lora_list = manifest_data["loras"]
         except Exception:
             pass
 
@@ -249,6 +277,18 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 wf_count += 1
             except Exception:
                 pass
+
+        # 3b. Tự động tải các LoRA từ Laptop (GitHub Release v1.0-loras) về ComfyUI/models/loras/ nếu chưa có
+        for l_item in lora_list:
+            folder = l_item.get("folder", "loras")
+            fname = l_item.get("filename", "")
+            url = l_item.get("url", "")
+            if folder and fname and url:
+                try:
+                    dl_res = download_file_to_comfy_models(folder, fname, url)
+                    logs.append(dl_res)
+                except Exception as e:
+                    logs.append(f"LoRA sync skip {fname}: {e}")
 
         # 4. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
@@ -1139,14 +1179,14 @@ class VStone_CloudSyncHub:
         return {
             "required": {
                 "action": ([
+                    "3. Pull Code + Download Model (Cập nhật tất cả)",
                     "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)",
                     "2. Download Selected Model / LoRA (Tải Model/LoRA đã chọn bên dưới)",
-                    "3. Pull Code + Download Model (Cập nhật tất cả)",
                 ], {
-                    "default": "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)"
+                    "default": "3. Pull Code + Download Model (Cập nhật tất cả)"
                 }),
                 "preset_model": (list(PRESET_DOWNLOAD_CATALOG.keys()), {
-                    "default": "Qwen 2.1 Outpaint LoRA v2 (Xám #808080 - 152MB)"
+                    "default": "ALL Laptop LoRAs (Tự tải High quality + Outpaint v2 + 360)"
                 }),
                 "custom_url": ("STRING", {
                     "default": "",
@@ -1193,7 +1233,12 @@ class VStone_CloudSyncHub:
         if action.startswith("2.") or action.startswith("3."):
             if preset_model in PRESET_DOWNLOAD_CATALOG:
                 folder, fname, url = PRESET_DOWNLOAD_CATALOG[preset_model]
-                if folder and fname and url:
+                if folder == "__ALL_LAPTOP_LORAS__":
+                    for item in DEFAULT_AUTO_SYNC_LORAS:
+                        reports.append(
+                            download_file_to_comfy_models(item["folder"], item["filename"], item["url"])
+                        )
+                elif folder and fname and url:
                     reports.append(download_file_to_comfy_models(folder, fname, url))
             if custom_url and custom_url.strip().startswith("http"):
                 u = custom_url.strip()

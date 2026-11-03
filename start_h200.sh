@@ -34,6 +34,7 @@ fi
 echo "[SYNC] Dang cap nhat VStone Nodes & Workflows vao $COMFY_DIR/custom_nodes/ ..."
 mkdir -p "$COMFY_DIR/custom_nodes/vstone"
 mkdir -p "$COMFY_DIR/user/default/workflows"
+mkdir -p "$COMFY_DIR/models/loras"
 
 if [ -n "$REPO_DIR" ] && [ -f "$REPO_DIR/vstone/node_helper_vstone.py" ]; then
     cp -f "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py"
@@ -47,7 +48,6 @@ if [ -n "$REPO_DIR" ] && [ -f "$REPO_DIR/vstone/node_helper_vstone.py" ]; then
     if [ -d "$REPO_DIR/workflows" ]; then
         cp -rf "$REPO_DIR/workflows/"* "$COMFY_DIR/user/default/workflows/" 2>/dev/null || true
     fi
-    # Dong bo luon file start_h200.sh sang thu muc ComfyUI
     if [ "$SCRIPT_DIR/start_h200.sh" != "$COMFY_DIR/start_h200.sh" ]; then
         cp -f "$REPO_DIR/start_h200.sh" "$COMFY_DIR/start_h200.sh" 2>/dev/null || true
         chmod +x "$COMFY_DIR/start_h200.sh" 2>/dev/null || true
@@ -63,7 +63,22 @@ else
     fi
 fi
 
-# 3. Tu dong kiem tra neu sageattention da cai thanh cong thi bat --use-sage-attention
+# 3. Tu dong tai cac LoRA tu Laptop (GitHub Release v1.0-loras) ve ComfyUI/models/loras/ neu chua co
+sync_lora() {
+    local fname="$1"
+    local url="$2"
+    local dst="$COMFY_DIR/models/loras/$fname"
+    if [ ! -f "$dst" ]; then
+        echo "[LORA SYNC] Dang tai LoRA tu Laptop: $fname ..."
+        curl -4 -L "$url" -o "$dst" || true
+    fi
+}
+
+sync_lora "High quality.safetensors" "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/High_quality.safetensors"
+sync_lora "qwen-image-2.1-outpaint-v2.safetensors" "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen-image-2.1-outpaint-v2.safetensors"
+sync_lora "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors" "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors"
+
+# 4. Tu dong kiem tra neu sageattention da cai thanh cong thi bat --use-sage-attention
 ATTN_FLAG=""
 if python -c "import sageattention" &> /dev/null; then
     echo "[INFO] Phat hien SageAttention da san sang -> Bat --use-sage-attention"
@@ -74,7 +89,7 @@ fi
 
 echo "=============================================================================="
 echo "  Khoi dong ComfyUI tren NVIDIA H200 (Port: $PORT, Mode: --highvram $ATTN_FLAG)"
-echo "  Da dong bo day du VStone ScreenX Nodes vao $COMFY_DIR/custom_nodes/"
+echo "  Da dong bo day du VStone ScreenX Nodes + Laptop LoRAs!"
 echo "=============================================================================="
 python "$COMFY_DIR/main.py" --listen 0.0.0.0 --port "$PORT" --highvram $ATTN_FLAG
 read -rp "Nhan Enter de dong cua so..."
