@@ -368,26 +368,85 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
+VSTONE_RUNTIME_PATCH_VER = 2
+MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
+MINIMAX_SAFE_DI_W = 1280
+MINIMAX_SAFE_DI_H = 704
+
+
+def _vstone_free_vram(unload_models: bool = False) -> None:
+    """Giải phóng bộ nhớ đệm CUDA và (tuỳ chọn) gỡ các model cũ khỏi VRAM để tránh tràn VRAM trên H200."""
+    try:
+        import gc
+        import comfy.model_management
+        if unload_models:
+            comfy.model_management.unload_all_models()
+        gc.collect()
+        comfy.model_management.soft_empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
+def _get_unwrapped_orig(cls, attr_name: str, is_classmethod: bool = True):
+    """Lấy hàm gốc chưa bị bọc để có thể nâng cấp bản vá nóng (v1 -> v2) ngay trong RAM mà không cần restart ComfyUI."""
+    store_key = f"_vstone_orig_{attr_name}"
+    if hasattr(cls, store_key):
+        return getattr(cls, store_key)
+    cur = getattr(cls, attr_name)
+    raw_fn = cur.__func__ if (is_classmethod and hasattr(cur, "__func__")) else cur
+    if getattr(cls, "_vstone_patched", False) and getattr(raw_fn, "__closure__", None):
+        for cell in raw_fn.__closure__:
+            try:
+                contents = cell.cell_contents
+                if callable(contents):
+                    raw_fn = contents
+                    break
+            except Exception:
+                pass
+    setattr(cls, store_key, raw_fn)
+    return raw_fn
+
+
+def _chunked_cpu_resize(images: torch.Tensor, width: int, height: int, method: str = "lanczos", crop: str = "center", chunk_size: int = 16) -> torch.Tensor:
+    """Phóng to/thu nhỏ tensor video [N, H, W, C] theo từng cụm 16 frame trên CPU để không làm vọt VRAM/RAM."""
+    import comfy.utils
+    if images is None or not hasattr(images, "shape") or images.ndim != 4:
+        return images
+    n, h, w, _ = images.shape
+    if w == width and h == height:
+        return images
+    out_chunks = []
+    for i in range(0, n, chunk_size):
+        sub = images[i : i + chunk_size, ..., :3].to("cpu", dtype=torch.float32).movedim(-1, 1).contiguous()
+        scaled = comfy.utils.common_upscale(sub, int(width), int(height), method, crop)
+        out_chunks.append(scaled.movedim(1, -1).contiguous())
+    return torch.cat(out_chunks, dim=0)
+
+
 def apply_comfy_runtime_fixes() -> str:
     """
-    Vá nóng (Hot-Patch) trực tiếp trong RAM của ComfyUI cho các lỗi:
-    1. `ImageScale`: Chấp nhận cả `' center'` (dư khoảng trắng) và tự `.strip()` + `VALIDATE_INPUTS` để không bao giờ báo `Invalid input`.
-    2. `GetVideoComponents`: Nếu video đầu vào không có rãnh âm thanh (`audio is None`), tự sinh âm thanh tĩnh Stereo 32kHz khớp thời lượng video; nếu âm thanh Mono 1 kênh thì tự nhân thành Stereo 2 kênh.
-    3. `VAEEncodeAudio`: Tự động tạo âm thanh tĩnh Stereo 32kHz khi `audio is None`, hoặc chuyển Mono -> Stereo 2 kênh để không bao giờ văng `ValueError: input audio is None`.
-    4. `LTXVConcatAVLatent`: Tự động căn chỉnh độ dài `audio_latent` khớp chuẩn `round(frame_count / 24 * 40)` với `video_latent` của MiniMax-H3 (kể cả khi `video_latent` đến từ `VAEEncode`).
-    5. `MiniMaxH3ReferenceToVideo`: Tự động bù âm thanh tĩnh khi video tham chiếu không có tiếng mà prompt có `<Audio 1>`, và bù đủ tối thiểu 5 frames.
+    Vá nóng (Hot-Patch v2 - H200 VRAM Guard) trực tiếp trong RAM của ComfyUI:
+    1. `ImageScale`: Chấp nhận `' center'` + chia nhỏ theo cụm 16 frame trên CPU để không ngốn VRAM khi upscale video.
+    2. `GetVideoComponents`: Tự động hạ FPS > 30 về ~24fps, giới hạn tối đa 73 frames (chuẩn 17k+5 của MiniMax-H3), tự sinh/cắt âm thanh Stereo 32kHz khớp thời lượng video.
+    3. `VAEEncodeAudio`: Tự động tạo âm thanh tĩnh Stereo 32kHz khi `audio is None`, giới hạn thời lượng hợp lý để tránh tràn VRAM.
+    4. `VAEEncode` & `VAEDecode`: Tự động đưa độ phân giải vào vùng an toàn chuẩn DiT (`1280x704`) khi encode bằng MiniMax VideoVAE, xả sạch model cũ trước khi chạy `ViT3DDecoder`, và tự động phóng to hậu kỳ lên Full HD (`1920x1088`).
+    5. `LTXVConcatAVLatent`: Tự động căn chỉnh độ dài `audio_latent` khớp chuẩn `round(frame_count / 24 * 40)` với `video_latent`.
+    6. `MiniMaxH3ReferenceToVideo` & `KSampler`: Thu gọn `ref_videos` xuống `512x288` (5 frames) để giảm 99% token thừa trong DiT, đồng thời tự động xả `Qwen3-VL-32B` (22GB) và `Qwen-Image` khỏi VRAM trước khi chạy Sampler.
     """
+    _vstone_free_vram(unload_models=True)
     patched: list[str] = []
 
-    # 1. Patch ImageScale (fix ' center' leading space Invalid Input)
+    # 1. Patch ImageScale (fix ' center' leading space + chunked CPU video scaling)
     try:
         for img_scale_cls in _get_target_node_classes("ImageScale"):
             if hasattr(img_scale_cls, "crop_methods") and isinstance(img_scale_cls.crop_methods, list):
                 for v in (" center", "center ", " disabled", "disabled "):
                     if v not in img_scale_cls.crop_methods:
                         img_scale_cls.crop_methods.append(v)
-            if not getattr(img_scale_cls, "_vstone_patched", False):
-                orig_upscale = img_scale_cls.upscale
+            if getattr(img_scale_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_upscale = _get_unwrapped_orig(img_scale_cls, "upscale", is_classmethod=False)
 
                 def _make_safe_upscale(_orig):
                     def _safe_upscale(self, image, upscale_method, width, height, crop="center"):
@@ -395,6 +454,8 @@ def apply_comfy_runtime_fixes() -> str:
                             crop = crop.strip() or "center"
                         if crop not in ("disabled", "center"):
                             crop = "center"
+                        if image is not None and hasattr(image, "shape") and image.ndim == 4 and image.shape[0] > 8:
+                            return (_chunked_cpu_resize(image, int(width), int(height), upscale_method, crop, chunk_size=16),)
                         return _orig(self, image, upscale_method, width, height, crop)
                     return _safe_upscale
 
@@ -405,16 +466,17 @@ def apply_comfy_runtime_fixes() -> str:
                 img_scale_cls.upscale = _make_safe_upscale(orig_upscale)
                 img_scale_cls.VALIDATE_INPUTS = _validate_image_scale
                 setattr(img_scale_cls, "_vstone_patched", True)
+                setattr(img_scale_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
                 if "ImageScale" not in patched:
                     patched.append("ImageScale")
     except Exception:
         pass
 
-    # 2. Patch GetVideoComponents (auto-synthesize silent stereo 32kHz audio when video has no audio track)
+    # 2. Patch GetVideoComponents (cap frames to 73 / 17k+5 & synthesize/trim stereo 32kHz audio)
     try:
         for gvc_cls in _get_target_node_classes("GetVideoComponents", "comfy_extras.nodes_video"):
-            if not getattr(gvc_cls, "_vstone_patched", False):
-                orig_gvc_func = gvc_cls.execute.__func__ if hasattr(gvc_cls.execute, "__func__") else gvc_cls.execute
+            if getattr(gvc_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_gvc_func = _get_unwrapped_orig(gvc_cls, "execute", is_classmethod=True)
 
                 def _make_safe_gvc(_orig_fn):
                     @classmethod  # type: ignore
@@ -424,8 +486,28 @@ def apply_comfy_runtime_fixes() -> str:
                             args = list(res.args) if hasattr(res, "args") else list(res)
                             if len(args) >= 3:
                                 imgs, aud, fps_val = args[0], args[1], float(args[2] or 24.0)
+                                if imgs is not None and hasattr(imgs, "shape") and imgs.ndim == 4:
+                                    if fps_val > 30.0 and imgs.shape[0] > 24:
+                                        step = max(1, int(round(fps_val / 24.0)))
+                                        if step > 1:
+                                            imgs = imgs[::step].contiguous()
+                                            fps_val = fps_val / float(step)
+                                            args[2] = fps_val
+                                    if imgs.shape[0] > MINIMAX_SAFE_MAX_FRAMES:
+                                        imgs = imgs[:MINIMAX_SAFE_MAX_FRAMES].contiguous()
+                                    if imgs.shape[0] < 5:
+                                        rep = (5 + imgs.shape[0] - 1) // max(1, imgs.shape[0])
+                                        imgs = imgs.repeat(rep, 1, 1, 1)[:5].contiguous()
+                                    else:
+                                        valid_n = imgs.shape[0]
+                                        while valid_n > 5 and valid_n % 17 != 5:
+                                            valid_n -= 1
+                                        if valid_n != imgs.shape[0]:
+                                            imgs = imgs[:valid_n].contiguous()
+                                    args[0] = imgs
+
                                 n_frames = int(imgs.shape[0]) if (imgs is not None and hasattr(imgs, "shape")) else 24
-                                dur_sec = max(0.25, float(n_frames) / max(1.0, fps_val))
+                                dur_sec = max(0.25, float(n_frames) / 24.0)
                                 sr = 32000
                                 n_samples = max(1600, int(round(dur_sec * sr)))
                                 if aud is None or not isinstance(aud, dict) or aud.get("waveform") is None:
@@ -435,6 +517,8 @@ def apply_comfy_runtime_fixes() -> str:
                                     }
                                 else:
                                     wf = aud["waveform"]
+                                    cur_sr = int(aud.get("sample_rate", sr))
+                                    target_samples = max(1600, int(round(dur_sec * cur_sr)))
                                     if wf.ndim == 2:
                                         wf = wf.unsqueeze(0)
                                     if wf.shape[1] == 1:
@@ -442,10 +526,14 @@ def apply_comfy_runtime_fixes() -> str:
                                     elif wf.shape[1] > 2:
                                         wf = wf[:, :2, :]
                                     if wf.shape[-1] == 0:
-                                        wf = torch.zeros((1, 2, n_samples), dtype=torch.float32)
+                                        wf = torch.zeros((1, 2, target_samples), dtype=torch.float32)
+                                    elif wf.shape[-1] > target_samples:
+                                        wf = wf[..., :target_samples]
+                                    elif wf.shape[-1] < target_samples:
+                                        wf = F.pad(wf, (0, target_samples - wf.shape[-1]))
                                     aud = {
                                         "waveform": wf.contiguous(),
-                                        "sample_rate": int(aud.get("sample_rate", sr)),
+                                        "sample_rate": cur_sr,
                                     }
                                 args[1] = aud
                                 if hasattr(res, "args"):
@@ -459,40 +547,45 @@ def apply_comfy_runtime_fixes() -> str:
 
                 gvc_cls.execute = _make_safe_gvc(orig_gvc_func)
                 setattr(gvc_cls, "_vstone_patched", True)
+                setattr(gvc_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
                 if "GetVideoComponents" not in patched:
                     patched.append("GetVideoComponents")
     except Exception:
         pass
 
-    # 3. Patch VAEEncodeAudio (fix ValueError: input audio is None on silent videos & mono audio)
+    # 3. Patch VAEEncodeAudio (fix ValueError: input audio is None on silent videos & cap audio length)
     try:
         for vae_aud_cls in _get_target_node_classes("VAEEncodeAudio", "comfy_extras.nodes_audio"):
-            if not getattr(vae_aud_cls, "_vstone_patched", False):
-                orig_aud_func = vae_aud_cls.execute.__func__ if hasattr(vae_aud_cls.execute, "__func__") else vae_aud_cls.execute
+            if getattr(vae_aud_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_aud_func = _get_unwrapped_orig(vae_aud_cls, "execute", is_classmethod=True)
 
                 def _make_safe_vae_aud(_orig_fn):
                     @classmethod  # type: ignore
                     def _safe_vae_encode_audio_execute(cls, vae, audio=None):
                         vae_sr = int(getattr(vae, "audio_sample_rate", 32000))
+                        default_samples = int(round((MINIMAX_SAFE_MAX_FRAMES / 24.0) * vae_sr))
                         if audio is None or not isinstance(audio, dict) or audio.get("waveform") is None:
-                            silent_len = max(vae_sr * 6, 176000)
                             audio = {
-                                "waveform": torch.zeros((1, 2, silent_len), dtype=torch.float32),
+                                "waveform": torch.zeros((1, 2, default_samples), dtype=torch.float32),
                                 "sample_rate": vae_sr,
                             }
                         else:
                             wf = audio["waveform"]
+                            cur_sr = int(audio.get("sample_rate", vae_sr))
+                            max_cur = cur_sr * 6
                             if wf.ndim == 2:
                                 wf = wf.unsqueeze(0)
                             if wf.shape[1] == 1:
                                 wf = wf.repeat(1, 2, 1)
                             elif wf.shape[1] > 2:
                                 wf = wf[:, :2, :]
-                            if wf.shape[-1] < 1600:
+                            if wf.shape[-1] > max_cur:
+                                wf = wf[..., :max_cur]
+                            elif wf.shape[-1] < 1600:
                                 wf = F.pad(wf, (0, 1600 - wf.shape[-1]))
                             audio = {
                                 "waveform": wf.contiguous(),
-                                "sample_rate": int(audio.get("sample_rate", vae_sr)),
+                                "sample_rate": cur_sr,
                             }
                         return _orig_fn(cls, vae, audio)
                     return _safe_vae_encode_audio_execute
@@ -501,16 +594,100 @@ def apply_comfy_runtime_fixes() -> str:
                 vae_aud_cls.execute = safe_fn
                 vae_aud_cls.encode = safe_fn
                 setattr(vae_aud_cls, "_vstone_patched", True)
+                setattr(vae_aud_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
                 if "VAEEncodeAudio" not in patched:
                     patched.append("VAEEncodeAudio")
     except Exception:
         pass
 
-    # 4. Patch LTXVConcatAVLatent (auto-fit audio_latent length to MiniMax-H3 video_latent)
+    # 4. Patch VAEEncode & VAEDecode (auto-cap MiniMax-H3 video resolution to 1280x704 during DiT & restore 1920x1088 after decode)
+    try:
+        for vae_enc_cls in _get_target_node_classes("VAEEncode"):
+            if getattr(vae_enc_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_enc = _get_unwrapped_orig(vae_enc_cls, "encode", is_classmethod=False)
+
+                def _make_safe_vae_enc(_orig):
+                    def _safe_vae_enc(self, vae, pixels):
+                        try:
+                            is_minimax_vae = (
+                                getattr(vae, "latent_channels", 0) == 24
+                                and getattr(vae, "latent_dim", 0) == 3
+                            )
+                            if is_minimax_vae and pixels is not None and hasattr(pixels, "shape") and pixels.ndim == 4 and pixels.shape[0] > 1:
+                                _vstone_free_vram(unload_models=False)
+                                if pixels.shape[0] > MINIMAX_SAFE_MAX_FRAMES:
+                                    pixels = pixels[:MINIMAX_SAFE_MAX_FRAMES].contiguous()
+                                h, w = int(pixels.shape[1]), int(pixels.shape[2])
+                                if w * h > 1344 * 768:
+                                    setattr(vae, "_vstone_upscale_target", (w, h))
+                                    ratio = float(w) / max(1.0, float(h))
+                                    if ratio >= 1.0:
+                                        tw, th = MINIMAX_SAFE_DI_W, MINIMAX_SAFE_DI_H
+                                    else:
+                                        tw, th = MINIMAX_SAFE_DI_H, MINIMAX_SAFE_DI_W
+                                    pixels = _chunked_cpu_resize(pixels, tw, th, "lanczos", "center", chunk_size=16)
+                                else:
+                                    setattr(vae, "_vstone_upscale_target", None)
+                        except Exception:
+                            pass
+                        res = _orig(self, vae, pixels)
+                        _vstone_free_vram(unload_models=False)
+                        return res
+                    return _safe_vae_enc
+
+                vae_enc_cls.encode = _make_safe_vae_enc(orig_enc)
+                setattr(vae_enc_cls, "_vstone_patched", True)
+                setattr(vae_enc_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
+                if "VAEEncode" not in patched:
+                    patched.append("VAEEncode")
+    except Exception:
+        pass
+
+    try:
+        for vae_dec_cls in _get_target_node_classes("VAEDecode"):
+            if getattr(vae_dec_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_dec = _get_unwrapped_orig(vae_dec_cls, "decode", is_classmethod=False)
+
+                def _make_safe_vae_dec(_orig):
+                    def _safe_vae_dec(self, vae, samples):
+                        is_minimax_vae = (
+                            getattr(vae, "latent_channels", 0) == 24
+                            and getattr(vae, "latent_dim", 0) == 3
+                        )
+                        if is_minimax_vae:
+                            # Giải phóng DiT (28GB) khỏi VRAM trước khi chạy ViT3DDecoder
+                            _vstone_free_vram(unload_models=True)
+                        res = _orig(self, vae, samples)
+                        try:
+                            if is_minimax_vae:
+                                _vstone_free_vram(unload_models=False)
+                                target_wh = getattr(vae, "_vstone_upscale_target", None)
+                                if target_wh is not None and isinstance(res, tuple) and len(res) >= 1:
+                                    imgs = res[0]
+                                    tw, th = int(target_wh[0]), int(target_wh[1])
+                                    if imgs is not None and hasattr(imgs, "shape") and imgs.ndim == 4:
+                                        if int(imgs.shape[2]) != tw or int(imgs.shape[1]) != th:
+                                            imgs = _chunked_cpu_resize(imgs, tw, th, "lanczos", "center", chunk_size=16)
+                                            res = (imgs,) + tuple(res[1:])
+                                    setattr(vae, "_vstone_upscale_target", None)
+                        except Exception:
+                            pass
+                        return res
+                    return _safe_vae_dec
+
+                vae_dec_cls.decode = _make_safe_vae_dec(orig_dec)
+                setattr(vae_dec_cls, "_vstone_patched", True)
+                setattr(vae_dec_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
+                if "VAEDecode" not in patched:
+                    patched.append("VAEDecode")
+    except Exception:
+        pass
+
+    # 5. Patch LTXVConcatAVLatent (auto-fit audio_latent length to MiniMax-H3 video_latent)
     try:
         for concat_cls in _get_target_node_classes("LTXVConcatAVLatent", "comfy_extras.nodes_lt"):
-            if not getattr(concat_cls, "_vstone_patched", False):
-                orig_concat_func = concat_cls.execute.__func__ if hasattr(concat_cls.execute, "__func__") else concat_cls.execute
+            if getattr(concat_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_concat_func = _get_unwrapped_orig(concat_cls, "execute", is_classmethod=True)
 
                 def _make_safe_concat(_orig_fn):
                     @classmethod  # type: ignore
@@ -550,16 +727,17 @@ def apply_comfy_runtime_fixes() -> str:
 
                 concat_cls.execute = _make_safe_concat(orig_concat_func)
                 setattr(concat_cls, "_vstone_patched", True)
+                setattr(concat_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
                 if "LTXVConcatAVLatent" not in patched:
                     patched.append("LTXVConcatAVLatent")
     except Exception:
         pass
 
-    # 5. Patch MiniMaxH3ReferenceToVideo (handle silent video / mono audio / short clips / 1-indexed slots)
+    # 6. Patch MiniMaxH3ReferenceToVideo (VRAM-safe ref_videos 512x288x5 + unload Qwen3-VL-32B after conditioning)
     try:
         for r2v_cls in _get_target_node_classes("MiniMaxH3ReferenceToVideo", "comfy_extras.nodes_minimax_h3"):
-            if not getattr(r2v_cls, "_vstone_patched", False):
-                orig_r2v_func = r2v_cls.execute.__func__ if hasattr(r2v_cls.execute, "__func__") else r2v_cls.execute
+            if getattr(r2v_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_r2v_func = _get_unwrapped_orig(r2v_cls, "execute", is_classmethod=True)
 
                 def _make_safe_r2v(_orig_fn):
                     @classmethod  # type: ignore
@@ -579,6 +757,11 @@ def apply_comfy_runtime_fixes() -> str:
                         ref_audios=None,
                         **kwargs,
                     ):
+                        _vstone_free_vram(unload_models=True)
+                        width = min(int(width), MINIMAX_SAFE_DI_W) if int(width) >= int(height) else min(int(width), MINIMAX_SAFE_DI_H)
+                        height = min(int(height), MINIMAX_SAFE_DI_H) if int(width) >= int(height) else min(int(height), MINIMAX_SAFE_DI_W)
+                        length = min(int(length), MINIMAX_SAFE_MAX_FRAMES)
+
                         if ref_videos is None:
                             ref_videos = {}
                         else:
@@ -598,62 +781,102 @@ def apply_comfy_runtime_fixes() -> str:
 
                         for v_key, v_frames in list(ref_videos.items()):
                             if v_frames is not None and hasattr(v_frames, "shape") and v_frames.ndim == 4:
+                                # Chỉ lấy 5 frame đại diện ở độ phân giải 512x288 để Qwen3-VL-32B và DiT giảm 99% VRAM
                                 if v_frames.shape[0] < 5:
                                     rep = (5 + v_frames.shape[0] - 1) // max(1, v_frames.shape[0])
-                                    ref_videos[v_key] = v_frames.repeat(rep, 1, 1, 1)[:5]
+                                    v_frames = v_frames.repeat(rep, 1, 1, 1)[:5]
+                                elif v_frames.shape[0] > 5:
+                                    idx = torch.linspace(0, v_frames.shape[0] - 1, steps=5).round().long()
+                                    v_frames = v_frames[idx]
+                                vh, vw = int(v_frames.shape[1]), int(v_frames.shape[2])
+                                if vw * vh > 512 * 288:
+                                    v_frames = _chunked_cpu_resize(v_frames, 512, 288, "bilinear", "center", chunk_size=5)
+                                ref_videos[v_key] = v_frames.contiguous()
+
                                 suffix = v_key.rsplit("_", 1)[-1]
                                 aud_key = f"ref_video_audio_{suffix}"
                                 aud_val = ref_video_audios.get(aud_key)
+                                ref_samples_len = int(round((5.0 / 24.0) * 32000))
                                 if aud_val is None or not isinstance(aud_val, dict) or aud_val.get("waveform") is None:
                                     if "<Audio" in (prompt or ""):
-                                        n_f = int(ref_videos[v_key].shape[0])
-                                        samples_len = max(16000, int(round((n_f / 24.0) * 32000)))
                                         ref_video_audios[aud_key] = {
-                                            "waveform": torch.zeros((1, 2, samples_len), dtype=torch.float32),
+                                            "waveform": torch.zeros((1, 2, ref_samples_len), dtype=torch.float32),
                                             "sample_rate": 32000,
                                         }
                                 else:
                                     wf = aud_val["waveform"]
+                                    cur_sr = int(aud_val.get("sample_rate", 32000))
+                                    max_ref_aud = max(6400, int(round((5.0 / 24.0) * cur_sr)))
                                     if wf.ndim == 2:
                                         wf = wf.unsqueeze(0)
                                     if wf.shape[1] == 1:
                                         wf = wf.repeat(1, 2, 1)
                                     elif wf.shape[1] > 2:
                                         wf = wf[:, :2, :]
+                                    if wf.shape[-1] > max_ref_aud:
+                                        wf = wf[..., :max_ref_aud]
+                                    elif wf.shape[-1] == 0:
+                                        wf = torch.zeros((1, 2, max_ref_aud), dtype=torch.float32)
                                     ref_video_audios[aud_key] = {
                                         "waveform": wf.contiguous(),
-                                        "sample_rate": int(aud_val.get("sample_rate", 32000)),
+                                        "sample_rate": cur_sr,
                                     }
 
-                        return _orig_fn(
+                        res = _orig_fn(
                             cls,
                             clip=clip,
                             prompt=prompt,
                             width=width,
                             height=height,
                             length=length,
-                            ref_image_size=ref_image_size,
-                            vae=vae,
-                            audio_vae=audio_vae,
+                            ref_image_size="match",
+                            vae=None,
+                            audio_vae=None,
                             ref_images=ref_images,
                             ref_videos=ref_videos,
                             ref_video_audios=ref_video_audios,
                             ref_audios=ref_audios,
                         )
+                        # Giải phóng ngay Qwen3-VL-32B (22GB) khỏi VRAM trước khi KSampler nạp MiniMax-H3 DiT
+                        _vstone_free_vram(unload_models=True)
+                        return res
                     return _safe_r2v_execute
 
                 r2v_cls.execute = _make_safe_r2v(orig_r2v_func)
                 setattr(r2v_cls, "_vstone_patched", True)
+                setattr(r2v_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
                 if "MiniMaxH3ReferenceToVideo" not in patched:
                     patched.append("MiniMaxH3ReferenceToVideo")
     except Exception:
         pass
 
+    # 7. Patch KSampler (flush VRAM before and after sampling so Qwen/VAE and DiT never collide in VRAM)
+    try:
+        for ks_cls in _get_target_node_classes("KSampler"):
+            if getattr(ks_cls, "_vstone_patch_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_sample = _get_unwrapped_orig(ks_cls, "sample", is_classmethod=False)
+
+                def _make_safe_ks(_orig):
+                    def _safe_ks_sample(self, model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=1.0):
+                        _vstone_free_vram(unload_models=True)
+                        res = _orig(self, model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent_image, denoise=denoise)
+                        _vstone_free_vram(unload_models=False)
+                        return res
+                    return _safe_ks_sample
+
+                ks_cls.sample = _make_safe_ks(orig_sample)
+                setattr(ks_cls, "_vstone_patched", True)
+                setattr(ks_cls, "_vstone_patch_ver", VSTONE_RUNTIME_PATCH_VER)
+                if "KSampler" not in patched:
+                    patched.append("KSampler")
+    except Exception:
+        pass
+
     if patched:
-        msg = f"[VStone Runtime Fix] Đã vá nóng thành công trong RAM: {', '.join(patched)}"
+        msg = f"[VStone Runtime Fix v{VSTONE_RUNTIME_PATCH_VER}] Đã vá nóng & bật H200 VRAM Guard trong RAM: {', '.join(patched)}"
         print(msg)
         return msg
-    return ""
+    return f"[VStone Runtime Fix v{VSTONE_RUNTIME_PATCH_VER}] H200 VRAM Guard đã hoạt động sẵn."
 
 
 def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> str:
