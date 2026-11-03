@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-03T15:32:00+07:00",
+  "updated_at": "2026-11-03T16:25:00+07:00",
   "loras": [
     {
       "filename": "High quality.safetensors",
@@ -17,6 +17,11 @@
       "folder": "loras"
     },
     {
+      "filename": "4x-UltraSharp.safetensors",
+      "url": "https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors",
+      "folder": "upscale_models"
+    },
+    {
       "filename": "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
       "url": "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
       "folder": "loras"
@@ -28,6 +33,8 @@
     }
   ],
   "workflows": [
+    "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
+    "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
     "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
     "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
     "workflows/minimax_h3/image_minimax_h3_t2i.json",

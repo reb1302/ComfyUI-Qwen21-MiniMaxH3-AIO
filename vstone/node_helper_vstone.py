@@ -195,10 +195,11 @@ _LAST_SYNCED_HASH: str = ""
 DEFAULT_SYNC_WORKFLOWS = [
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
-    "workflows/minimax_h3/video_minimax_h3_seedhunter_v251_clean.json",
+    "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
     "workflows/minimax_h3/image_minimax_h3_t2i.json",
     "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
     "workflows/minimax_h3/video_minimax_h3_stoneV_outpaint_ref.json",
+    "workflows/minimax_h3/video_minimax_h3_stoneV_screenx_wings.json",
     "workflows/minimax_h3/video_minimax_h3_fun_controlnet_union.json",
     "workflows/minimax_h3/video_minimax_h3_i2v.json",
     "workflows/minimax_h3/video_minimax_h3_i2v_continuation.json",
@@ -212,6 +213,7 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_screenx_plates.json",
 ]
 
 
@@ -366,10 +368,6 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                             _cls.RELATIVE_PYTHON_MODULE = "custom_nodes.vstone"
                     except Exception:
                         pass
-                for old_k in list(nodes.NODE_CLASS_MAPPINGS.keys()):
-                    if old_k.startswith(("VStone_", "stoneV_")) and old_k not in new_classes:
-                        nodes.NODE_CLASS_MAPPINGS.pop(old_k, None)
-                        nodes.NODE_DISPLAY_NAME_MAPPINGS.pop(old_k, None)
                 nodes.NODE_CLASS_MAPPINGS.update(new_classes)
                 nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
                 logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM: {list(new_classes.keys())}")
@@ -2042,6 +2040,365 @@ class stoneV_Video_Outpaint_Prepare:
 
 
 # ==============================================================================
+# RTX Video Super Resolution Pro & AI 4x-UltraSharp 16K Upscaler
+# ==============================================================================
+_ULTRASHARP_CACHE: dict[str, Any] = {}
+_VERIFIED_VSR_MAX_EDGE = 15360
+_MAX_OUTPUT_EDGE = 16384
+
+
+def _apply_cas_sharpen_bhwc(images: torch.Tensor, strength: float) -> torch.Tensor:
+    """Contrast-Adaptive Sharpening on RGB [B, H, W, C] without halo artifacts."""
+    if strength <= 0.001:
+        return images
+    s = min(1.0, max(0.0, float(strength)))
+    out_batches: list[torch.Tensor] = []
+    chunk_sz = 8
+    for i in range(0, images.shape[0], chunk_sz):
+        batch = images[i : i + chunk_sz].movedim(-1, 1)
+        blurred = F.avg_pool2d(F.pad(batch, (1, 1, 1, 1), mode="replicate"), kernel_size=3, stride=1)
+        high_freq = batch - blurred
+        local_contrast = high_freq.abs().mean(dim=1, keepdim=True)
+        adaptive_w = (1.0 - (local_contrast * 3.0).clamp(0.0, 0.75)) * (s * 1.15)
+        sharpened = (batch + high_freq * adaptive_w).clamp(0.0, 1.0)
+        out_batches.append(sharpened.movedim(1, -1))
+    return torch.cat(out_batches, dim=0)
+
+
+def _apply_temporal_deflicker_bhwc(images: torch.Tensor, strength: float) -> torch.Tensor:
+    """Temporal de-flicker across adjacent video frames (B >= 3)."""
+    if strength <= 0.001 or images.shape[0] < 3:
+        return images
+    alpha = min(0.5, max(0.0, float(strength)))
+    res = images.clone()
+    prev_f = images[:-2]
+    curr_f = images[1:-1]
+    next_f = images[2:]
+    avg_neighbor = 0.5 * (prev_f + next_f)
+    diff = avg_neighbor - curr_f
+    motion_gate = 1.0 - (diff.abs().mean(dim=-1, keepdim=True) * 8.0).clamp(0.0, 1.0)
+    res[1:-1] = (curr_f + diff * (alpha * motion_gate)).clamp(0.0, 1.0)
+    return res
+
+
+def _assert_rtx_vsr_channel_integrity(input_frame: torch.Tensor, output_frame: torch.Tensor) -> None:
+    """Guard against NVIDIA RTX VSR RGB channel collapse at extreme resolutions."""
+    in_sy = max(1, input_frame.shape[1] // 512)
+    in_sx = max(1, input_frame.shape[2] // 512)
+    out_sy = max(1, output_frame.shape[1] // 512)
+    out_sx = max(1, output_frame.shape[2] // 512)
+    in_s = input_frame[:, ::in_sy, ::in_sx]
+    out_s = output_frame[:, ::out_sy, ::out_sx]
+    if not torch.isfinite(out_s).all():
+        raise RuntimeError("NVIDIA RTX VSR returned NaN or infinite pixel values")
+    src_means = in_s.float().mean(dim=(1, 2))
+    out_means = out_s.float().mean(dim=(1, 2))
+    for ch, name in enumerate(("red", "green", "blue")):
+        if bool((src_means[ch] > 0.02) and (out_means[ch] < 0.003)):
+            others = torch.cat((out_means[:ch], out_means[ch + 1 :])).max()
+            if bool(others > 0.02):
+                raise RuntimeError(f"RTX VSR channel collapse detected on {name} channel.")
+
+
+def _load_or_download_ultrasharp_model(model_name: str = "4x-UltraSharp.safetensors"):
+    """Auto-download 4x-UltraSharp.safetensors if missing and load via Spandrel + ComfyUI ModelPatcher."""
+    if model_name in _ULTRASHARP_CACHE:
+        return _ULTRASHARP_CACHE[model_name]
+
+    import folder_paths
+    import comfy.utils
+    import comfy.model_management as mm
+    import comfy.model_patcher
+    from spandrel import ModelLoader
+
+    if "upscale_models" not in folder_paths.folder_names_and_paths:
+        folder_paths.add_model_folder_path("upscale_models", os.path.join(folder_paths.models_dir, "upscale_models"))
+
+    model_path = folder_paths.get_full_path("upscale_models", model_name)
+    if not model_path or not os.path.exists(model_path):
+        url = "https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors"
+        download_file_to_comfy_models("upscale_models", model_name, url)
+        model_path = folder_paths.get_full_path("upscale_models", model_name)
+        if not model_path:
+            comfy_root = _get_comfy_root() or ""
+            model_path = os.path.join(comfy_root, "models", "upscale_models", model_name)
+
+    sd = comfy.utils.load_torch_file(model_path, safe_load=True)
+    if "module.layers.0.residual_group.blocks.0.norm1.weight" in sd:
+        sd = comfy.utils.state_dict_prefix_replace(sd, {"module.": ""})
+    out = ModelLoader().load_from_state_dict(sd).eval()
+    out.patcher = comfy.model_patcher.CoreModelPatcher(
+        out.model,
+        load_device=mm.get_torch_device(),
+        offload_device=mm.unet_offload_device(),
+    )
+    _ULTRASHARP_CACHE[model_name] = out
+    return out
+
+
+class RTXVideoSuperResolution:
+    """
+    NVIDIA RTX Video Super Resolution Pro (4K/16K) + AI 4x-UltraSharp Fallback:
+    - Uses NVIDIA RTX VSR SDK (nvvfx) with 16K Hybrid guard (15360px) and RGB channel integrity check on RTX GPUs.
+    - Automatically falls back to tiled 4x-UltraSharp.safetensors + Temporal De-flicker + CAS on Datacenter GPUs (H200/A100).
+    """
+
+    RELATIVE_PYTHON_MODULE = "custom_nodes.vstone"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "engine_mode": ([
+                    "auto",
+                    "ai_ultrasharp_4x",
+                    "rtx_vsr_pro",
+                    "lanczos_cas_fast",
+                ], {
+                    "default": "auto"
+                }),
+                "resize_mode": ([
+                    "scale by multiplier",
+                    "target dimensions",
+                    "print size (mm + DPI)",
+                ], {
+                    "default": "scale by multiplier"
+                }),
+                "scale": ("FLOAT", {
+                    "default": 2.0,
+                    "min": 1.0,
+                    "max": 4.0,
+                    "step": 0.05,
+                }),
+                "quality": (["ULTRA", "HIGH", "MEDIUM", "LOW"], {"default": "ULTRA"}),
+            },
+            "optional": {
+                "target_width": ("INT", {"default": 3840, "min": 64, "max": 16384, "step": 8}),
+                "target_height": ("INT", {"default": 2160, "min": 64, "max": 16384, "step": 8}),
+                "keep_aspect_ratio": ("BOOLEAN", {"default": True}),
+                "sharpen_cas": ("FLOAT", {
+                    "default": 0.25,
+                    "min": 0.0,
+                    "max": 1.0,
+                    "step": 0.05,
+                }),
+                "temporal_deflicker": ("FLOAT", {
+                    "default": 0.15,
+                    "min": 0.0,
+                    "max": 0.5,
+                    "step": 0.05,
+                }),
+                "width_mm": ("FLOAT", {"default": 500.0, "min": 1.0, "max": 5000.0, "step": 1.0}),
+                "height_mm": ("FLOAT", {"default": 500.0, "min": 1.0, "max": 5000.0, "step": 1.0}),
+                "dpi": ("INT", {"default": 300, "min": 72, "max": 1200, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "FLOAT", "INT", "INT")
+    RETURN_NAMES = ("upscaled_images", "calculated_scale", "output_width", "output_height")
+    FUNCTION = "upscale_pro"
+    CATEGORY = "image/upscaling"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
+    def upscale_pro(
+        self,
+        images: torch.Tensor,
+        engine_mode: str = "auto",
+        resize_mode: str | dict = "scale by multiplier",
+        scale: float = 2.0,
+        quality: str = "ULTRA",
+        target_width: int = 3840,
+        target_height: int = 2160,
+        keep_aspect_ratio: bool = True,
+        sharpen_cas: float = 0.25,
+        temporal_deflicker: float = 0.15,
+        width_mm: float = 500.0,
+        height_mm: float = 500.0,
+        dpi: int = 300,
+        **kwargs,
+    ):
+        import gc
+
+        # Backward compatibility if resize_mode and quality were swapped in older workflow JSONs
+        if isinstance(resize_mode, str) and resize_mode.upper() in ("ULTRA", "HIGH", "MEDIUM", "LOW"):
+            old_q = resize_mode.upper()
+            if isinstance(quality, str) and ("x" in quality.lower() or "uhd" in quality.lower() or "target" in quality.lower()):
+                resize_mode = "target dimensions"
+            else:
+                resize_mode = "scale by multiplier"
+            quality = old_q
+
+        if "resize_type" in kwargs and isinstance(kwargs["resize_type"], dict):
+            rt = kwargs["resize_type"]
+            resize_mode = str(rt.get("resize_type", resize_mode))
+            scale = float(rt.get("scale", scale))
+            target_width = int(rt.get("width", target_width))
+            target_height = int(rt.get("height", target_height))
+            keep_aspect_ratio = bool(rt.get("keep_aspect_ratio", keep_aspect_ratio))
+            width_mm = float(rt.get("width_mm", width_mm))
+            height_mm = float(rt.get("height_mm", height_mm))
+            dpi = int(rt.get("dpi", dpi))
+        elif isinstance(resize_mode, dict):
+            rt = resize_mode
+            resize_mode = str(rt.get("resize_type", "scale by multiplier"))
+            scale = float(rt.get("scale", scale))
+            target_width = int(rt.get("width", target_width))
+            target_height = int(rt.get("height", target_height))
+            keep_aspect_ratio = bool(rt.get("keep_aspect_ratio", keep_aspect_ratio))
+
+        rgb_images = images[..., :3]
+        B, in_H, in_W, C = rgb_images.shape
+
+        rm = str(resize_mode).lower()
+        if "target" in rm:
+            req_w, req_h = int(target_width), int(target_height)
+            if keep_aspect_ratio:
+                fit_s = min(req_w / max(1, in_W), req_h / max(1, in_H))
+                req_w = max(8, int(math.floor(in_W * fit_s / 8.0)) * 8)
+                req_h = max(8, int(math.floor(in_H * fit_s / 8.0)) * 8)
+        elif "print" in rm:
+            box_w = max(8, int(round(width_mm / 25.4 * dpi)))
+            box_h = max(8, int(round(height_mm / 25.4 * dpi)))
+            if keep_aspect_ratio:
+                fit_s = min(box_w / max(1, in_W), box_h / max(1, in_H))
+                req_w = max(8, int(math.floor(in_W * fit_s / 8.0)) * 8)
+                req_h = max(8, int(math.floor(in_H * fit_s / 8.0)) * 8)
+            else:
+                req_w, req_h = box_w, box_h
+        else:
+            req_w = int(round(in_W * float(scale)))
+            req_h = int(round(in_H * float(scale)))
+
+        out_W = min(_MAX_OUTPUT_EDGE, max(8, int(round(req_w / 8.0)) * 8))
+        out_H = min(_MAX_OUTPUT_EDGE, max(8, int(round(req_h / 8.0)) * 8))
+        calc_scale = max(out_W / max(1, in_W), out_H / max(1, in_H))
+
+        eng = (engine_mode or "auto").lower()
+        used_nvvfx = False
+        output_cpu: torch.Tensor | None = None
+
+        # 1. Try NVIDIA RTX VSR Pro hardware SDK if auto or rtx_vsr_pro
+        if eng.startswith("auto") or eng.startswith("rtx_vsr"):
+            try:
+                import nvvfx
+                if max(out_W, out_H) <= _VERIFIED_VSR_MAX_EDGE:
+                    vsr_W, vsr_H = out_W, out_H
+                    use_hybrid = False
+                else:
+                    red = _VERIFIED_VSR_MAX_EDGE / float(max(out_W, out_H))
+                    vsr_W = max(in_W, max(8, int(math.floor(out_W * red / 8.0)) * 8))
+                    vsr_H = max(in_H, max(8, int(math.floor(out_H * red / 8.0)) * 8))
+                    use_hybrid = True
+
+                q_map = {
+                    "LOW": nvvfx.effects.QualityLevel.LOW,
+                    "MEDIUM": nvvfx.effects.QualityLevel.MEDIUM,
+                    "HIGH": nvvfx.effects.QualityLevel.HIGH,
+                    "ULTRA": nvvfx.effects.QualityLevel.ULTRA,
+                }
+                sel_q = q_map.get(str(quality).upper(), nvvfx.effects.QualityLevel.ULTRA)
+                output_cpu = torch.empty((B, out_H, out_W, 3), device="cpu", dtype=rgb_images.dtype)
+
+                with nvvfx.VideoSuperRes(sel_q) as sr:
+                    sr.output_width = vsr_W
+                    sr.output_height = vsr_H
+                    sr.load()
+                    for idx in range(B):
+                        in_f = rgb_images[idx].movedim(-1, 0).to(device="cuda", dtype=torch.float32).contiguous()
+                        res = sr.run(in_f)
+                        vsr_f = torch.from_dlpack(res.image).clone()
+                        del res
+                        _assert_rtx_vsr_channel_integrity(in_f, vsr_f)
+                        if use_hybrid:
+                            vsr_f = F.interpolate(
+                                vsr_f.unsqueeze(0),
+                                size=(out_H, out_W),
+                                mode="bicubic",
+                                align_corners=False,
+                                antialias=True,
+                            ).squeeze(0)
+                        final_f = vsr_f.clamp_(0.0, 1.0).movedim(0, -1)
+                        output_cpu[idx].copy_(final_f.to(device="cpu", dtype=rgb_images.dtype))
+                        del in_f, vsr_f, final_f
+                used_nvvfx = True
+                print(f"[RTX VSR Pro] Upscaled {B} frame(s) via NVIDIA RTX Tensor Cores -> {out_W}x{out_H}")
+            except Exception as e:
+                output_cpu = None
+                if eng.startswith("rtx_vsr"):
+                    print(f"[RTX VSR Pro] NVIDIA VSR SDK unavailable on this GPU ({e}), falling back to AI 4x-UltraSharp.")
+
+        # 2. Run AI Upscale Model 4x-UltraSharp.safetensors (works on H200 Linux & all GPUs)
+        if not used_nvvfx and not eng.startswith("lanczos"):
+            try:
+                import comfy.utils
+                import comfy.model_management as mm
+
+                up_desc = _load_or_download_ultrasharp_model("4x-UltraSharp.safetensors")
+                dev = up_desc.patcher.load_device
+                mem_req = (512 * 512 * 3) * rgb_images.element_size() * max(up_desc.scale, 1.0) * 384.0
+                mm.load_models_gpu([up_desc.patcher], memory_required=mem_req, force_full_load=True)
+
+                output_cpu = torch.empty((B, out_H, out_W, 3), device="cpu", dtype=rgb_images.dtype)
+                batch_step = 4
+                for start_i in range(0, B, batch_step):
+                    end_i = min(B, start_i + batch_step)
+                    sub_in = rgb_images[start_i:end_i].movedim(-1, -3).to(dev)
+                    s_tiled = comfy.utils.tiled_scale(
+                        sub_in,
+                        lambda a: up_desc(a.float()),
+                        tile_x=512,
+                        tile_y=512,
+                        overlap=32,
+                        upscale_amount=up_desc.scale,
+                        output_device=mm.intermediate_device(),
+                    )
+                    del sub_in
+                    if s_tiled.shape[-2] != out_H or s_tiled.shape[-1] != out_W:
+                        s_tiled = F.interpolate(
+                            s_tiled.to(dev, dtype=torch.float32),
+                            size=(out_H, out_W),
+                            mode="bicubic",
+                            align_corners=False,
+                            antialias=True,
+                        ).cpu()
+                    s_bhwc = s_tiled.clamp(0.0, 1.0).movedim(-3, -1).to(dtype=rgb_images.dtype)
+                    output_cpu[start_i:end_i].copy_(s_bhwc)
+                    del s_tiled, s_bhwc
+                print(f"[AI UltraSharp 16K] Upscaled {B} frame(s) via 4x-UltraSharp -> {out_W}x{out_H}")
+            except Exception as e:
+                print(f"[AI UltraSharp] Fallback to Antialiased Bicubic + CAS ({e})")
+                output_cpu = None
+
+        # 3. Fallback Antialiased Bicubic
+        if output_cpu is None:
+            output_cpu = torch.empty((B, out_H, out_W, 3), device="cpu", dtype=rgb_images.dtype)
+            for idx in range(B):
+                f_in = rgb_images[idx : idx + 1].movedim(-1, 1).to(dtype=torch.float32)
+                f_out = F.interpolate(f_in, size=(out_H, out_W), mode="bicubic", align_corners=False, antialias=True)
+                output_cpu[idx : idx + 1].copy_(f_out.clamp(0.0, 1.0).movedim(1, -1).to(dtype=rgb_images.dtype))
+
+        # 4. Post-process Temporal De-flicker & Contrast-Adaptive Sharpening (CAS)
+        if temporal_deflicker > 0.001 and B >= 3:
+            output_cpu = _apply_temporal_deflicker_bhwc(output_cpu, temporal_deflicker)
+        if sharpen_cas > 0.001:
+            output_cpu = _apply_cas_sharpen_bhwc(output_cpu, sharpen_cas)
+
+        gc.collect()
+        if hasattr(torch, "cuda") and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return (output_cpu, float(calc_scale), int(out_W), int(out_H))
+
+
+stoneV_RTX_VSR_Pro_16K = RTXVideoSuperResolution
+VStone_RTX_VSR_Pro_16K = RTXVideoSuperResolution
+
+
+# ==============================================================================
 # Official Minimax H3 Latent Upscaler (3D) (LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler)
 # ==============================================================================
 try:
@@ -3052,7 +3409,7 @@ class stoneV_ScreenX_Wing_Finish:
         return (matched[:, y0:y1, layout["wing_x0"] : layout["wing_x1"], :],)
 
 
-# Alias ngược để tương thích 100% với cả hai tên stoneV và VStone
+# Backward compatibility aliases
 VStone_Outpaint_Pad = stoneV_Outpaint_Pad
 VStone_ExtendLeft_1xWidth = stoneV_ExtendLeft_1xWidth
 VStone_ExtendRight_1xWidth = stoneV_ExtendRight_1xWidth
@@ -3060,8 +3417,16 @@ VStone_ScreenX_Combine3 = stoneV_ScreenX_Combine3
 VStone_CloudSyncHub = stoneV_CloudSyncHub
 VStone_SeamlessRestore = stoneV_SeamlessRestore
 VStone_Video_Outpaint_Prepare = stoneV_Video_Outpaint_Prepare
+stoneV_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
+VStone_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
 
 VSTONE_NODE_CLASS_MAPPINGS = {
+    "RTXVideoSuperResolution": RTXVideoSuperResolution,
+    "stoneV_RTX_VSR_Pro_16K": RTXVideoSuperResolution,
+    "VStone_RTX_VSR_Pro_16K": RTXVideoSuperResolution,
+    "MinimaxH3LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
+    "stoneV_MinimaxH3_LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
+    "VStone_MinimaxH3_LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
     "stoneV_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "stoneV_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "stoneV_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -3075,8 +3440,6 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_ScreenX_Wing_Prepare": stoneV_ScreenX_Wing_Prepare,
     "stoneV_ScreenX_Guide_Frame": stoneV_ScreenX_Guide_Frame,
     "stoneV_ScreenX_Wing_Finish": stoneV_ScreenX_Wing_Finish,
-    "MinimaxH3LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
-    # Backward compatibility aliases
     "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "VStone_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -3087,28 +3450,32 @@ VSTONE_NODE_CLASS_MAPPINGS = {
 }
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
-    "stoneV_ExtendLeft_1xWidth": "stoneV 1A: Mở Rộng Trái (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
-    "stoneV_ExtendRight_1xWidth": "stoneV 1B: Mở Rộng Phải (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
-    "stoneV_ScreenX_Combine3": "stoneV 2: Combine 3 Tấm Thành ScreenX (2 Trái + 1 Giữa + 3 Phải)",
-    "stoneV_CloudSyncHub": "stoneV 3: Cloud Sync & Tải LoRA (Laptop <-> H200)",
-    "stoneV_ScreenX_Settings": "stoneV ScreenX 1: Bảng Điều Khiển Chung 2 Cánh",
-    "stoneV_ScreenX_Plate_Canvas": "stoneV ScreenX 2: Ghép Plate Thành Canvas",
-    "stoneV_ScreenX_Center_Motion": "stoneV ScreenX 3: Đo Chuyển Động Từ Video Giữa",
-    "stoneV_ScreenX_Wing_Prepare": "stoneV ScreenX 4: Chuẩn Bị Khung Gen 1 Cánh",
-    "stoneV_ScreenX_Guide_Frame": "stoneV ScreenX 5: Lấy Frame Neo Cho Add Guide",
-    "stoneV_ScreenX_Wing_Finish": "stoneV ScreenX 6: Cắt Cánh + Khớp Màu Mép Nối",
-    "stoneV_Outpaint_Pad": "stoneV: Outpaint Tạo Vùng Bù (Tùy Chỉnh Trái / Phải)",
-    "stoneV_SeamlessRestore": "stoneV: Ghép Khôi Phục Nét Gốc (Image / Video)",
-    "stoneV_Video_Outpaint_Prepare": "stoneV: Chuẩn Bị Video Outpaint (1 Ảnh Mở Rộng + 1 Video Hẹp)",
+    "RTXVideoSuperResolution": "RTX Video Super Resolution Pro (4K/16K)",
+    "stoneV_RTX_VSR_Pro_16K": "stoneV RTX VSR Pro & UltraSharp 16K",
+    "VStone_RTX_VSR_Pro_16K": "stoneV RTX VSR Pro & UltraSharp 16K",
     "MinimaxH3LatentUpscaler3D": "Minimax H3 Latent Upscaler (3D)",
-    # Backward compatibility aliases
-    "VStone_ExtendLeft_1xWidth": "stoneV 1A: Mở Rộng Trái (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
-    "VStone_ExtendRight_1xWidth": "stoneV 1B: Mở Rộng Phải (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
-    "VStone_ScreenX_Combine3": "stoneV 2: Combine 3 Tấm Thành ScreenX (2 Trái + 1 Giữa + 3 Phải)",
-    "VStone_CloudSyncHub": "stoneV 3: Cloud Sync & Tải LoRA (Laptop <-> H200)",
-    "VStone_Outpaint_Pad": "stoneV: Outpaint Tạo Vùng Bù (Tùy Chỉnh Trái / Phải)",
-    "VStone_SeamlessRestore": "stoneV: Ghép Khôi Phục Nét Gốc (Image / Video)",
-    "VStone_Video_Outpaint_Prepare": "stoneV: Chuẩn Bị Video Outpaint (1 Ảnh Mở Rộng + 1 Video Hẹp)",
+    "stoneV_MinimaxH3_LatentUpscaler3D": "stoneV Minimax H3 Latent Upscaler (3D)",
+    "VStone_MinimaxH3_LatentUpscaler3D": "stoneV Minimax H3 Latent Upscaler (3D)",
+    "stoneV_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
+    "stoneV_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
+    "stoneV_ScreenX_Combine3": "stoneV 2: ScreenX Combine 3 Plates (Left + Center + Right)",
+    "stoneV_CloudSyncHub": "stoneV 3: Cloud Sync & Model Downloader",
+    "stoneV_ScreenX_Settings": "stoneV ScreenX 1: Wing Settings",
+    "stoneV_ScreenX_Plate_Canvas": "stoneV ScreenX 2: Plate Canvas",
+    "stoneV_ScreenX_Center_Motion": "stoneV ScreenX 3: Center Camera Motion",
+    "stoneV_ScreenX_Wing_Prepare": "stoneV ScreenX 4: Wing Prepare",
+    "stoneV_ScreenX_Guide_Frame": "stoneV ScreenX 5: Guide Frame Picker",
+    "stoneV_ScreenX_Wing_Finish": "stoneV ScreenX 6: Wing Crop & Seam Match",
+    "stoneV_Outpaint_Pad": "stoneV: Outpaint Pad (Custom Left / Right)",
+    "stoneV_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
+    "stoneV_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
+    "VStone_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
+    "VStone_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
+    "VStone_ScreenX_Combine3": "stoneV 2: ScreenX Combine 3 Plates (Left + Center + Right)",
+    "VStone_CloudSyncHub": "stoneV 3: Cloud Sync & Model Downloader",
+    "VStone_Outpaint_Pad": "stoneV: Outpaint Pad (Custom Left / Right)",
+    "VStone_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
+    "VStone_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
 }
 
 for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
