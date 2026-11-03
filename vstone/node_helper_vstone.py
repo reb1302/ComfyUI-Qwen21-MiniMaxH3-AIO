@@ -90,15 +90,34 @@ PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
 
 
 # ==============================================================================
-# 1. CLOUD SYNC & HOT-RELOAD ENGINE (Laptop <-> H200 Korea)
+# 1. CLOUD SYNC & HOT-RELOAD ENGINE (Laptop <-> H200 Korea - ZERO API RATE LIMIT)
 # ==============================================================================
-_LAST_SYNCED_SHA: str = ""
+import hashlib
+
+_LAST_SYNCED_HASH: str = ""
+
+DEFAULT_SYNC_WORKFLOWS = [
+    "workflows/minimax_h3/image_minimax_h3_t2i.json",
+    "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
+    "workflows/minimax_h3/video_minimax_h3_fun_controlnet_union.json",
+    "workflows/minimax_h3/video_minimax_h3_i2v.json",
+    "workflows/minimax_h3/video_minimax_h3_i2v_continuation.json",
+    "workflows/minimax_h3/video_minimax_h3_multiframe_reference.json",
+    "workflows/minimax_h3/video_minimax_h3_r2v.json",
+    "workflows/minimax_h3/video_minimax_h3_t2v.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_background_removal.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_t2i.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_image_edit.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
+]
 
 
 def _http_get_bytes(url: str, timeout: int = 15) -> bytes:
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "VStone-ComfyUI-Sync/1.0", "Cache-Control": "no-cache"},
+        headers={"User-Agent": "VStone-ComfyUI-Sync/2.0", "Cache-Control": "no-cache"},
     )
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
@@ -114,23 +133,24 @@ def _get_comfy_root() -> str | None:
 
 def sync_from_github_and_hot_reload(force: bool = False) -> str:
     """
-    Kéo toàn bộ code `vstone/` và `workflows/` mới nhất từ GitHub `reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO`
-    về máy H200 và nạp nóng (Hot-Reload) các node mới vào RAM của ComfyUI.
+    Kéo trực tiếp qua CDN `raw.githubusercontent.com` (KHÔNG dùng `api.github.com` nên KHÔNG BAO GIỜ bị Rate Limit 60 lần/giờ!)
+    và nạp nóng (Hot-Reload) các node mới vào RAM của ComfyUI.
     """
-    global _LAST_SYNCED_SHA
+    global _LAST_SYNCED_HASH
     comfy_root = _get_comfy_root()
     if not comfy_root:
         return "[VStone Sync] Không tìm thấy thư mục gốc ComfyUI."
 
     logs: list[str] = []
     try:
-        tree_raw = _http_get_bytes(f"{GITHUB_API_TREE}&_t={int(time.time())}", timeout=15)
-        tree_data = json.loads(tree_raw.decode("utf-8"))
-        sha = tree_data.get("sha", "")
-        if not force and sha and sha == _LAST_SYNCED_SHA:
-            return f"[VStone Sync] Đã ở phiên bản mới nhất ({sha[:7]})."
+        ts = int(time.time())
+        helper_url = f"{GITHUB_RAW_BASE}/vstone/node_helper_vstone.py?_t={ts}"
+        helper_bytes = _http_get_bytes(helper_url, timeout=20)
+        new_hash = hashlib.sha256(helper_bytes).hexdigest()[:10]
 
-        items = tree_data.get("tree", [])
+        if not force and new_hash and new_hash == _LAST_SYNCED_HASH:
+            return f"[VStone Sync] Đã ở bản mới nhất ({new_hash})."
+
         custom_nodes_dir = os.path.join(comfy_root, "custom_nodes")
         vstone_dir = os.path.join(custom_nodes_dir, "vstone")
         aio_vstone_dir = os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO", "vstone")
@@ -139,74 +159,81 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         os.makedirs(vstone_dir, exist_ok=True)
         os.makedirs(workflows_dir, exist_ok=True)
 
-        updated_py_code: str | None = None
-        wf_count = 0
-
-        for item in items:
-            if item.get("type") != "blob":
-                continue
-            path = item.get("path", "")
-
-            # 1. Đồng bộ các file trong vstone/
-            if path in ("vstone/node_helper_vstone.py", "vstone/__init__.py"):
-                raw_url = f"{GITHUB_RAW_BASE}/{path}?_t={int(time.time())}"
-                content = _http_get_bytes(raw_url, timeout=20)
-                fname = os.path.basename(path)
-
-                # Ghi vào custom_nodes/vstone/
-                dst1 = os.path.join(vstone_dir, fname)
-                with open(dst1, "wb") as f:
-                    f.write(content)
-
-                # Nếu là node_helper_vstone.py, ghi cả vào custom_nodes/node_helper_vstone.py và AIO (nếu có)
-                if fname == "node_helper_vstone.py":
-                    updated_py_code = content.decode("utf-8", errors="replace")
-                    dst_root = os.path.join(custom_nodes_dir, "node_helper_vstone.py")
-                    try:
-                        with open(dst_root, "wb") as f:
-                            f.write(content)
-                    except Exception:
-                        pass
-                    if os.path.isdir(aio_vstone_dir):
-                        try:
-                            with open(os.path.join(aio_vstone_dir, fname), "wb") as f:
-                                f.write(content)
-                        except Exception:
-                            pass
-                logs.append(f"Updated {path}")
-
-            # 2. Đồng bộ mọi file Workflow .json trong workflows/
-            elif path.startswith("workflows/") and path.endswith(".json"):
-                rel_wf = path[len("workflows/"):]
-                dst_wf = os.path.join(workflows_dir, rel_wf)
-                os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
-                raw_url = f"{GITHUB_RAW_BASE}/{path}?_t={int(time.time())}"
-                content = _http_get_bytes(raw_url, timeout=20)
-                with open(dst_wf, "wb") as f:
-                    f.write(content)
-                wf_count += 1
-
-        # 3. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI (không cần tắt bật lại Server!)
-        if updated_py_code:
+        # 1. Ghi node_helper_vstone.py vào mọi vị trí
+        for dst in (
+            os.path.join(vstone_dir, "node_helper_vstone.py"),
+            os.path.join(custom_nodes_dir, "node_helper_vstone.py"),
+        ):
             try:
-                import nodes
-                ns: dict[str, Any] = {"__name__": "vstone_hot_reload", "_DISABLE_DAEMON_ON_EXEC": True}
-                exec(compile(updated_py_code, "node_helper_vstone.py", "exec"), ns)
-                new_classes = ns.get("NODE_CLASS_MAPPINGS", {})
-                new_names = ns.get("NODE_DISPLAY_NAME_MAPPINGS", {})
-                if new_classes:
-                    nodes.NODE_CLASS_MAPPINGS.update(new_classes)
-                    nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
-                    logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM")
-            except Exception as e:
-                logs.append(f"Hot-reload warning: {e}")
+                with open(dst, "wb") as f:
+                    f.write(helper_bytes)
+            except Exception:
+                pass
+        if os.path.isdir(aio_vstone_dir):
+            try:
+                with open(os.path.join(aio_vstone_dir, "node_helper_vstone.py"), "wb") as f:
+                    f.write(helper_bytes)
+            except Exception:
+                pass
+        logs.append("Updated vstone/node_helper_vstone.py")
 
-        _LAST_SYNCED_SHA = sha
-        msg = f"[VStone Cloud Sync] Đồng bộ thành công commit {sha[:7]} ({wf_count} workflows)! Nhấn phím R trên trình duyệt để làm mới."
+        # 2. Ghi __init__.py
+        try:
+            init_bytes = _http_get_bytes(f"{GITHUB_RAW_BASE}/vstone/__init__.py?_t={ts}", timeout=15)
+            with open(os.path.join(vstone_dir, "__init__.py"), "wb") as f:
+                f.write(init_bytes)
+        except Exception:
+            pass
+
+        # 3. Đồng bộ danh sách Workflows qua raw CDN (chỉ tải những file chưa có hoặc khi force=True)
+        wf_list = list(DEFAULT_SYNC_WORKFLOWS)
+        try:
+            manifest_bytes = _http_get_bytes(f"{GITHUB_RAW_BASE}/sync_manifest.json?_t={ts}", timeout=10)
+            manifest_data = json.loads(manifest_bytes.decode("utf-8"))
+            if isinstance(manifest_data.get("workflows"), list):
+                wf_list = manifest_data["workflows"]
+        except Exception:
+            pass
+
+        wf_count = 0
+        for path in wf_list:
+            if not (path.startswith("workflows/") and path.endswith(".json")):
+                continue
+            rel_wf = path[len("workflows/"):]
+            dst_wf = os.path.join(workflows_dir, rel_wf)
+            if not force and os.path.exists(dst_wf) and os.path.getsize(dst_wf) > 100:
+                wf_count += 1
+                continue
+            try:
+                os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
+                wf_bytes = _http_get_bytes(f"{GITHUB_RAW_BASE}/{path}?_t={ts}", timeout=15)
+                with open(dst_wf, "wb") as f:
+                    f.write(wf_bytes)
+                wf_count += 1
+            except Exception:
+                pass
+
+        # 4. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI
+        updated_py_code = helper_bytes.decode("utf-8", errors="replace")
+        try:
+            import nodes
+            ns: dict[str, Any] = {"__name__": "vstone_hot_reload", "_DISABLE_DAEMON_ON_EXEC": True}
+            exec(compile(updated_py_code, "node_helper_vstone.py", "exec"), ns)
+            new_classes = ns.get("NODE_CLASS_MAPPINGS", {})
+            new_names = ns.get("NODE_DISPLAY_NAME_MAPPINGS", {})
+            if new_classes:
+                nodes.NODE_CLASS_MAPPINGS.update(new_classes)
+                nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
+                logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM")
+        except Exception as e:
+            logs.append(f"Hot-reload warning: {e}")
+
+        _LAST_SYNCED_HASH = new_hash
+        msg = f"[VStone Cloud Sync] Đồng bộ thành công qua CDN ({new_hash}, {wf_count} workflows)! Nhấn phím R hoặc F5 trên trình duyệt để làm mới."
         print(msg)
         return msg + "\n" + "\n".join(logs)
     except Exception as e:
-        err_msg = f"[VStone Cloud Sync] Lỗi kết nối GitHub: {e}"
+        err_msg = f"[VStone Cloud Sync] Lỗi kết nối CDN: {e}"
         return err_msg
 
 
