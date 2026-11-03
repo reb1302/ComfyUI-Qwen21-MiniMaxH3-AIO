@@ -61,10 +61,35 @@ PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
         "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
         "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
     ),
-    "Qwen 2.1 Outpaint LoRA v1 (Zoom-out lớn - 152MB)": (
+    "Qwen 2.1 Outpaint LoRA v1 (Zoom-out lớn & Không Overfit - 152MB)": (
         "loras",
         "qwen-image-2.1-outpaint.safetensors",
         "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint.safetensors",
+    ),
+    "Qwen 2.1 Consistency LoRA (Khóa vị trí & ánh sáng - 152MB)": (
+        "loras",
+        "qwen-image-2.1-consistency.safetensors",
+        "https://huggingface.co/ausboss/Qwen-Image-2.1-Consistency-LoRA/resolve/main/qwen-image-2.1-consistency.safetensors",
+    ),
+    "Qwen 2.1 GH Outpaint 扩图 LoRA (Mở rộng khung hình GH - 152MB)": (
+        "loras",
+        "Qwen2.1_扩图_GH_3750.safetensors",
+        "https://huggingface.co/KENIC-1/Turbo-Qwen-Image-2.1-Turbo-Inpaint-LORA/resolve/main/Qwen2.1_%E6%89%A9%E5%9B%BE_GH_3750.safetensors",
+    ),
+    "Qwen 2.1 GH Zero-Shift Consistency (Chống lệch khung GH - 152MB)": (
+        "loras",
+        "Qwen2.1_一致性无偏移_GH_V1.0.safetensors",
+        "https://huggingface.co/KENIC-1/Turbo-Qwen-Image-2.1-Turbo-Inpaint-LORA/resolve/main/Qwen2.1_%E4%B8%80%E8%87%B4%E6%80%A7%E6%97%A0%E5%81%8F%E7%A7%BB_GH_V1.0.safetensors",
+    ),
+    "Qwen 2.1 Texture Fix VAE bf16 (Khử bệt mờ, tăng nét - 254MB)": (
+        "vae",
+        "texture_fix_vae_for_qwen_image_2.1_bf16.safetensors",
+        "https://huggingface.co/madebyollin/texture-fix-vae-for-qwen-image-2.1/resolve/main/texture_fix_vae_for_qwen_image_2.1_bf16.safetensors",
+    ),
+    "Qwen 2.1 Fix LoRA v1.0 (Khôi phục chi tiết & hạt nét)": (
+        "loras",
+        "qwen-image-2.1-fix-1.0-comfy.safetensors",
+        "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/qwen-image-2.1-fix-1.0-comfy.safetensors",
     ),
     "Qwen 2.1 Fun ControlNet Union Inpaint (2.68GB)": (
         "model_patches",
@@ -542,15 +567,31 @@ def vstone_outpaint_pad_tensor(
         keep_W = W
         kept_orig = orig_rgb
 
-    # Tính chiều cao tổng theo outer_height_ratio (ví dụ 1.3 * H -> mở đều lên trên và xuống dưới)
+    # Tính chiều cao tổng theo outer_height_ratio và làm tròn chuẩn bội số 32 cho Qwen-Image-2.1
     effective_ratio = max(1.0, float(outer_height_ratio))
-    target_outer_H = max(H, int(round(H * effective_ratio)))
-    flare_extra_H = max(0, target_outer_H - H)
-    flare_top = flare_extra_H // 2
-    flare_bottom = flare_extra_H - flare_top
+    raw_outer_H = max(H, int(round(H * effective_ratio))) + max(0, int(extra_top_px)) + max(0, int(extra_bottom_px))
+    target_new_H = max(H, max(32, int(round(raw_outer_H / 32.0)) * 32))
+    if target_new_H < H:
+        target_new_H = ((H + 31) // 32) * 32
+    total_extra_H = max(0, target_new_H - H)
+    pad_top = total_extra_H // 2
+    pad_bottom = total_extra_H - pad_top
 
-    pad_top = flare_top + max(0, int(extra_top_px))
-    pad_bottom = flare_bottom + max(0, int(extra_bottom_px))
+    # Làm tròn chiều rộng tổng new_W theo chuẩn bội số 32 cho Qwen-Image-2.1
+    raw_new_W = pad_left + keep_W + pad_right
+    target_new_W = max(keep_W, max(32, int(round(raw_new_W / 32.0)) * 32))
+    if target_new_W < keep_W:
+        target_new_W = ((keep_W + 31) // 32) * 32
+    diff_W = target_new_W - raw_new_W
+    if diff_W != 0:
+        if pad_left > 0 and pad_right == 0:
+            pad_left = max(0, pad_left + diff_W)
+        elif pad_right > 0 and pad_left == 0:
+            pad_right = max(0, pad_right + diff_W)
+        else:
+            add_l = diff_W // 2
+            pad_left = max(0, pad_left + add_l)
+            pad_right = max(0, pad_right + (diff_W - add_l))
 
     new_W = pad_left + keep_W + pad_right
     new_H = pad_top + H + pad_bottom
