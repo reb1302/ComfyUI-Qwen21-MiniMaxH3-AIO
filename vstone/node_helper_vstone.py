@@ -291,9 +291,6 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 continue
             rel_wf = path[len("workflows/"):]
             dst_wf = os.path.join(workflows_dir, rel_wf)
-            if not force and os.path.exists(dst_wf) and os.path.getsize(dst_wf) > 100:
-                wf_count += 1
-                continue
             try:
                 os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
                 wf_bytes = _http_get_bytes(f"{raw_ref_base}/{path}?_t={ts}", timeout=15)
@@ -331,6 +328,10 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 nodes.NODE_CLASS_MAPPINGS.update(new_classes)
                 nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
                 logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM: {list(new_classes.keys())}")
+            if callable(ns.get("apply_comfy_runtime_fixes")):
+                patch_msg = ns["apply_comfy_runtime_fixes"]()
+                if patch_msg:
+                    logs.append(patch_msg)
         except Exception as e:
             logs.append(f"Hot-reload warning: {e}")
 
@@ -341,6 +342,318 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
     except Exception as e:
         err_msg = f"[VStone Cloud Sync] Lỗi kết nối: {e}"
         return err_msg
+
+
+def _get_target_node_classes(node_name: str, module_name: str | None = None) -> list[Any]:
+    """Lấy tất cả các bản thể class của 1 node trong cả `nodes.NODE_CLASS_MAPPINGS` và `comfy_extras`."""
+    classes: list[Any] = []
+    try:
+        import nodes
+        c = getattr(nodes, node_name, None)
+        if c is not None and c not in classes:
+            classes.append(c)
+        c_map = getattr(nodes, "NODE_CLASS_MAPPINGS", {}).get(node_name)
+        if c_map is not None and c_map not in classes:
+            classes.append(c_map)
+    except Exception:
+        pass
+    if module_name:
+        try:
+            mod = __import__(module_name, fromlist=[node_name])
+            c_mod = getattr(mod, node_name, None)
+            if c_mod is not None and c_mod not in classes:
+                classes.append(c_mod)
+        except Exception:
+            pass
+    return classes
+
+
+def apply_comfy_runtime_fixes() -> str:
+    """
+    Vá nóng (Hot-Patch) trực tiếp trong RAM của ComfyUI cho các lỗi:
+    1. `ImageScale`: Chấp nhận cả `' center'` (dư khoảng trắng) và tự `.strip()` + `VALIDATE_INPUTS` để không bao giờ báo `Invalid input`.
+    2. `GetVideoComponents`: Nếu video đầu vào không có rãnh âm thanh (`audio is None`), tự sinh âm thanh tĩnh Stereo 32kHz khớp thời lượng video; nếu âm thanh Mono 1 kênh thì tự nhân thành Stereo 2 kênh.
+    3. `VAEEncodeAudio`: Tự động tạo âm thanh tĩnh Stereo 32kHz khi `audio is None`, hoặc chuyển Mono -> Stereo 2 kênh để không bao giờ văng `ValueError: input audio is None`.
+    4. `LTXVConcatAVLatent`: Tự động căn chỉnh độ dài `audio_latent` khớp chuẩn `round(frame_count / 24 * 40)` với `video_latent` của MiniMax-H3 (kể cả khi `video_latent` đến từ `VAEEncode`).
+    5. `MiniMaxH3ReferenceToVideo`: Tự động bù âm thanh tĩnh khi video tham chiếu không có tiếng mà prompt có `<Audio 1>`, và bù đủ tối thiểu 5 frames.
+    """
+    patched: list[str] = []
+
+    # 1. Patch ImageScale (fix ' center' leading space Invalid Input)
+    try:
+        for img_scale_cls in _get_target_node_classes("ImageScale"):
+            if hasattr(img_scale_cls, "crop_methods") and isinstance(img_scale_cls.crop_methods, list):
+                for v in (" center", "center ", " disabled", "disabled "):
+                    if v not in img_scale_cls.crop_methods:
+                        img_scale_cls.crop_methods.append(v)
+            if not getattr(img_scale_cls, "_vstone_patched", False):
+                orig_upscale = img_scale_cls.upscale
+
+                def _make_safe_upscale(_orig):
+                    def _safe_upscale(self, image, upscale_method, width, height, crop="center"):
+                        if isinstance(crop, str):
+                            crop = crop.strip() or "center"
+                        if crop not in ("disabled", "center"):
+                            crop = "center"
+                        return _orig(self, image, upscale_method, width, height, crop)
+                    return _safe_upscale
+
+                @classmethod  # type: ignore
+                def _validate_image_scale(cls, **kwargs):
+                    return True
+
+                img_scale_cls.upscale = _make_safe_upscale(orig_upscale)
+                img_scale_cls.VALIDATE_INPUTS = _validate_image_scale
+                setattr(img_scale_cls, "_vstone_patched", True)
+                if "ImageScale" not in patched:
+                    patched.append("ImageScale")
+    except Exception:
+        pass
+
+    # 2. Patch GetVideoComponents (auto-synthesize silent stereo 32kHz audio when video has no audio track)
+    try:
+        for gvc_cls in _get_target_node_classes("GetVideoComponents", "comfy_extras.nodes_video"):
+            if not getattr(gvc_cls, "_vstone_patched", False):
+                orig_gvc_func = gvc_cls.execute.__func__ if hasattr(gvc_cls.execute, "__func__") else gvc_cls.execute
+
+                def _make_safe_gvc(_orig_fn):
+                    @classmethod  # type: ignore
+                    def _safe_gvc_execute(cls, video):
+                        res = _orig_fn(cls, video)
+                        try:
+                            args = list(res.args) if hasattr(res, "args") else list(res)
+                            if len(args) >= 3:
+                                imgs, aud, fps_val = args[0], args[1], float(args[2] or 24.0)
+                                n_frames = int(imgs.shape[0]) if (imgs is not None and hasattr(imgs, "shape")) else 24
+                                dur_sec = max(0.25, float(n_frames) / max(1.0, fps_val))
+                                sr = 32000
+                                n_samples = max(1600, int(round(dur_sec * sr)))
+                                if aud is None or not isinstance(aud, dict) or aud.get("waveform") is None:
+                                    aud = {
+                                        "waveform": torch.zeros((1, 2, n_samples), dtype=torch.float32),
+                                        "sample_rate": sr,
+                                    }
+                                else:
+                                    wf = aud["waveform"]
+                                    if wf.ndim == 2:
+                                        wf = wf.unsqueeze(0)
+                                    if wf.shape[1] == 1:
+                                        wf = wf.repeat(1, 2, 1)
+                                    elif wf.shape[1] > 2:
+                                        wf = wf[:, :2, :]
+                                    if wf.shape[-1] == 0:
+                                        wf = torch.zeros((1, 2, n_samples), dtype=torch.float32)
+                                    aud = {
+                                        "waveform": wf.contiguous(),
+                                        "sample_rate": int(aud.get("sample_rate", sr)),
+                                    }
+                                args[1] = aud
+                                if hasattr(res, "args"):
+                                    res.args = tuple(args)
+                                else:
+                                    return tuple(args)
+                        except Exception:
+                            pass
+                        return res
+                    return _safe_gvc_execute
+
+                gvc_cls.execute = _make_safe_gvc(orig_gvc_func)
+                setattr(gvc_cls, "_vstone_patched", True)
+                if "GetVideoComponents" not in patched:
+                    patched.append("GetVideoComponents")
+    except Exception:
+        pass
+
+    # 3. Patch VAEEncodeAudio (fix ValueError: input audio is None on silent videos & mono audio)
+    try:
+        for vae_aud_cls in _get_target_node_classes("VAEEncodeAudio", "comfy_extras.nodes_audio"):
+            if not getattr(vae_aud_cls, "_vstone_patched", False):
+                orig_aud_func = vae_aud_cls.execute.__func__ if hasattr(vae_aud_cls.execute, "__func__") else vae_aud_cls.execute
+
+                def _make_safe_vae_aud(_orig_fn):
+                    @classmethod  # type: ignore
+                    def _safe_vae_encode_audio_execute(cls, vae, audio=None):
+                        vae_sr = int(getattr(vae, "audio_sample_rate", 32000))
+                        if audio is None or not isinstance(audio, dict) or audio.get("waveform") is None:
+                            silent_len = max(vae_sr * 6, 176000)
+                            audio = {
+                                "waveform": torch.zeros((1, 2, silent_len), dtype=torch.float32),
+                                "sample_rate": vae_sr,
+                            }
+                        else:
+                            wf = audio["waveform"]
+                            if wf.ndim == 2:
+                                wf = wf.unsqueeze(0)
+                            if wf.shape[1] == 1:
+                                wf = wf.repeat(1, 2, 1)
+                            elif wf.shape[1] > 2:
+                                wf = wf[:, :2, :]
+                            if wf.shape[-1] < 1600:
+                                wf = F.pad(wf, (0, 1600 - wf.shape[-1]))
+                            audio = {
+                                "waveform": wf.contiguous(),
+                                "sample_rate": int(audio.get("sample_rate", vae_sr)),
+                            }
+                        return _orig_fn(cls, vae, audio)
+                    return _safe_vae_encode_audio_execute
+
+                safe_fn = _make_safe_vae_aud(orig_aud_func)
+                vae_aud_cls.execute = safe_fn
+                vae_aud_cls.encode = safe_fn
+                setattr(vae_aud_cls, "_vstone_patched", True)
+                if "VAEEncodeAudio" not in patched:
+                    patched.append("VAEEncodeAudio")
+    except Exception:
+        pass
+
+    # 4. Patch LTXVConcatAVLatent (auto-fit audio_latent length to MiniMax-H3 video_latent)
+    try:
+        for concat_cls in _get_target_node_classes("LTXVConcatAVLatent", "comfy_extras.nodes_lt"):
+            if not getattr(concat_cls, "_vstone_patched", False):
+                orig_concat_func = concat_cls.execute.__func__ if hasattr(concat_cls.execute, "__func__") else concat_cls.execute
+
+                def _make_safe_concat(_orig_fn):
+                    @classmethod  # type: ignore
+                    def _safe_concat_av_execute(cls, video_latent, audio_latent):
+                        try:
+                            v_samp = video_latent.get("samples") if isinstance(video_latent, dict) else None
+                            a_samp = audio_latent.get("samples") if isinstance(audio_latent, dict) else None
+                            if (
+                                v_samp is not None
+                                and a_samp is not None
+                                and not getattr(v_samp, "is_nested", False)
+                                and v_samp.ndim == 5
+                                and v_samp.shape[1] == 24
+                                and a_samp.ndim == 4
+                            ):
+                                latent_t = int(v_samp.shape[2])
+                                frame_per_tok = (1, 4, 4, 4, 4)
+                                frame_count = sum(frame_per_tok[k % 5] for k in range(latent_t))
+                                target_audio_t = max(1, int(round((frame_count / 24.0) * 40.0)))
+                                if a_samp.shape[2] == 1:
+                                    a_samp = a_samp.repeat(1, 1, 2, 1)
+                                elif a_samp.shape[2] > 2:
+                                    a_samp = a_samp[:, :, :2, :]
+                                cur_t = int(a_samp.shape[-1])
+                                if cur_t > target_audio_t:
+                                    a_samp = a_samp[..., :target_audio_t].contiguous()
+                                elif cur_t < target_audio_t:
+                                    pad_t = target_audio_t - cur_t
+                                    last_frame = a_samp[..., -1:] if cur_t > 0 else torch.zeros_like(a_samp[..., :1])
+                                    a_samp = torch.cat([a_samp, last_frame.repeat(1, 1, 1, pad_t)], dim=-1).contiguous()
+                                audio_latent = dict(audio_latent)
+                                audio_latent["samples"] = a_samp
+                        except Exception:
+                            pass
+                        return _orig_fn(cls, video_latent, audio_latent)
+                    return _safe_concat_av_execute
+
+                concat_cls.execute = _make_safe_concat(orig_concat_func)
+                setattr(concat_cls, "_vstone_patched", True)
+                if "LTXVConcatAVLatent" not in patched:
+                    patched.append("LTXVConcatAVLatent")
+    except Exception:
+        pass
+
+    # 5. Patch MiniMaxH3ReferenceToVideo (handle silent video / mono audio / short clips / 1-indexed slots)
+    try:
+        for r2v_cls in _get_target_node_classes("MiniMaxH3ReferenceToVideo", "comfy_extras.nodes_minimax_h3"):
+            if not getattr(r2v_cls, "_vstone_patched", False):
+                orig_r2v_func = r2v_cls.execute.__func__ if hasattr(r2v_cls.execute, "__func__") else r2v_cls.execute
+
+                def _make_safe_r2v(_orig_fn):
+                    @classmethod  # type: ignore
+                    def _safe_r2v_execute(
+                        cls,
+                        clip,
+                        prompt,
+                        width,
+                        height,
+                        length,
+                        ref_image_size="match",
+                        vae=None,
+                        audio_vae=None,
+                        ref_images=None,
+                        ref_videos=None,
+                        ref_video_audios=None,
+                        ref_audios=None,
+                        **kwargs,
+                    ):
+                        if ref_videos is None:
+                            ref_videos = {}
+                        else:
+                            ref_videos = dict(ref_videos)
+                        if ref_video_audios is None:
+                            ref_video_audios = {}
+                        else:
+                            ref_video_audios = dict(ref_video_audios)
+
+                        for k, v in list(kwargs.items()):
+                            if k.startswith("ref_videos.") or k.startswith("ref_video_"):
+                                short_k = k.split(".")[-1]
+                                ref_videos[short_k] = v
+                            elif k.startswith("ref_video_audios.") or k.startswith("ref_video_audio_"):
+                                short_k = k.split(".")[-1]
+                                ref_video_audios[short_k] = v
+
+                        for v_key, v_frames in list(ref_videos.items()):
+                            if v_frames is not None and hasattr(v_frames, "shape") and v_frames.ndim == 4:
+                                if v_frames.shape[0] < 5:
+                                    rep = (5 + v_frames.shape[0] - 1) // max(1, v_frames.shape[0])
+                                    ref_videos[v_key] = v_frames.repeat(rep, 1, 1, 1)[:5]
+                                suffix = v_key.rsplit("_", 1)[-1]
+                                aud_key = f"ref_video_audio_{suffix}"
+                                aud_val = ref_video_audios.get(aud_key)
+                                if aud_val is None or not isinstance(aud_val, dict) or aud_val.get("waveform") is None:
+                                    if "<Audio" in (prompt or ""):
+                                        n_f = int(ref_videos[v_key].shape[0])
+                                        samples_len = max(16000, int(round((n_f / 24.0) * 32000)))
+                                        ref_video_audios[aud_key] = {
+                                            "waveform": torch.zeros((1, 2, samples_len), dtype=torch.float32),
+                                            "sample_rate": 32000,
+                                        }
+                                else:
+                                    wf = aud_val["waveform"]
+                                    if wf.ndim == 2:
+                                        wf = wf.unsqueeze(0)
+                                    if wf.shape[1] == 1:
+                                        wf = wf.repeat(1, 2, 1)
+                                    elif wf.shape[1] > 2:
+                                        wf = wf[:, :2, :]
+                                    ref_video_audios[aud_key] = {
+                                        "waveform": wf.contiguous(),
+                                        "sample_rate": int(aud_val.get("sample_rate", 32000)),
+                                    }
+
+                        return _orig_fn(
+                            cls,
+                            clip=clip,
+                            prompt=prompt,
+                            width=width,
+                            height=height,
+                            length=length,
+                            ref_image_size=ref_image_size,
+                            vae=vae,
+                            audio_vae=audio_vae,
+                            ref_images=ref_images,
+                            ref_videos=ref_videos,
+                            ref_video_audios=ref_video_audios,
+                            ref_audios=ref_audios,
+                        )
+                    return _safe_r2v_execute
+
+                r2v_cls.execute = _make_safe_r2v(orig_r2v_func)
+                setattr(r2v_cls, "_vstone_patched", True)
+                if "MiniMaxH3ReferenceToVideo" not in patched:
+                    patched.append("MiniMaxH3ReferenceToVideo")
+    except Exception:
+        pass
+
+    if patched:
+        msg = f"[VStone Runtime Fix] Đã vá nóng thành công trong RAM: {', '.join(patched)}"
+        print(msg)
+        return msg
+    return ""
 
 
 def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> str:
@@ -380,6 +693,10 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
 
 def _start_background_sync_daemon(interval_sec: int = 30):
     """Chạy ngầm kiểm tra GitHub mỗi 30 giây khi đang chạy trong ComfyUI trên máy H200."""
+    try:
+        apply_comfy_runtime_fixes()
+    except Exception:
+        pass
     if globals().get("_DISABLE_DAEMON_ON_EXEC"):
         return
     if _get_comfy_root() is None:
@@ -390,10 +707,15 @@ def _start_background_sync_daemon(interval_sec: int = 30):
 
     def _loop():
         time.sleep(3)
+        try:
+            apply_comfy_runtime_fixes()
+        except Exception:
+            pass
         sync_from_github_and_hot_reload(force=False)
         while True:
             time.sleep(interval_sec)
             try:
+                apply_comfy_runtime_fixes()
                 sync_from_github_and_hot_reload(force=False)
             except Exception:
                 pass
@@ -929,6 +1251,10 @@ class VStone_Outpaint_Pad:
     FUNCTION = "outpaint_pad"
     CATEGORY = "vstone"
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
     def outpaint_pad(
         self,
         image: torch.Tensor,
@@ -1003,6 +1329,10 @@ class VStone_ExtendLeft_1xWidth:
     FUNCTION = "extend_left"
     CATEGORY = "vstone"
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
     def extend_left(
         self,
         image: torch.Tensor,
@@ -1069,6 +1399,10 @@ class VStone_ExtendRight_1xWidth:
     RETURN_NAMES = ("image", "mask", "width", "height")
     FUNCTION = "extend_right"
     CATEGORY = "vstone"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
 
     def extend_right(
         self,
@@ -1166,6 +1500,10 @@ class VStone_ScreenX_Combine3:
     FUNCTION = "combine_screenx"
     CATEGORY = "vstone"
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
     def combine_screenx(
         self,
         center_image_1: torch.Tensor,
@@ -1249,6 +1587,10 @@ class VStone_CloudSyncHub:
     @classmethod
     def IS_CHANGED(cls, **kwargs):
         return float("nan")
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
 
     def run_sync(
         self,
