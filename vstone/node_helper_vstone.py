@@ -199,7 +199,7 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/minimax_h3/image_minimax_h3_t2i.json",
     "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
     "workflows/minimax_h3/video_minimax_h3_stoneV_outpaint_ref.json",
-    "workflows/minimax_h3/video_minimax_h3_stoneV_screenx_wings.json",
+    "workflows/minimax_h3/video_minimax_h3_stoneV_gen_video.json",
     "workflows/minimax_h3/video_minimax_h3_fun_controlnet_union.json",
     "workflows/minimax_h3/video_minimax_h3_i2v.json",
     "workflows/minimax_h3/video_minimax_h3_i2v_continuation.json",
@@ -2843,570 +2843,205 @@ class MinimaxH3LatentUpscaler3D:
 
 
 # ==============================================================================
-# NODE 6: stoneV ScreenX Wing (Gen Từng Cánh Riêng, Video Giữa Dẫn Chuyển Động)
+# NODE 6: stoneV MiniMax-H3 Gen Video (1 Node Duy Nhất)
 # ==============================================================================
-SCREENX_MOTION_MODELS = ["similarity", "translation", "affine", "homography", "static"]
-SCREENX_GRID_PX = 32
-SCREENX_ANALYSIS_HEIGHT = 180
+H3_GEN_BASE_URL = "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main"
+H3_GEN_UNETS = {
+    "int8": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "bf16": "minimax_h3_ref2va_pruned_bf16.safetensors",
+}
+H3_GEN_CLIP = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+H3_GEN_VIDEO_VAE = "minimax_h3_video_vae_int8_convrot.safetensors"
+H3_GEN_AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
+H3_GEN_TURBO_LORA = "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"
+H3_GEN_CONTROL_PATCH = "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors"
+H3_GEN_MAX_FRAMES = 362  # Giới hạn trên của dải frame model được train
+_H3_GEN_LOADED: dict[str, Any] = {}
 
 
-def _screenx_canvas_extent(center_h: int, center_w: int, settings: dict) -> tuple[int, int, int, int]:
-    """Kích thước thật của canvas 3 tấm (wing_w, canvas_w, canvas_h, pad_top), cùng cách làm tròn với Combine3."""
-    wing_w = max(1, int(round(center_w * settings["wing_width_ratio"])))
-    canvas_h = max(center_h, int(round(center_h * settings["outer_height_ratio"])))
-    return wing_w, center_w + 2 * wing_w, canvas_h, (canvas_h - center_h) // 2
+def _h3_gen_load(key: str, folder: str, filename: str, loader: Any) -> Any:
+    """Tự tải file model nếu H200 chưa có, và giữ lại kết quả để đổi seed không phải nạp lại."""
+    if key not in _H3_GEN_LOADED:
+        download_file_to_comfy_models(folder, filename, f"{H3_GEN_BASE_URL}/{folder}/{filename}")
+        _H3_GEN_LOADED[key] = loader(filename)
+    return _H3_GEN_LOADED[key]
 
 
-def _screenx_resize(images: torch.Tensor, height: int, width: int) -> torch.Tensor:
-    """Resize theo cụm 16 frame, có antialias để guide không nháy khi thu nhỏ."""
+def _h3_gen_resize(images: torch.Tensor, height: int, width: int) -> torch.Tensor:
     if images.shape[1] == height and images.shape[2] == width:
         return images
     chunks = []
     for i in range(0, images.shape[0], 16):
-        chunk = images[i : i + 16].movedim(-1, 1)
-        chunk = F.interpolate(chunk, size=(height, width), mode="bicubic", align_corners=False, antialias=True)
+        chunk = F.interpolate(images[i : i + 16].movedim(-1, 1), size=(height, width), mode="bicubic", align_corners=False, antialias=True)
         chunks.append(chunk.movedim(1, -1).clamp(0.0, 1.0))
     return torch.cat(chunks, dim=0)
 
 
-def _screenx_motion_basis(model: str, device: Any, dtype: Any) -> torch.Tensor:
-    """Các ma trận cơ sở của mô hình chuyển động, dùng chung cho phép căn Gauss-Newton."""
-    basis = [
-        [[0, 0, 1], [0, 0, 0], [0, 0, 0]],
-        [[0, 0, 0], [0, 0, 1], [0, 0, 0]],
-    ]
-    if model != "translation":
-        basis += [[[1, 0, 0], [0, 1, 0], [0, 0, 0]], [[0, -1, 0], [1, 0, 0], [0, 0, 0]]]
-    if model in ("affine", "homography"):
-        basis += [[[1, 0, 0], [0, -1, 0], [0, 0, 0]], [[0, 1, 0], [1, 0, 0], [0, 0, 0]]]
-    if model == "homography":
-        basis += [[[0, 0, 0], [0, 0, 0], [1, 0, 0]], [[0, 0, 0], [0, 0, 0], [0, 1, 0]]]
-    return torch.tensor(basis, device=device, dtype=dtype)
-
-
-def _screenx_refine_alignment(
-    src: torch.Tensor,
-    dst: torch.Tensor,
-    init: torch.Tensor,
-    basis: torch.Tensor,
-    side: str,
-    iterations: int,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+class stoneV_H3_Gen_Video:
     """
-    Tìm M sao cho dst(M * x) khớp src(x), toạ độ x lấy gốc ở tâm khung và đơn vị là nửa chiều cao.
-    Trọng số robust loại vật thể chuyển động, trọng số theo cạnh ưu tiên phần video giữa nằm sát cánh đang gen.
-    Trả về (M, tỉ lệ pixel còn nằm trong khung, sai số trung bình).
+    1 node gen video bằng MiniMax-H3: tự tải và nạp model, xuất thẳng VIDEO.
+    - Chỉ có prompt: text to video.
+    - Nối `image`: ảnh tham chiếu <Picture 1>, đồng thời neo vào frame đầu.
+    - Nối `video` và đặt expand: giữ nguyên video gốc, model vẽ thêm vùng mở rộng theo video đó.
+    - Nối `control_video`: điều khiển bằng video đã xử lý (Canny, Depth, Pose...).
     """
-    B, _, h, w = src.shape
-    device, dtype = src.device, src.dtype
-    aspect = float(w) / float(h)
-    ys = (torch.arange(h, device=device, dtype=dtype) + 0.5) * 2.0 / h - 1.0
-    xs = ((torch.arange(w, device=device, dtype=dtype) + 0.5) * 2.0 / w - 1.0) * aspect
-    grid_y, grid_x = torch.meshgrid(ys, xs, indexing="ij")
-    px, py = grid_x.reshape(-1), grid_y.reshape(-1)
-    pts = torch.stack([px, py, torch.ones_like(px)], dim=0)
-
-    flow = basis @ pts
-    flow_u = flow[:, 0, :] - px * flow[:, 2, :]
-    flow_v = flow[:, 1, :] - py * flow[:, 2, :]
-
-    edge_weight = torch.linspace(1.0, 0.25, steps=w, device=device, dtype=dtype)
-    if side == "right":
-        edge_weight = edge_weight.flip(0)
-    edge_weight = edge_weight.view(1, w).expand(h, w).reshape(-1)
-
-    identity = torch.eye(3, device=device, dtype=dtype)
-    M = init.clone()
-    valid_ratio = torch.ones(B, device=device, dtype=dtype)
-    residual = torch.zeros(B, device=device, dtype=dtype)
-    for _ in range(iterations):
-        warped = M @ pts
-        gx = warped[:, 0, :] / warped[:, 2, :] / aspect
-        gy = warped[:, 1, :] / warped[:, 2, :]
-        grid = torch.stack([gx, gy], dim=-1).reshape(B, h, w, 2)
-        dst_warped = F.grid_sample(dst, grid, mode="bilinear", padding_mode="border", align_corners=False)
-
-        grad_x = F.pad((dst_warped[:, :, :, 2:] - dst_warped[:, :, :, :-2]) * 0.25 * h, (1, 1, 0, 0))
-        grad_y = F.pad((dst_warped[:, :, 2:, :] - dst_warped[:, :, :-2, :]) * 0.25 * h, (0, 0, 1, 1))
-        jacobian = grad_x.reshape(B, 1, -1) * flow_u.unsqueeze(0) + grad_y.reshape(B, 1, -1) * flow_v.unsqueeze(0)
-
-        diff = (dst_warped - src).reshape(B, -1)
-        valid = ((gx.abs() < 1.0) & (gy.abs() < 1.0)).to(dtype=dtype)
-        scale = diff.abs().median(dim=1).values.clamp(min=1e-3).unsqueeze(1)
-        weight = valid * edge_weight.unsqueeze(0) / (1.0 + (diff / (2.0 * scale)) ** 2)
-
-        weighted = jacobian * weight.unsqueeze(1)
-        hessian = weighted @ jacobian.transpose(1, 2)
-        gradient = -(weighted @ diff.unsqueeze(-1))
-        damping = hessian.diagonal(dim1=1, dim2=2).mean(dim=1).clamp(min=1e-6) * 1e-4
-        hessian = hessian + damping.view(B, 1, 1) * torch.eye(basis.shape[0], device=device, dtype=dtype)
-        delta = torch.linalg.solve(hessian, gradient).squeeze(-1)
-
-        M = M @ (identity + (delta.view(B, -1, 1, 1) * basis).sum(dim=1))
-        M = M / M[:, 2, 2].view(B, 1, 1)
-        valid_ratio = valid.mean(dim=1)
-        residual = diff.abs().mean(dim=1)
-    return M, valid_ratio, residual
-
-
-def _screenx_estimate_motion(frames: torch.Tensor, side: str, settings: dict) -> tuple[torch.Tensor, str]:
-    """
-    Ước lượng chuyển động camera của video giữa so với `plate_frame`.
-    Trả về ma trận [T, 3, 3] đưa toạ độ ở plate_frame sang toạ độ ở từng frame, cùng dòng báo cáo.
-    """
-    T, H, W, _ = frames.shape
-    device, dtype = frames.device, torch.float32
-    plate_frame = min(int(settings["plate_frame"]), T - 1)
-    model = settings["motion_model"]
-    identity = torch.eye(3, device=device, dtype=dtype)
-    matrices = identity.repeat(T, 1, 1)
-    if model == "static" or T < 2:
-        return matrices, f"[stoneV ScreenX] {side}: {T} frames, camera khoá tĩnh."
-
-    h = min(H, SCREENX_ANALYSIS_HEIGHT)
-    w = max(16, int(round(W * float(h) / float(H))))
-    gray_chunks = []
-    for i in range(0, T, 16):
-        small = frames[i : i + 16, :, :, :3].movedim(-1, 1).to(dtype=dtype)
-        small = F.interpolate(small, size=(h, w), mode="area").mean(dim=1, keepdim=True)
-        mean = small.mean(dim=(2, 3), keepdim=True)
-        std = small.std(dim=(2, 3), keepdim=True).clamp(min=1e-3)
-        gray_chunks.append((small - mean) / std)
-    gray = torch.cat(gray_chunks, dim=0)
-    basis = _screenx_motion_basis(model, device, dtype)
-
-    pairs = identity.repeat(T - 1, 1, 1)
-    pair_residual = torch.zeros(T - 1, device=device, dtype=dtype)
-    for i in range(0, T - 1, 16):
-        j = min(i + 16, T - 1)
-        M = identity.repeat(j - i, 1, 1)
-        for factor in (8, 4, 2, 1):
-            src = F.avg_pool2d(gray[i:j], factor) if factor > 1 else gray[i:j]
-            dst = F.avg_pool2d(gray[i + 1 : j + 1], factor) if factor > 1 else gray[i + 1 : j + 1]
-            M, _, res = _screenx_refine_alignment(src, dst, M, basis, side, 8)
-        pairs[i:j] = M
-        pair_residual[i:j] = res
-
-    chain = identity.repeat(T, 1, 1)
-    for t in range(plate_frame, T - 1):
-        chain[t + 1] = pairs[t] @ chain[t]
-    for t in range(plate_frame - 1, -1, -1):
-        chain[t] = torch.linalg.inv(pairs[t]) @ chain[t + 1]
-
-    # Căn lại từng cụm so với frame neo để sai số không cộng dồn; hết vùng chung mới dời neo.
-    for order in (list(range(plate_frame + 1, T)), list(range(plate_frame - 1, -1, -1))):
-        anchor = plate_frame
-        pos = 0
-        while pos < len(order):
-            chunk = order[pos : pos + 8]
-            previous = order[pos - 1] if pos > 0 else plate_frame
-            init = chain[chunk] @ torch.linalg.inv(chain[anchor])
-            src = gray[anchor : anchor + 1].expand(len(chunk), -1, -1, -1)
-            refined, valid_ratio, _ = _screenx_refine_alignment(src, gray[chunk], init, basis, side, 4)
-            if float(valid_ratio.min()) < 0.6 and anchor != previous:
-                anchor = previous
-                continue
-            matrices[chunk] = refined @ matrices[anchor]
-            pos += len(chunk)
-
-    smooth = int(settings["motion_smooth_frames"])
-    if smooth > 0:
-        averaged = torch.stack([matrices[max(0, t - smooth) : t + smooth + 1].mean(dim=0) for t in range(T)], dim=0)
-        matrices = averaged @ torch.linalg.inv(averaged[plate_frame])
-
-    half_h = H / 2.0
-    corner_x, corner_y = W / H, 1.0
-    corners = torch.tensor(
-        [[-corner_x, corner_x, -corner_x, corner_x], [-corner_y, -corner_y, corner_y, corner_y], [1.0, 1.0, 1.0, 1.0]],
-        device=device,
-        dtype=dtype,
-    )
-    moved = matrices @ corners
-    shift = (moved[:, :2, :] / moved[:, 2:3, :] - corners[:2, :]).abs()
-    if float(shift.max()) * half_h < float(settings["static_threshold_px"]):
-        matrices = identity.repeat(T, 1, 1)
-
-    last = matrices[-1]
-    zoom = float(torch.linalg.det(last[:2, :2]).abs()) ** 0.5
-    report = (
-        f"[stoneV ScreenX] {side}: {T} frames, model={model}, frame cuối lệch "
-        f"x={float(last[0, 2]) * half_h:+.1f}px y={float(last[1, 2]) * half_h:+.1f}px zoom=x{zoom:.3f}."
-    )
-    suspect = [i + 1 for i, v in enumerate(pair_residual.tolist()) if v > 0.6]
-    if suspect:
-        report += f" Cảnh báo: ước lượng kém ở frame {suspect[:6]}, kiểm tra xem clip có bị cut không."
-    return matrices, report
-
-
-def _screenx_window_layout(center_h: int, center_w: int, frames: int, side: str, settings: dict) -> dict:
-    """
-    Khung gen của 1 cánh: [cánh | dải video giữa] (hoặc ngược lại với cánh phải), mọi cạnh mask nằm trên lưới 32px.
-    Chọn khung lớn nhất không vượt giới hạn VRAM Guard, vì node R2V sẽ tự kẹp mọi khung lớn hơn.
-    """
-    keep_w = max(1, min(center_w, int(round(center_w * settings["window_keep_ratio"]))))
-    wing_w, canvas_w, canvas_h, pad_top = _screenx_canvas_extent(center_h, center_w, settings)
-    grid = SCREENX_GRID_PX
-    best = None
-    for keep_rows in range(2, MINIMAX_SAFE_DI_H // grid + 1):
-        keep_cols = max(1, int(round(keep_rows * keep_w / center_h)))
-        wing_cols = max(1, int(round(keep_cols * wing_w / keep_w)))
-        pad_rows = math.ceil((canvas_h / center_h - 1.0) * keep_rows / 2.0 - 1e-6)
-        width = (keep_cols + wing_cols) * grid
-        height = (keep_rows + 2 * pad_rows) * grid
-        if width <= MINIMAX_SAFE_DI_W and height <= MINIMAX_SAFE_DI_H and (best is None or width * height > best[0]):
-            best = (width * height, keep_rows, keep_cols, wing_cols, pad_rows)
-    if best is None:
-        raise ValueError(f"Không tìm được khung gen <= {MINIMAX_SAFE_DI_W}x{MINIMAX_SAFE_DI_H} cho cánh rộng {wing_w}px.")
-
-    _, keep_rows, keep_cols, wing_cols, pad_rows = best
-    keep_px, wing_px, keep_h_px, pad_px = keep_cols * grid, wing_cols * grid, keep_rows * grid, pad_rows * grid
-    is_left = side == "left"
-    return {
-        "side": side,
-        "frames": frames,
-        "length": _align_minimax_h3_frames(frames),
-        "center_h": center_h,
-        "center_w": center_w,
-        "keep_w": keep_w,
-        "canvas_w": canvas_w,
-        "canvas_h": canvas_h,
-        "pad_top": pad_top,
-        "width": keep_px + wing_px,
-        "height": keep_h_px + 2 * pad_px,
-        "seam_x": wing_px if is_left else keep_px,
-        "seam_real_x": 0 if is_left else center_w,
-        "keep_x0": wing_px if is_left else 0,
-        "keep_x1": wing_px + keep_px if is_left else keep_px,
-        "wing_x0": 0 if is_left else keep_px,
-        "wing_x1": wing_px if is_left else keep_px + wing_px,
-        "keep_y0": pad_px,
-        "keep_y1": pad_px + keep_h_px,
-        "scale_x": keep_px / keep_w,
-        "scale_y": keep_h_px / center_h,
-        "seam_match_px": int(settings["seam_match_px"]),
-    }
-
-
-def _screenx_wing_rows(layout: dict) -> tuple[int, int]:
-    """Hàng đầu và cuối của cánh trong khung gen; phần dư do làm tròn lưới 32px sẽ bị cắt bỏ khi xuất."""
-    pad_bottom = layout["canvas_h"] - layout["center_h"] - layout["pad_top"]
-    y0 = max(0, layout["keep_y0"] - int(round(layout["pad_top"] * layout["scale_y"])))
-    y1 = min(layout["height"], layout["keep_y1"] + int(round(pad_bottom * layout["scale_y"])))
-    return y0, y1
-
-
-def _screenx_warp_canvas(canvas: torch.Tensor, matrices: torch.Tensor, layout: dict) -> tuple[torch.Tensor, list[float]]:
-    """Cho plate canvas chạy theo chuyển động camera trong khung gen của cánh. Trả về (video, % cánh thiếu dữ liệu từng frame)."""
-    H, W = layout["center_h"], layout["center_w"]
-    canvas_w, canvas_h, pad_top = layout["canvas_w"], layout["canvas_h"], layout["pad_top"]
-    height, width = layout["height"], layout["width"]
-    device, dtype = canvas.device, canvas.dtype
-    scaled = _screenx_resize(
-        canvas[:1, :, :, :3],
-        max(1, int(round(canvas_h * layout["scale_y"]))),
-        max(1, int(round(canvas_w * layout["scale_x"]))),
-    ).movedim(-1, 1)
-
-    half_h = H / 2.0
-    real_x = (torch.arange(width, device=device, dtype=dtype) + 0.5 - layout["seam_x"]) / layout["scale_x"] + layout["seam_real_x"]
-    real_y = (torch.arange(height, device=device, dtype=dtype) + 0.5 - layout["keep_y0"]) / layout["scale_y"]
-    grid_y, grid_x = torch.meshgrid(real_y, real_x, indexing="ij")
-    ux, uy = ((grid_x - W / 2.0) / half_h).reshape(-1), ((grid_y - half_h) / half_h).reshape(-1)
-    pts = torch.stack([ux, uy, torch.ones_like(ux)], dim=0)
-
-    row0, row1 = _screenx_wing_rows(layout)
-    guide_chunks = []
-    holes: list[float] = []
-    for i in range(0, matrices.shape[0], 8):
-        inverse = torch.linalg.inv(matrices[i : i + 8].to(device=device, dtype=dtype))
-        B = inverse.shape[0]
-        plate_pts = inverse @ pts
-        gx = plate_pts[:, 0, :] / plate_pts[:, 2, :] * half_h * 2.0 / canvas_w
-        gy = (plate_pts[:, 1, :] / plate_pts[:, 2, :] * half_h + half_h + pad_top) * 2.0 / canvas_h - 1.0
-        grid = torch.stack([gx, gy], dim=-1).reshape(B, height, width, 2)
-        # Vùng ngoài plate lấy đối xứng thay vì kéo mép, để Canny không bám theo các vệt ngang.
-        warped = F.grid_sample(scaled.expand(B, -1, -1, -1), grid, mode="bicubic", padding_mode="reflection", align_corners=False)
-        guide_chunks.append(warped.clamp(0.0, 1.0).movedim(1, -1))
-        outside = (gx.abs() > 1.0) | (gy.abs() > 1.0)
-        wing_outside = outside.reshape(B, height, width)[:, row0:row1, layout["wing_x0"] : layout["wing_x1"]]
-        holes += (wing_outside.to(dtype=dtype).mean(dim=(1, 2)) * 100.0).tolist()
-    return torch.cat(guide_chunks, dim=0), holes
-
-
-def _screenx_match_seam(generated: torch.Tensor, guide: torch.Tensor, layout: dict) -> torch.Tensor:
-    """Khớp màu cánh theo dải video giữa thật ở sát mép nối, giảm dần khi đi ra xa mép."""
-    wing_px = layout["wing_x1"] - layout["wing_x0"]
-    keep_px = layout["keep_x1"] - layout["keep_x0"]
-    band = min(layout["seam_match_px"], keep_px, wing_px)
-    if band <= 0:
-        return generated
-    seam, y0, y1 = layout["seam_x"], layout["keep_y0"], layout["keep_y1"]
-    is_left = layout["side"] == "left"
-    band_x0, band_x1 = (seam, seam + band) if is_left else (seam - band, seam)
-
-    delta = (guide[:, y0:y1, band_x0:band_x1, :] - generated[:, y0:y1, band_x0:band_x1, :]).mean(dim=2)
-    delta = delta.permute(2, 0, 1).unsqueeze(0)
-    delta = F.avg_pool2d(F.pad(delta, (16, 16, 2, 2), mode="replicate"), (5, 33), stride=1)
-    delta = F.pad(delta, (y0, generated.shape[1] - y1, 0, 0), mode="replicate")
-    delta = delta.squeeze(0).permute(1, 2, 0).unsqueeze(2)
-
-    falloff = min(band * 4, wing_px)
-    t = torch.linspace(0.0, 1.0, steps=falloff, device=generated.device, dtype=generated.dtype)
-    ramp = 0.5 * (1.0 + torch.cos(math.pi * t))
-    if is_left:
-        ramp = ramp.flip(0)
-    x0, x1 = (seam - falloff, seam) if is_left else (seam, seam + falloff)
-    out = generated.clone()
-    out[:, :, x0:x1, :] = (out[:, :, x0:x1, :] + delta * ramp.view(1, 1, falloff, 1)).clamp(0.0, 1.0)
-    return out
-
-
-class stoneV_ScreenX_Settings:
-    """Bảng điều khiển chung, nối vào cả 2 cánh để hình học và tham số dẫn hướng luôn khớp nhau."""
 
     @classmethod
     def INPUT_TYPES(cls):
+        import comfy.samplers
         return {
             "required": {
-                "wing_width_ratio": ("FLOAT", {
-                    "default": 1.0, "min": 0.1, "max": 5.0, "step": 0.1,
-                    "tooltip": "Chiều rộng mỗi cánh so với video giữa. Phải khớp width_multiplier đã dùng ở node 1A/1B khi vẽ plate.",
-                }),
-                "outer_height_ratio": ("FLOAT", {
-                    "default": 1.3, "min": 1.0, "max": 2.5, "step": 0.05,
-                    "tooltip": "Chiều cao cạnh biên ngoài của cánh so với video giữa. Phải khớp với node 1A/1B.",
-                }),
-                "plate_keep_ratio": ("FLOAT", {
-                    "default": 0.5, "min": 0.1, "max": 1.0, "step": 0.05,
-                    "tooltip": "keep_orig_ratio đã dùng ở node 1A/1B khi vẽ plate.",
-                }),
-                "window_keep_ratio": ("FLOAT", {
-                    "default": 0.5, "min": 0.1, "max": 1.0, "step": 0.05,
-                    "tooltip": "Phần video giữa nằm trong khung gen để dẫn hướng. Lớn hơn thì dẫn tốt hơn nhưng cánh có ít pixel hơn.",
-                }),
-                "plate_frame": ("INT", {
-                    "default": 0, "min": 0, "max": 100000,
-                    "tooltip": "Frame của video giữa đã dùng để vẽ plate.",
-                }),
-                "motion_model": (SCREENX_MOTION_MODELS, {
-                    "default": SCREENX_MOTION_MODELS[0],
-                    "tooltip": "similarity hợp với pan/tilt/zoom và ổn định nhất khi ngoại suy ra cánh. static dành cho camera khoá tĩnh.",
-                }),
-                "motion_smooth_frames": ("INT", {
-                    "default": 0, "min": 0, "max": 25,
-                    "tooltip": "Làm mượt chuyển động. Để 0 nếu muốn cánh rung theo đúng camera cầm tay.",
-                }),
-                "static_threshold_px": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 16.0, "step": 0.1,
-                    "tooltip": "Nếu camera lệch ít hơn ngần này pixel cả shot thì coi như đứng yên, tránh cánh rung li ti.",
-                }),
-                "seam_match_px": ("INT", {
-                    "default": 64, "min": 0, "max": 512, "step": 8,
-                    "tooltip": "Độ rộng dải sát mép nối dùng để khớp màu cánh theo video giữa thật. 0 = tắt.",
-                }),
-            }
-        }
-
-    RETURN_TYPES = ("SCREENX_SETTINGS",)
-    RETURN_NAMES = ("settings",)
-    FUNCTION = "build"
-    CATEGORY = "stoneV/ScreenX"
-
-    def build(self, **settings):
-        return (settings,)
-
-
-class stoneV_ScreenX_Plate_Canvas:
-    """Ghép plate trái, frame gốc và plate phải thành 1 canvas thẳng, không cắt hình thang, để warp cho cả 2 cánh."""
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "center_video": ("IMAGE",),
-                "settings": ("SCREENX_SETTINGS",),
+                "prompt": ("STRING", {"multiline": True, "default": ""}),
+                "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
+                "steps": ("INT", {"default": 20, "min": 1, "max": 100, "tooltip": "20 khi tắt turbo_lora, 4 khi bật."}),
+                "cfg": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 20.0, "step": 0.1}),
+                "sampler_name": (comfy.samplers.KSampler.SAMPLERS, {"default": "res_multistep"}),
+                "scheduler": (comfy.samplers.KSampler.SCHEDULERS, {"default": "simple"}),
+                "turbo_lora": ("BOOLEAN", {"default": False}),
+                "precision": (list(H3_GEN_UNETS.keys()), {"default": "int8", "tooltip": "bf16 nặng 37GB, tự tải ở lần dùng đầu."}),
+                "width": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 32, "tooltip": "0 = tự chọn theo tỉ lệ khung, tối đa 1 MP như model khuyến nghị."}),
+                "height": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 32}),
+                "frames": ("INT", {"default": 0, "min": 0, "max": H3_GEN_MAX_FRAMES, "tooltip": "0 = theo video nối vào, không có video thì 124 frame (5 giây)."}),
+                "expand_left": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 5.0, "step": 0.1, "tooltip": "Mở rộng sang trái, tính theo chiều rộng video."}),
+                "expand_right": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 5.0, "step": 0.1}),
+                "expand_height": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 2.5, "step": 0.05, "tooltip": "Tổng chiều cao so với video."}),
+                "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
             },
             "optional": {
-                "left_plate": ("IMAGE", {"tooltip": "Ảnh [cánh | nửa tấm gốc] xuất từ workflow vẽ plate."}),
-                "right_plate": ("IMAGE", {"tooltip": "Ảnh [nửa tấm gốc | cánh] xuất từ workflow vẽ plate."}),
+                "video": ("VIDEO",),
+                "image": ("IMAGE",),
+                "control_video": ("IMAGE",),
             },
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("plate_canvas",)
-    FUNCTION = "build"
-    CATEGORY = "stoneV/ScreenX"
+    RETURN_TYPES = ("VIDEO", "IMAGE")
+    RETURN_NAMES = ("video", "images")
+    FUNCTION = "generate"
+    CATEGORY = "stoneV"
 
-    def build(self, center_video: torch.Tensor, settings: dict, left_plate: torch.Tensor | None = None, right_plate: torch.Tensor | None = None):
-        plate_frame = min(int(settings["plate_frame"]), center_video.shape[0] - 1)
-        center = center_video[plate_frame : plate_frame + 1, :, :, :3]
-        _, H, W, _ = center.shape
-        device, dtype = center.device, center.dtype
-        wing_w, canvas_w, canvas_h, pad_top = _screenx_canvas_extent(H, W, settings)
-        canvas = torch.full((1, canvas_h, canvas_w, 3), 0.5, device=device, dtype=dtype)
+    def generate(
+        self,
+        prompt: str,
+        seed: int,
+        steps: int,
+        cfg: float,
+        sampler_name: str,
+        scheduler: str,
+        turbo_lora: bool,
+        precision: str,
+        width: int,
+        height: int,
+        frames: int,
+        expand_left: float,
+        expand_right: float,
+        expand_height: float,
+        control_strength: float,
+        video: Any = None,
+        image: torch.Tensor | None = None,
+        control_video: torch.Tensor | None = None,
+    ):
+        import nodes
+        from comfy_extras.nodes_minimax_h3 import adapt_canvas
 
-        for side, plate in (("left", left_plate), ("right", right_plate)):
-            if plate is None:
-                continue
-            is_left = side == "left"
-            _, mask, plate_w, plate_h = vstone_outpaint_pad_tensor(
-                center,
-                add_left_ratio=settings["wing_width_ratio"] if is_left else 0.0,
-                add_right_ratio=0.0 if is_left else settings["wing_width_ratio"],
-                keep_orig_ratio=settings["plate_keep_ratio"],
-                outer_height_ratio=settings["outer_height_ratio"],
+        registry = nodes.NODE_CLASS_MAPPINGS
+        source_frames, source_audio, fps = None, None, 24.0
+        if video is not None:
+            components = video.get_components()
+            source_frames, source_audio, fps = components.images[:, :, :, :3], components.audio, float(components.frame_rate)
+            limit = frames if frames > 0 else H3_GEN_MAX_FRAMES
+            source_frames = source_frames[:limit]
+
+        canvas, canvas_mask = source_frames, None
+        if source_frames is not None and (expand_left > 0.0 or expand_right > 0.0 or expand_height > 1.0):
+            canvas, canvas_mask, _, _ = vstone_outpaint_pad_tensor(
+                source_frames,
+                add_left_ratio=expand_left,
+                add_right_ratio=expand_right,
+                outer_height_ratio=expand_height,
             )
-            kept = mask[0] < 0.5
-            kept_x = kept.any(dim=0).nonzero().reshape(-1)
-            kept_y = kept.any(dim=1).nonzero().reshape(-1)
-            real_start = 0 if is_left else W - kept_x.shape[0]
-            x_offset = wing_w + real_start - int(kept_x[0])
-            y_offset = pad_top - int(kept_y[0])
-            x0, x1 = max(0, x_offset), min(canvas_w, x_offset + plate_w)
-            y0, y1 = max(0, y_offset), min(canvas_h, y_offset + plate_h)
 
-            plate_rgb = _screenx_resize(plate[:1, :, :, :3].to(device=device, dtype=dtype), plate_h, plate_w)
-            canvas[:, y0:y1, x0:x1, :] = plate_rgb[:, y0 - y_offset : y1 - y_offset, x0 - x_offset : x1 - x_offset, :]
-            # Làm tròn lưới 32px của plate có thể hụt vài pixel so với canvas: kéo dài mép thay vì để hở màu xám.
-            if y0 > 0:
-                canvas[:, :y0, x0:x1, :] = canvas[:, y0 : y0 + 1, x0:x1, :]
-            if y1 < canvas_h:
-                canvas[:, y1:, x0:x1, :] = canvas[:, y1 - 1 : y1, x0:x1, :]
-            if is_left and x0 > 0:
-                canvas[:, :, :x0, :] = canvas[:, :, x0 : x0 + 1, :]
-            if not is_left and x1 < canvas_w:
-                canvas[:, :, x1:, :] = canvas[:, :, x1 - 1 : x1, :]
+        if width > 0 and height > 0:
+            width, height = width // 32 * 32, height // 32 * 32
+        elif canvas is not None:
+            width, height = adapt_canvas(canvas.shape[2], canvas.shape[1])
+        elif image is not None:
+            width, height = adapt_canvas(image.shape[2], image.shape[1])
+        else:
+            width, height = 1344, 768
 
-        canvas[:, pad_top : pad_top + H, wing_w : wing_w + W, :] = center
-        return (canvas,)
+        frame_count = source_frames.shape[0] if source_frames is not None else (frames if frames > 0 else 124)
+        length = _align_minimax_h3_frames(frame_count)
 
+        source_video, mask, keep_alpha = None, None, None
+        if canvas_mask is not None:
+            source_video = _h3_gen_resize(canvas, height, width)
+            scaled_mask = F.interpolate(canvas_mask[:1].unsqueeze(1), size=(height, width), mode="area")
+            # Cạnh mask phải nằm trên lưới 32px của model, nếu không sẽ thành đường viền quanh video gốc.
+            cells = F.adaptive_max_pool2d(scaled_mask, (height // 32, width // 32))
+            mask = F.interpolate(cells, size=(height, width), mode="nearest").squeeze(1)
+            soft = F.avg_pool2d(F.pad(scaled_mask, (16, 16, 16, 16), mode="replicate"), 33, stride=1)
+            keep_alpha = (soft * 2.0).clamp(0.0, 1.0).movedim(1, -1)
+        elif source_frames is not None and control_video is None:
+            control_video = _h3_gen_resize(source_frames, height, width)
 
-class stoneV_ScreenX_Center_Motion:
-    """Đo chuyển động camera từ video giữa, ưu tiên phần sát cánh đang gen."""
+        clip = _h3_gen_load("clip", "text_encoders", H3_GEN_CLIP, lambda name: nodes.CLIPLoader().load_clip(name, "minimax", "default")[0])
+        vae = _h3_gen_load("video_vae", "vae", H3_GEN_VIDEO_VAE, lambda name: nodes.VAELoader().load_vae(name)[0])
+        audio_vae = _h3_gen_load("audio_vae", "vae", H3_GEN_AUDIO_VAE, lambda name: nodes.VAELoader().load_vae(name)[0])
+        model = _h3_gen_load(f"unet_{precision}", "diffusion_models", H3_GEN_UNETS[precision], lambda name: nodes.UNETLoader().load_unet(name, "default")[0])
+        if turbo_lora:
+            model = _h3_gen_load(
+                f"turbo_{precision}",
+                "loras",
+                H3_GEN_TURBO_LORA,
+                lambda name: nodes.LoraLoaderModelOnly().load_lora_model_only(model, name, 1.0)[0],
+            )
+        model = registry["MiniMaxH3SigmaShift"].execute(model, shift_video=12.0, shift_audio=3.0)[0]
 
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "center_video": ("IMAGE",),
-                "settings": ("SCREENX_SETTINGS",),
-                "side": (["left", "right"], {"default": "left"}),
-            }
+        # Gọi hàm gốc chưa qua VRAM Guard để giữ đủ độ phân giải, số frame và ảnh tham chiếu qua VAE.
+        r2v = registry["MiniMaxH3ReferenceToVideo"]
+        r2v_args = {
+            "clip": clip,
+            "prompt": prompt,
+            "width": width,
+            "height": height,
+            "length": length,
+            "ref_image_size": "match",
+            "vae": vae,
+            "audio_vae": audio_vae,
+            "ref_images": {"ref_image_0": image} if image is not None else None,
         }
+        r2v_original = getattr(r2v, "_vstone_orig_execute", None)
+        conditioned = r2v_original(r2v, **r2v_args) if r2v_original is not None else r2v.execute(**r2v_args)
+        positive, latent = conditioned[0], conditioned[1]
+        if image is not None:
+            positive = registry["MiniMaxH3AddGuide"].execute(positive=positive, latent=latent, frame_idx=0, vae=vae, image=image[:1])[0]
 
-    RETURN_TYPES = ("SCREENX_MOTION", "STRING")
-    RETURN_NAMES = ("motion", "report")
-    FUNCTION = "estimate"
-    CATEGORY = "stoneV/ScreenX"
+        if mask is not None or control_video is not None:
+            patch = _h3_gen_load("control_patch", "model_patches", H3_GEN_CONTROL_PATCH, lambda name: registry["ModelPatchLoader"]().load_model_patch(name)[0])
+            model = registry["MiniMaxH3FunControlNetApply"].execute(
+                model=model,
+                model_patch=patch,
+                vae=vae,
+                strength=control_strength,
+                start_percent=0.0,
+                end_percent=1.0,
+                control_video=control_video,
+                mask=mask,
+                source_video=source_video,
+            )[0]
 
-    def estimate(self, center_video: torch.Tensor, settings: dict, side: str):
-        matrices, report = _screenx_estimate_motion(center_video, side, settings)
-        print(report)
-        return ({"side": side, "matrices": matrices}, report)
+        print(f"[stoneV H3] {width}x{height}, {length} frames, steps={steps}, cfg={cfg}, {sampler_name}/{scheduler}, seed={seed}")
+        negative = nodes.ConditioningZeroOut().zero_out(positive)[0]
+        sampled = nodes.KSampler().sample(model, seed, steps, cfg, sampler_name, scheduler, positive, negative, latent, denoise=1.0)[0]
+        images = nodes.VAEDecode().decode(vae, sampled)[0][:frame_count]
+        audio = source_audio if source_audio is not None else registry["VAEDecodeAudio"].execute(audio_vae, sampled)[0]
 
+        if source_video is not None:
+            original = source_video[: images.shape[0]].to(images.device, images.dtype)
+            images = original * (1.0 - keep_alpha.to(images.device, images.dtype)) + images * keep_alpha.to(images.device, images.dtype)
 
-class stoneV_ScreenX_Wing_Prepare:
-    """
-    Chuẩn bị khung gen cho 1 cánh:
-    - `guide_video`: plate chạy theo camera + dải video giữa thật. Nối vào `source_video`, Canny và Add Guide.
-    - `mask`: 1 ở vùng cần gen, 0 ở dải video giữa. Luôn thẳng lưới 32px.
-    - `ref_image`: khung tại plate_frame, nối vào `<Picture 1>`.
-    """
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "center_video": ("IMAGE",),
-                "plate_canvas": ("IMAGE",),
-                "motion": ("SCREENX_MOTION",),
-                "settings": ("SCREENX_SETTINGS",),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE", "MASK", "IMAGE", "INT", "INT", "INT", "SCREENX_WING_LAYOUT", "STRING")
-    RETURN_NAMES = ("guide_video", "mask", "ref_image", "width", "height", "length", "layout", "report")
-    FUNCTION = "prepare"
-    CATEGORY = "stoneV/ScreenX"
-
-    def prepare(self, center_video: torch.Tensor, plate_canvas: torch.Tensor, motion: dict, settings: dict):
-        T, H, W, _ = center_video.shape
-        side = motion["side"]
-        layout = _screenx_window_layout(H, W, T, side, settings)
-        guide, holes = _screenx_warp_canvas(plate_canvas, motion["matrices"], layout)
-        layout["holes"] = holes
-
-        keep_w = layout["keep_w"]
-        strip = center_video[:, :, :keep_w, :3] if side == "left" else center_video[:, :, W - keep_w :, :3]
-        y0, y1, x0, x1 = layout["keep_y0"], layout["keep_y1"], layout["keep_x0"], layout["keep_x1"]
-        guide[:, y0:y1, x0:x1, :] = _screenx_resize(strip, y1 - y0, x1 - x0).to(guide.device, guide.dtype)
-
-        mask = torch.ones((1, layout["height"], layout["width"]), device=guide.device, dtype=guide.dtype)
-        mask[:, y0:y1, x0:x1] = 0.0
-
-        plate_frame = min(int(settings["plate_frame"]), T - 1)
-        hole_frame = max(range(T), key=holes.__getitem__)
-        report = (
-            f"[stoneV ScreenX] {side}: khung gen {layout['width']}x{layout['height']}, {T} frames (gen {layout['length']}), "
-            f"cánh thiếu dữ liệu plate tối đa {holes[hole_frame]:.1f}% ở frame {hole_frame}."
-        )
-        print(report)
-        return (guide, mask, guide[plate_frame : plate_frame + 1].clone(), layout["width"], layout["height"], layout["length"], layout, report)
-
-
-class stoneV_ScreenX_Guide_Frame:
-    """Lấy 1 frame của guide để neo vào `MiniMaxH3AddGuide`, kèm đúng frame_idx."""
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "guide_video": ("IMAGE",),
-                "layout": ("SCREENX_WING_LAYOUT",),
-                "position": ("FLOAT", {
-                    "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "0 = frame đầu, 0.5 = giữa, 1 = frame cuối của video giữa.",
-                }),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE", "INT")
-    RETURN_NAMES = ("image", "frame_idx")
-    FUNCTION = "pick"
-    CATEGORY = "stoneV/ScreenX"
-
-    def pick(self, guide_video: torch.Tensor, layout: dict, position: float):
-        idx = int(round(float(position) * (layout["frames"] - 1)))
-        if layout["holes"][idx] > 5.0:
-            print(f"[stoneV ScreenX] Frame neo {idx} thiếu {layout['holes'][idx]:.1f}% plate: nên bỏ neo này hoặc chọn plate_frame gần hơn.")
-        return (guide_video[idx : idx + 1].clone(), idx)
-
-
-class stoneV_ScreenX_Wing_Finish:
-    """Cắt riêng phần cánh từ khung đã gen: bỏ frame dư, khớp màu theo mép video giữa, cắt đúng chiều cao ScreenX."""
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "generated_window": ("IMAGE", {"tooltip": "Ảnh sau VAEDecode, hoặc chính guide_video nếu chỉ muốn xem bản warp không gen."}),
-                "guide_video": ("IMAGE",),
-                "layout": ("SCREENX_WING_LAYOUT",),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("wing",)
-    FUNCTION = "finish"
-    CATEGORY = "stoneV/ScreenX"
-
-    def finish(self, generated_window: torch.Tensor, guide_video: torch.Tensor, layout: dict):
-        frames = layout["frames"]
-        generated = _screenx_resize(generated_window[:frames, :, :, :3], layout["height"], layout["width"])
-        guide = guide_video[:frames].to(generated.device, generated.dtype)
-        matched = _screenx_match_seam(generated, guide, layout)
-        y0, y1 = _screenx_wing_rows(layout)
-        return (matched[:, y0:y1, layout["wing_x0"] : layout["wing_x1"], :],)
+        output = registry["CreateVideo"].execute(images=images, fps=fps, audio=audio)[0]
+        return (output, images)
 
 
 # Backward compatibility aliases
@@ -3427,6 +3062,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "MinimaxH3LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
     "stoneV_MinimaxH3_LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
     "VStone_MinimaxH3_LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
+    "stoneV_H3_Gen_Video": stoneV_H3_Gen_Video,
     "stoneV_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "stoneV_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "stoneV_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -3434,12 +3070,6 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_Outpaint_Pad": stoneV_Outpaint_Pad,
     "stoneV_SeamlessRestore": stoneV_SeamlessRestore,
     "stoneV_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
-    "stoneV_ScreenX_Settings": stoneV_ScreenX_Settings,
-    "stoneV_ScreenX_Plate_Canvas": stoneV_ScreenX_Plate_Canvas,
-    "stoneV_ScreenX_Center_Motion": stoneV_ScreenX_Center_Motion,
-    "stoneV_ScreenX_Wing_Prepare": stoneV_ScreenX_Wing_Prepare,
-    "stoneV_ScreenX_Guide_Frame": stoneV_ScreenX_Guide_Frame,
-    "stoneV_ScreenX_Wing_Finish": stoneV_ScreenX_Wing_Finish,
     "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "VStone_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -3456,16 +3086,11 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "MinimaxH3LatentUpscaler3D": "Minimax H3 Latent Upscaler (3D)",
     "stoneV_MinimaxH3_LatentUpscaler3D": "stoneV Minimax H3 Latent Upscaler (3D)",
     "VStone_MinimaxH3_LatentUpscaler3D": "stoneV Minimax H3 Latent Upscaler (3D)",
+    "stoneV_H3_Gen_Video": "stoneV: MiniMax-H3 Gen Video",
     "stoneV_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
     "stoneV_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
     "stoneV_ScreenX_Combine3": "stoneV 2: ScreenX Combine 3 Plates (Left + Center + Right)",
     "stoneV_CloudSyncHub": "stoneV 3: Cloud Sync & Model Downloader",
-    "stoneV_ScreenX_Settings": "stoneV ScreenX 1: Wing Settings",
-    "stoneV_ScreenX_Plate_Canvas": "stoneV ScreenX 2: Plate Canvas",
-    "stoneV_ScreenX_Center_Motion": "stoneV ScreenX 3: Center Camera Motion",
-    "stoneV_ScreenX_Wing_Prepare": "stoneV ScreenX 4: Wing Prepare",
-    "stoneV_ScreenX_Guide_Frame": "stoneV ScreenX 5: Guide Frame Picker",
-    "stoneV_ScreenX_Wing_Finish": "stoneV ScreenX 6: Wing Crop & Seam Match",
     "stoneV_Outpaint_Pad": "stoneV: Outpaint Pad (Custom Left / Right)",
     "stoneV_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
     "stoneV_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
