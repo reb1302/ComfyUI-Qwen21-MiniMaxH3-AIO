@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-03T17:05:00+07:00",
+  "updated_at": "2026-11-03T17:35:00+07:00",
   "loras": [
     {
       "filename": "High quality.safetensors",
@@ -60,9 +60,51 @@
       "filename": "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/model_patches/minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors",
       "folder": "model_patches"
+    },
+    {
+      "filename": "wan2.1_vace_14B_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_vace_14B_fp16.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "umt5_xxl_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp16.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "wan_2.1_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "ltx-2.3-22b-dev-fp8.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.3-fp8/resolve/main/ltx-2.3-22b-dev-fp8.safetensors",
+      "folder": "checkpoints"
+    },
+    {
+      "filename": "ltx-2.3-22b-distilled-lora-384.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.3/resolve/main/ltx-2.3-22b-distilled-lora-384.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "gemma_3_12B_it.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+      "url": "https://huggingface.co/oumoumad/LTX-2.3-22b-IC-LoRA-Outpaint/resolve/main/ltx-2.3-22b-ic-lora-outpaint.safetensors",
+      "folder": "loras"
     }
   ],
   "workflows": [
+    "workflows/official_outpaint/video_wan_vace_outpainting.json",
+    "workflows/official_outpaint/template_ltx2_3_lora_video_outpainting.json",
     "workflows/minimax_h3/video_minimax_h3_r2v_video_reference.json",
     "workflows/minimax_h3/video_minimax_h3_stoneV_gen_video.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
