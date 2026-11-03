@@ -310,6 +310,9 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             os.path.join(vstone_dir, "node_helper_vstone.py"),
             os.path.join(custom_nodes_dir, "node_helper_vstone.py"),
         ]
+        extras_vstone = os.path.join(comfy_root, "comfy_extras", "nodes_vstone.py")
+        if os.path.exists(extras_vstone):
+            target_helper_paths.append(extras_vstone)
         if os.path.isdir(os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO")):
             os.makedirs(aio_vstone_dir, exist_ok=True)
             target_helper_paths.append(os.path.join(aio_vstone_dir, "node_helper_vstone.py"))
@@ -2548,7 +2551,16 @@ def _execute_mmh3_latent_upscaler_3d(
         height_val = 704.0
         mp_val = float(megapixels)
 
-    src = latent["samples"]
+    raw_samples = latent["samples"]
+    audio_stream = None
+    if getattr(raw_samples, "is_nested", False):
+        streams = raw_samples.unbind()
+        src = streams[0]
+        if len(streams) > 1:
+            audio_stream = streams[1]
+    else:
+        src = raw_samples
+
     orig_dtype = src.dtype
     was_4d = (src.dim() == 4)
 
@@ -2570,7 +2582,7 @@ def _execute_mmh3_latent_upscaler_3d(
         w_pixel_target = width_val
         h_pixel_target = height_val
         effective_scale = (w_pixel_target / (w_in * downsample) + h_pixel_target / (h_in * downsample)) / 2.0
-    elif selected_mode == "megapixels":
+    elif selected_mode == "megapixels" or "megapixels" in selected_mode:
         target_pixels = mp_val * 1024.0 * 1024.0
         aspect_ratio = w_in / h_in
         h_pixel_target = (target_pixels / aspect_ratio) ** 0.5
@@ -2585,14 +2597,35 @@ def _execute_mmh3_latent_upscaler_3d(
     w_pixel_final = round(w_pixel_aligned / downsample) * downsample
     h_pixel_final = round(h_pixel_aligned / downsample) * downsample
 
-    w_out = max(1, int(w_pixel_final // downsample))
-    h_out = max(1, int(h_pixel_final // downsample))
+    w_out = max(w_in, int(w_pixel_final // downsample))
+    h_out = max(h_in, int(h_pixel_final // downsample))
+    effective_scale = max(1.0, float(effective_scale))
 
-    if effective_scale < 1.0 and (w_out < w_in or h_out < h_in):
-        raise ValueError("This model only supports upscaling (effective scale >= 1.0).")
+    def _pack_av_output(video_tensor: torch.Tensor) -> dict:
+        if was_4d:
+            return {"samples": video_tensor}
+        frame_per_tok = (1, 4, 4, 4, 4)
+        frame_count = sum(frame_per_tok[k % 5] for k in range(t))
+        target_audio_t = max(1, int(round((frame_count / 24.0) * 40.0)))
+        if audio_stream is not None and audio_stream.ndim == 4:
+            aud = audio_stream.to(device="cpu", dtype=orig_dtype)
+            if aud.shape[-1] > target_audio_t:
+                aud = aud[..., :target_audio_t].contiguous()
+            elif aud.shape[-1] < target_audio_t:
+                pad_len = target_audio_t - aud.shape[-1]
+                aud = torch.cat([aud, torch.zeros((aud.shape[0], aud.shape[1], aud.shape[2], pad_len), dtype=orig_dtype, device="cpu")], dim=-1)
+        else:
+            aud = torch.zeros((b, 32, 2, target_audio_t), dtype=orig_dtype, device="cpu")
+        try:
+            import comfy.nested_tensor
+            return {"samples": comfy.nested_tensor.NestedTensor((video_tensor, aud))}
+        except Exception:
+            return {"samples": video_tensor}
 
     if w_out == w_in and h_out == h_in:
-        return latent
+        out_same = s.squeeze(2) if was_4d else s
+        out_same = out_same.to(device="cpu", dtype=orig_dtype, non_blocking=True)
+        return _pack_av_output(out_same)
 
     print(
         f"[MinimaxH3-3D] Latent {w_in}x{h_in} -> {w_out}x{h_out} | "
@@ -2631,7 +2664,7 @@ def _execute_mmh3_latent_upscaler_3d(
             torch.cuda.empty_cache()
         gc.collect()
 
-    return {"samples": out}
+    return _pack_av_output(out)
 
 
 class MinimaxH3LatentUpscaler3D:
