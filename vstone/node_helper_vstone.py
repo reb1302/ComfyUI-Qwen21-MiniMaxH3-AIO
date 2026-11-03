@@ -131,10 +131,39 @@ def _get_comfy_root() -> str | None:
         return None
 
 
+def _get_latest_commit_sha() -> str:
+    """
+    Lấy mã Commit SHA mới nhất trực tiếp qua giao thức `git ls-remote` (0.2 giây):
+    - KHÔNG đi qua `api.github.com` -> KHÔNG BAO GIỜ bị Rate Limit 60 lần/giờ.
+    - KHÔNG bị dính Cache 5 phút của `raw.githubusercontent.com/main`.
+    """
+    git_bin = shutil.which("git")
+    if git_bin:
+        try:
+            res = subprocess.run(
+                [git_bin, "ls-remote", f"https://github.com/{GITHUB_REPO}.git", f"refs/heads/{GITHUB_BRANCH}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                sha = res.stdout.strip().split()[0]
+                if len(sha) >= 7:
+                    return sha
+        except Exception:
+            pass
+    return GITHUB_BRANCH
+
+
 def sync_from_github_and_hot_reload(force: bool = False) -> str:
     """
-    Kéo trực tiếp qua CDN `raw.githubusercontent.com` (KHÔNG dùng `api.github.com` nên KHÔNG BAO GIỜ bị Rate Limit 60 lần/giờ!)
-    và nạp nóng (Hot-Reload) các node mới vào RAM của ComfyUI.
+    Đồng bộ tức thì (0 giây trễ Cache, 0 lỗi Rate Limit):
+    1. Lấy mã commit thực tế bằng `git ls-remote`.
+    2. Tải trực tiếp từ `raw.githubusercontent.com/<COMMIT_SHA>/...` (bỏ qua hoàn toàn cache 5 phút của nhánh main).
+    3. Ghi đè vào CẢ 3 vị trí (`custom_nodes/vstone/`, `custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/`, `custom_nodes/`)
+       để bản cũ không bao giờ đè lên bản mới.
+    4. Nạp nóng (Hot-Reload) toàn bộ Node mới vào `nodes.NODE_CLASS_MAPPINGS` trong RAM ComfyUI.
     """
     global _LAST_SYNCED_HASH
     comfy_root = _get_comfy_root()
@@ -143,10 +172,13 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
 
     logs: list[str] = []
     try:
+        commit_ref = _get_latest_commit_sha()
+        raw_ref_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{commit_ref}"
         ts = int(time.time())
-        helper_url = f"{GITHUB_RAW_BASE}/vstone/node_helper_vstone.py?_t={ts}"
+
+        helper_url = f"{raw_ref_base}/vstone/node_helper_vstone.py?_t={ts}"
         helper_bytes = _http_get_bytes(helper_url, timeout=20)
-        new_hash = hashlib.sha256(helper_bytes).hexdigest()[:10]
+        new_hash = commit_ref[:7] if commit_ref != GITHUB_BRANCH else hashlib.sha256(helper_bytes).hexdigest()[:7]
 
         if not force and new_hash and new_hash == _LAST_SYNCED_HASH:
             return f"[VStone Sync] Đã ở bản mới nhất ({new_hash})."
@@ -154,41 +186,46 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         custom_nodes_dir = os.path.join(comfy_root, "custom_nodes")
         vstone_dir = os.path.join(custom_nodes_dir, "vstone")
         aio_vstone_dir = os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO", "vstone")
+        sibling_repo_vstone = os.path.join(os.path.dirname(comfy_root), "ComfyUI-Qwen21-MiniMaxH3-AIO", "vstone")
         workflows_dir = os.path.join(comfy_root, "user", "default", "workflows")
 
         os.makedirs(vstone_dir, exist_ok=True)
         os.makedirs(workflows_dir, exist_ok=True)
 
-        # 1. Ghi node_helper_vstone.py vào mọi vị trí
-        for dst in (
+        # 1. Ghi node_helper_vstone.py vào TẤT CẢ các thư mục custom_nodes để không bị bản cũ đè
+        target_helper_paths = [
             os.path.join(vstone_dir, "node_helper_vstone.py"),
             os.path.join(custom_nodes_dir, "node_helper_vstone.py"),
-        ):
+        ]
+        if os.path.isdir(os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO")):
+            os.makedirs(aio_vstone_dir, exist_ok=True)
+            target_helper_paths.append(os.path.join(aio_vstone_dir, "node_helper_vstone.py"))
+        if os.path.isdir(sibling_repo_vstone):
+            target_helper_paths.append(os.path.join(sibling_repo_vstone, "node_helper_vstone.py"))
+
+        for dst in target_helper_paths:
             try:
                 with open(dst, "wb") as f:
                     f.write(helper_bytes)
-            except Exception:
-                pass
-        if os.path.isdir(aio_vstone_dir):
-            try:
-                with open(os.path.join(aio_vstone_dir, "node_helper_vstone.py"), "wb") as f:
-                    f.write(helper_bytes)
-            except Exception:
-                pass
-        logs.append("Updated vstone/node_helper_vstone.py")
+                logs.append(f"Updated: {dst}")
+            except Exception as e:
+                logs.append(f"Skip {dst}: {e}")
 
         # 2. Ghi __init__.py
         try:
-            init_bytes = _http_get_bytes(f"{GITHUB_RAW_BASE}/vstone/__init__.py?_t={ts}", timeout=15)
+            init_bytes = _http_get_bytes(f"{raw_ref_base}/vstone/__init__.py?_t={ts}", timeout=15)
             with open(os.path.join(vstone_dir, "__init__.py"), "wb") as f:
                 f.write(init_bytes)
+            if os.path.isdir(aio_vstone_dir):
+                with open(os.path.join(aio_vstone_dir, "__init__.py"), "wb") as f:
+                    f.write(init_bytes)
         except Exception:
             pass
 
-        # 3. Đồng bộ danh sách Workflows qua raw CDN (chỉ tải những file chưa có hoặc khi force=True)
+        # 3. Đồng bộ danh sách Workflows theo commit mới nhất
         wf_list = list(DEFAULT_SYNC_WORKFLOWS)
         try:
-            manifest_bytes = _http_get_bytes(f"{GITHUB_RAW_BASE}/sync_manifest.json?_t={ts}", timeout=10)
+            manifest_bytes = _http_get_bytes(f"{raw_ref_base}/sync_manifest.json?_t={ts}", timeout=10)
             manifest_data = json.loads(manifest_bytes.decode("utf-8"))
             if isinstance(manifest_data.get("workflows"), list):
                 wf_list = manifest_data["workflows"]
@@ -206,7 +243,7 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 continue
             try:
                 os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
-                wf_bytes = _http_get_bytes(f"{GITHUB_RAW_BASE}/{path}?_t={ts}", timeout=15)
+                wf_bytes = _http_get_bytes(f"{raw_ref_base}/{path}?_t={ts}", timeout=15)
                 with open(dst_wf, "wb") as f:
                     f.write(wf_bytes)
                 wf_count += 1
@@ -224,16 +261,16 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             if new_classes:
                 nodes.NODE_CLASS_MAPPINGS.update(new_classes)
                 nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
-                logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM")
+                logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM: {list(new_classes.keys())}")
         except Exception as e:
             logs.append(f"Hot-reload warning: {e}")
 
         _LAST_SYNCED_HASH = new_hash
-        msg = f"[VStone Cloud Sync] Đồng bộ thành công qua CDN ({new_hash}, {wf_count} workflows)! Nhấn phím R hoặc F5 trên trình duyệt để làm mới."
+        msg = f"[VStone Cloud Sync] Đồng bộ thành công commit {new_hash} ({wf_count} workflows)! Nhấn phím R hoặc F5 trên trình duyệt để làm mới."
         print(msg)
         return msg + "\n" + "\n".join(logs)
     except Exception as e:
-        err_msg = f"[VStone Cloud Sync] Lỗi kết nối CDN: {e}"
+        err_msg = f"[VStone Cloud Sync] Lỗi kết nối: {e}"
         return err_msg
 
 

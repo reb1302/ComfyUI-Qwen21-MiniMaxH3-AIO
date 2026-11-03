@@ -17,25 +17,64 @@ PORT="${1:-8188}"
 source "$COMFY_DIR/venv/bin/activate"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
-# Tu dong keo VStone Node & Workflows moi nhat tu GitHub (Laptop <-> H200)
-echo "[SYNC] Dang dong bo VStone Nodes & Workflows moi nhat tu GitHub..."
-mkdir -p "$COMFY_DIR/custom_nodes/vstone"
-curl -4 -sL "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/main/vstone/node_helper_vstone.py" -o "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" || true
-curl -4 -sL "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/main/vstone/__init__.py" -o "$COMFY_DIR/custom_nodes/vstone/__init__.py" || true
-cp -f "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/node_helper_vstone.py" 2>/dev/null || true
+# 1. Tu dong git pull neu dang dung trong repo ComfyUI-Qwen21-MiniMaxH3-AIO
+REPO_DIR=""
+if [ -d "$SCRIPT_DIR/.git" ]; then
+    REPO_DIR="$SCRIPT_DIR"
+elif [ -d "$COMFY_DIR/../ComfyUI-Qwen21-MiniMaxH3-AIO/.git" ]; then
+    REPO_DIR="$(cd "$COMFY_DIR/../ComfyUI-Qwen21-MiniMaxH3-AIO" && pwd)"
+fi
 
-# Tu dong kiem tra neu sageattention da cai thanh cong thi bat --use-sage-attention
+if [ -n "$REPO_DIR" ]; then
+    echo "[SYNC] Dang git pull code moi nhat tai $REPO_DIR ..."
+    git -C "$REPO_DIR" pull --ff-only || true
+fi
+
+# 2. Copy truc tiep node_helper_vstone.py vao CA 3 vi tri trong ComfyUI/custom_nodes/
+echo "[SYNC] Dang cap nhat VStone Nodes & Workflows vao $COMFY_DIR/custom_nodes/ ..."
+mkdir -p "$COMFY_DIR/custom_nodes/vstone"
+mkdir -p "$COMFY_DIR/user/default/workflows"
+
+if [ -n "$REPO_DIR" ] && [ -f "$REPO_DIR/vstone/node_helper_vstone.py" ]; then
+    cp -f "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py"
+    cp -f "$REPO_DIR/vstone/__init__.py" "$COMFY_DIR/custom_nodes/vstone/__init__.py"
+    cp -f "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/node_helper_vstone.py"
+    if [ -d "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO" ]; then
+        mkdir -p "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone"
+        cp -f "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/node_helper_vstone.py"
+        cp -f "$REPO_DIR/vstone/__init__.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/__init__.py"
+    fi
+    if [ -d "$REPO_DIR/workflows" ]; then
+        cp -rf "$REPO_DIR/workflows/"* "$COMFY_DIR/user/default/workflows/" 2>/dev/null || true
+    fi
+    # Dong bo luon file start_h200.sh sang thu muc ComfyUI
+    if [ "$SCRIPT_DIR/start_h200.sh" != "$COMFY_DIR/start_h200.sh" ]; then
+        cp -f "$REPO_DIR/start_h200.sh" "$COMFY_DIR/start_h200.sh" 2>/dev/null || true
+        chmod +x "$COMFY_DIR/start_h200.sh" 2>/dev/null || true
+    fi
+else
+    SHA=$(git ls-remote https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO.git refs/heads/main 2>/dev/null | awk '{print $1}')
+    REF="${SHA:-main}"
+    curl -4 -sL "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/$REF/vstone/node_helper_vstone.py" -o "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" || true
+    curl -4 -sL "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/$REF/vstone/__init__.py" -o "$COMFY_DIR/custom_nodes/vstone/__init__.py" || true
+    cp -f "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/node_helper_vstone.py" 2>/dev/null || true
+    if [ -d "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone" ]; then
+        cp -f "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/node_helper_vstone.py" 2>/dev/null || true
+    fi
+fi
+
+# 3. Tu dong kiem tra neu sageattention da cai thanh cong thi bat --use-sage-attention
 ATTN_FLAG=""
 if python -c "import sageattention" &> /dev/null; then
     echo "[INFO] Phat hien SageAttention da san sang -> Bat --use-sage-attention"
     ATTN_FLAG="--use-sage-attention"
 else
-    echo "[INFO] SageAttention chua duoc bien dich -> Su dung PyTorch Native FlashAttention/SDPA (khong bi vang)"
+    echo "[INFO] Su dung PyTorch Native FlashAttention/SDPA"
 fi
 
 echo "=============================================================================="
 echo "  Khoi dong ComfyUI tren NVIDIA H200 (Port: $PORT, Mode: --highvram $ATTN_FLAG)"
-echo "  Auto-Sync Daemon: Tu dong cap nhat Node & Workflow tu Laptop moi 30 giay!"
+echo "  Da dong bo day du VStone ScreenX Nodes vao $COMFY_DIR/custom_nodes/"
 echo "=============================================================================="
 python "$COMFY_DIR/main.py" --listen 0.0.0.0 --port "$PORT" --highvram $ATTN_FLAG
 read -rp "Nhan Enter de dong cua so..."
