@@ -1415,10 +1415,18 @@ def blend_restore_original_tensor(
     return out
 
 
+def _align_minimax_h3_frames(n: int) -> int:
+    """Làm tròn số frame theo lưới 17k + 5 chuẩn của MiniMax-H3 Video VAE (5, 22, 39, 56, 73, 90, 107, 124...)."""
+    n = max(5, int(n))
+    while n % 17 != 5:
+        n += 1
+    return n
+
+
 # ==============================================================================
-# NODE 1: VStone Outpaint (Tạo vùng bù tổng hợp)
+# NODE 1: stoneV Outpaint (Tạo vùng bù tổng hợp)
 # ==============================================================================
-class VStone_Outpaint_Pad:
+class stoneV_Outpaint_Pad:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -1472,7 +1480,7 @@ class VStone_Outpaint_Pad:
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
     RETURN_NAMES = ("image", "mask", "width", "height")
     FUNCTION = "outpaint_pad"
-    CATEGORY = "vstone"
+    CATEGORY = "stoneV"
 
     @classmethod
     def VALIDATE_INPUTS(cls, **kwargs):
@@ -1514,9 +1522,9 @@ class VStone_Outpaint_Pad:
 
 
 # ==============================================================================
-# NODE 1A: VStone Mở Rộng Trái (Lấy 1/2 Tấm Gốc Bên Trái + Vùng Xám 1.3x)
+# NODE 1A: stoneV Mở Rộng Trái (Lấy 1/2 Tấm Gốc Bên Trái + Vùng Xám 1.3x)
 # ==============================================================================
-class VStone_ExtendLeft_1xWidth:
+class stoneV_ExtendLeft_1xWidth:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -1550,7 +1558,7 @@ class VStone_ExtendLeft_1xWidth:
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
     RETURN_NAMES = ("image", "mask", "width", "height")
     FUNCTION = "extend_left"
-    CATEGORY = "vstone"
+    CATEGORY = "stoneV"
 
     @classmethod
     def VALIDATE_INPUTS(cls, **kwargs):
@@ -1585,9 +1593,9 @@ class VStone_ExtendLeft_1xWidth:
 
 
 # ==============================================================================
-# NODE 1B: VStone Mở Rộng Phải (Lấy 1/2 Tấm Gốc Bên Phải + Vùng Xám 1.3x)
+# NODE 1B: stoneV Mở Rộng Phải (Lấy 1/2 Tấm Gốc Bên Phải + Vùng Xám 1.3x)
 # ==============================================================================
-class VStone_ExtendRight_1xWidth:
+class stoneV_ExtendRight_1xWidth:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -1621,7 +1629,7 @@ class VStone_ExtendRight_1xWidth:
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
     RETURN_NAMES = ("image", "mask", "width", "height")
     FUNCTION = "extend_right"
-    CATEGORY = "vstone"
+    CATEGORY = "stoneV"
 
     @classmethod
     def VALIDATE_INPUTS(cls, **kwargs):
@@ -1656,9 +1664,9 @@ class VStone_ExtendRight_1xWidth:
 
 
 # ==============================================================================
-# NODE 2: VStone ScreenX Combine 3 Tấm (2 Trái + 1 Giữa Gốc + 3 Phải)
+# NODE 2: stoneV ScreenX Combine 3 Tấm (2 Trái + 1 Giữa Gốc + 3 Phải)
 # ==============================================================================
-class VStone_ScreenX_Combine3:
+class stoneV_ScreenX_Combine3:
     """
     Ghép 3 tấm ảnh chuẩn ScreenX [2 Trái | 1 Giữa Gốc | 3 Phải]:
     - Giữ nguyên tấm giữa (1) gốc đầy đủ (W x H).
@@ -1721,7 +1729,7 @@ class VStone_ScreenX_Combine3:
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "MASK")
     RETURN_NAMES = ("combined_screenx", "left_wing_2", "center_1", "right_wing_3", "screenx_mask")
     FUNCTION = "combine_screenx"
-    CATEGORY = "vstone"
+    CATEGORY = "stoneV"
 
     @classmethod
     def VALIDATE_INPUTS(cls, **kwargs):
@@ -1757,9 +1765,9 @@ class VStone_ScreenX_Combine3:
 
 
 # ==============================================================================
-# NODE 3: VStone Cloud Sync & Model Downloader (Cầu nối Laptop <-> H200 Hàn Quốc)
+# NODE 3: stoneV Cloud Sync & Model Downloader (Cầu nối Laptop <-> H200 Hàn Quốc)
 # ==============================================================================
-class VStone_CloudSyncHub:
+class stoneV_CloudSyncHub:
     """
     Node điều khiển đồng bộ trực tiếp giữa Laptop (Antigravity) và Server H200 Hàn Quốc:
     - Tự kéo Custom Node & Workflow JSON mới nhất từ GitHub và nạp nóng vào RAM ComfyUI.
@@ -1805,7 +1813,7 @@ class VStone_CloudSyncHub:
     RETURN_NAMES = ("status_report",)
     FUNCTION = "run_sync"
     OUTPUT_NODE = True
-    CATEGORY = "vstone"
+    CATEGORY = "stoneV"
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
@@ -1848,21 +1856,134 @@ class VStone_CloudSyncHub:
         return {"ui": {"text": [final_report]}, "result": (final_report,)}
 
 
-# Danh sách Node tinh gọn chuẩn ScreenX (đánh số thứ tự 1A -> 1B -> 2 -> 3)
+# ==============================================================================
+# NODE 4: stoneV Seamless Restore & Video Outpaint Prepare
+# ==============================================================================
+class stoneV_SeamlessRestore:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "original_image": ("IMAGE",),
+                "generated_extended_image": ("IMAGE",),
+                "outpaint_mask": ("MASK",),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("final_extended_image",)
+    FUNCTION = "restore"
+    CATEGORY = "stoneV"
+
+    def restore(self, original_image: torch.Tensor, generated_extended_image: torch.Tensor, outpaint_mask: torch.Tensor):
+        return (blend_restore_original_tensor(original_image, generated_extended_image, outpaint_mask),)
+
+
+class stoneV_Video_Outpaint_Prepare:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "expanded_image": ("IMAGE",),
+                "narrow_video": ("IMAGE",),
+                "add_left_widths": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.1}),
+                "add_right_widths": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.1}),
+                "outer_height_ratio": ("FLOAT", {"default": 1.3, "min": 1.0, "max": 2.5, "step": 0.05}),
+                "target_megapixels": ("FLOAT", {"default": 0.98, "min": 0.0, "max": 4.0, "step": 0.02}),
+                "fill_color": (COLOR_CHOICES, {"default": COLOR_CHOICES[0]}),
+                "feather_mask_px": ("INT", {"default": 16, "min": 0, "max": 256, "step": 4}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "MASK", "INT", "INT", "INT")
+    RETURN_NAMES = ("expanded_ref_image", "padded_source_video", "outpaint_mask", "width", "height", "length")
+    FUNCTION = "prepare_video_outpaint"
+    CATEGORY = "stoneV"
+
+    def prepare_video_outpaint(
+        self,
+        expanded_image: torch.Tensor,
+        narrow_video: torch.Tensor,
+        add_left_widths: float = 1.0,
+        add_right_widths: float = 1.0,
+        outer_height_ratio: float = 1.3,
+        target_megapixels: float = 0.98,
+        fill_color: str = COLOR_CHOICES[0],
+        feather_mask_px: int = 16,
+    ):
+        padded_vid, mask, raw_w, raw_h = vstone_outpaint_pad_tensor(
+            image=narrow_video,
+            add_left_ratio=add_left_widths,
+            add_right_ratio=add_right_widths,
+            keep_orig_ratio=1.0,
+            outer_height_ratio=outer_height_ratio,
+            fill_color=fill_color,
+            feather_mask_px=feather_mask_px,
+        )
+        if target_megapixels > 0.05:
+            aspect = float(raw_w) / float(max(1, raw_h))
+            target_pixels = float(target_megapixels) * 1_000_000.0
+            out_h = max(256, int(round(math.sqrt(target_pixels / aspect) / 32.0)) * 32)
+            out_w = max(256, int(round((out_h * aspect) / 32.0)) * 32)
+        else:
+            out_w = max(256, int(round(raw_w / 32.0)) * 32)
+            out_h = max(256, int(round(raw_h / 32.0)) * 32)
+
+        if padded_vid.shape[1] != out_h or padded_vid.shape[2] != out_w:
+            padded_vid = _resize_bhwc(padded_vid, out_h, out_w)
+            mask = F.interpolate(mask.unsqueeze(1), size=(out_h, out_w), mode="bilinear", align_corners=False).squeeze(1).clamp(0.0, 1.0)
+
+        exp_rgb = expanded_image[:, :, :, :3].to(device=padded_vid.device, dtype=padded_vid.dtype)
+        if exp_rgb.shape[1] != out_h or exp_rgb.shape[2] != out_w:
+            exp_rgb = _resize_bhwc(exp_rgb, out_h, out_w)
+
+        length = _align_minimax_h3_frames(int(narrow_video.shape[0]))
+        return (exp_rgb, padded_vid, mask, out_w, out_h, length)
+
+
+# Alias ngược để tương thích 100% với cả hai tên stoneV và VStone
+VStone_Outpaint_Pad = stoneV_Outpaint_Pad
+VStone_ExtendLeft_1xWidth = stoneV_ExtendLeft_1xWidth
+VStone_ExtendRight_1xWidth = stoneV_ExtendRight_1xWidth
+VStone_ScreenX_Combine3 = stoneV_ScreenX_Combine3
+VStone_CloudSyncHub = stoneV_CloudSyncHub
+VStone_SeamlessRestore = stoneV_SeamlessRestore
+VStone_Video_Outpaint_Prepare = stoneV_Video_Outpaint_Prepare
+
 VSTONE_NODE_CLASS_MAPPINGS = {
-    "VStone_ExtendLeft_1xWidth": VStone_ExtendLeft_1xWidth,
-    "VStone_ExtendRight_1xWidth": VStone_ExtendRight_1xWidth,
-    "VStone_ScreenX_Combine3": VStone_ScreenX_Combine3,
-    "VStone_CloudSyncHub": VStone_CloudSyncHub,
-    "VStone_Outpaint_Pad": VStone_Outpaint_Pad,
+    "stoneV_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
+    "stoneV_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
+    "stoneV_ScreenX_Combine3": stoneV_ScreenX_Combine3,
+    "stoneV_CloudSyncHub": stoneV_CloudSyncHub,
+    "stoneV_Outpaint_Pad": stoneV_Outpaint_Pad,
+    "stoneV_SeamlessRestore": stoneV_SeamlessRestore,
+    "stoneV_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
+    # Backward compatibility aliases
+    "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
+    "VStone_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
+    "VStone_ScreenX_Combine3": stoneV_ScreenX_Combine3,
+    "VStone_CloudSyncHub": stoneV_CloudSyncHub,
+    "VStone_Outpaint_Pad": stoneV_Outpaint_Pad,
+    "VStone_SeamlessRestore": stoneV_SeamlessRestore,
+    "VStone_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
 }
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
-    "VStone_ExtendLeft_1xWidth": "VStone 1A: Mở Rộng Trái (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
-    "VStone_ExtendRight_1xWidth": "VStone 1B: Mở Rộng Phải (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
-    "VStone_ScreenX_Combine3": "VStone 2: Combine 3 Tấm Thành ScreenX (2 Trái + 1 Giữa + 3 Phải)",
-    "VStone_CloudSyncHub": "VStone 3: Cloud Sync & Tải LoRA (Laptop <-> H200)",
-    "VStone_Outpaint_Pad": "VStone: Outpaint Tạo Vùng Bù (Tùy Chỉnh Trái / Phải)",
+    "stoneV_ExtendLeft_1xWidth": "stoneV 1A: Mở Rộng Trái (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
+    "stoneV_ExtendRight_1xWidth": "stoneV 1B: Mở Rộng Phải (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
+    "stoneV_ScreenX_Combine3": "stoneV 2: Combine 3 Tấm Thành ScreenX (2 Trái + 1 Giữa + 3 Phải)",
+    "stoneV_CloudSyncHub": "stoneV 3: Cloud Sync & Tải LoRA (Laptop <-> H200)",
+    "stoneV_Outpaint_Pad": "stoneV: Outpaint Tạo Vùng Bù (Tùy Chỉnh Trái / Phải)",
+    "stoneV_SeamlessRestore": "stoneV: Ghép Khôi Phục Nét Gốc (Image / Video)",
+    "stoneV_Video_Outpaint_Prepare": "stoneV: Chuẩn Bị Video Outpaint (1 Ảnh Mở Rộng + 1 Video Hẹp)",
+    # Backward compatibility aliases
+    "VStone_ExtendLeft_1xWidth": "stoneV 1A: Mở Rộng Trái (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
+    "VStone_ExtendRight_1xWidth": "stoneV 1B: Mở Rộng Phải (Lấy 1/2 Tấm Gốc + Vùng Xám 1.3x)",
+    "VStone_ScreenX_Combine3": "stoneV 2: Combine 3 Tấm Thành ScreenX (2 Trái + 1 Giữa + 3 Phải)",
+    "VStone_CloudSyncHub": "stoneV 3: Cloud Sync & Tải LoRA (Laptop <-> H200)",
+    "VStone_Outpaint_Pad": "stoneV: Outpaint Tạo Vùng Bù (Tùy Chỉnh Trái / Phải)",
+    "VStone_SeamlessRestore": "stoneV: Ghép Khôi Phục Nét Gốc (Image / Video)",
+    "VStone_Video_Outpaint_Prepare": "stoneV: Chuẩn Bị Video Outpaint (1 Ảnh Mở Rộng + 1 Video Hẹp)",
 }
 
 NODE_CLASS_MAPPINGS = VSTONE_NODE_CLASS_MAPPINGS
