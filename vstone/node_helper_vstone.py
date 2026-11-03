@@ -2950,6 +2950,52 @@ class stoneV_Split3_Pick:
         return (image[:, :, :part] if side == "left" else image[:, :, width - part :],)
 
 
+class stoneV_ScreenX_Split:
+    """Cắt video đã outpaint thành trái, giữa, phải theo khổ ScreenX, kèm bản xem thử ghép 3 mặt hình thang."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "Video đã outpaint, ví dụ ảnh sau VAEDecode của workflow chính thức."}),
+                "wing_width_ratio": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.05, "tooltip": "Chiều rộng mỗi bên so với phần giữa."}),
+                "outer_height_ratio": ("FLOAT", {"default": 1.3, "min": 1.0, "max": 2.5, "step": 0.05, "tooltip": "Chiều cao video so với phần giữa."}),
+            },
+            "optional": {
+                "original_center": ("IMAGE", {"tooltip": "Video gốc. Nếu nối vào thì phần giữa dùng đúng pixel gốc thay vì phần đã qua model."}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("left", "center", "right", "preview")
+    FUNCTION = "split"
+    CATEGORY = "stoneV"
+
+    def split(self, images: torch.Tensor, wing_width_ratio: float, outer_height_ratio: float, original_center: torch.Tensor | None = None):
+        frames = images[:, :, :, :3]
+        _, height, width, _ = frames.shape
+        center_w = int(round(width / (1.0 + 2.0 * wing_width_ratio)))
+        wing_w = (width - center_w) // 2
+        center_h = int(round(height / outer_height_ratio))
+        top = (height - center_h) // 2
+
+        left = frames[:, :, :wing_w]
+        right = frames[:, :, wing_w + center_w : wing_w + center_w + wing_w]
+        center = frames[:, top : top + center_h, wing_w : wing_w + center_w]
+        if original_center is not None:
+            center = original_center[: frames.shape[0], :, :, :3]
+
+        preview = vstone_screenx_combine3_tensor(
+            center,
+            left,
+            right,
+            outer_height_ratio=outer_height_ratio,
+            wing_width_ratio=wing_width_ratio,
+            blend_width_px=0,
+        )[0]
+        return (left, center, right, preview)
+
+
 # Backward compatibility aliases
 VStone_Outpaint_Pad = stoneV_Outpaint_Pad
 VStone_ExtendLeft_1xWidth = stoneV_ExtendLeft_1xWidth
@@ -2970,6 +3016,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_MinimaxH3_LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
     "stoneV_H3_Gen_Video": stoneV_H3_Gen_Video,
     "stoneV_Split3_Pick": stoneV_Split3_Pick,
+    "stoneV_ScreenX_Split": stoneV_ScreenX_Split,
     "stoneV_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "stoneV_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "stoneV_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -2995,6 +3042,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "VStone_MinimaxH3_LatentUpscaler3D": "stoneV Minimax H3 Latent Upscaler (3D)",
     "stoneV_H3_Gen_Video": "stoneV: MiniMax-H3 Gen Video",
     "stoneV_Split3_Pick": "stoneV: Split Image in 3 (Pick Left / Right)",
+    "stoneV_ScreenX_Split": "stoneV: ScreenX Split Video (Left / Center / Right)",
     "stoneV_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
     "stoneV_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
     "stoneV_ScreenX_Combine3": "stoneV 2: ScreenX Combine 3 Plates (Left + Center + Right)",
