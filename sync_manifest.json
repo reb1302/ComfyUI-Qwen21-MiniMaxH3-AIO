@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-03T14:27:00+07:00",
+  "updated_at": "2026-11-03T14:58:00+07:00",
   "loras": [
     {
       "filename": "High quality.safetensors",
@@ -15,9 +15,27 @@
       "filename": "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
       "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
       "folder": "loras"
+    },
+    {
+      "filename": "4x-UltraSharp.safetensors",
+      "url": "https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors",
+      "folder": "upscale_models"
+    },
+    {
+      "filename": "minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+      "url": "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
+      "folder": "latent_upscale_models"
     }
   ],
   "workflows": [
+    "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
+    "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
+    "workflows/minimax_h3/video_minimax_h3_seedhunter_v251_clean.json",
     "workflows/minimax_h3/image_minimax_h3_t2i.json",
     "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
     "workflows/minimax_h3/video_minimax_h3_stoneV_outpaint_ref.json",
