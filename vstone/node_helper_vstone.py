@@ -3044,6 +3044,29 @@ class stoneV_H3_Gen_Video:
         return (output, images)
 
 
+class stoneV_Split3_Pick:
+    """Chia ảnh (hoặc từng frame video) thành 3 phần bằng nhau theo chiều ngang, lấy phần trái hoặc phải."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "side": (["left", "right"], {"default": "left"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "split"
+    CATEGORY = "stoneV"
+
+    def split(self, image: torch.Tensor, side: str):
+        width = image.shape[2]
+        part = width // 3
+        return (image[:, :, :part] if side == "left" else image[:, :, width - part :],)
+
+
 # Backward compatibility aliases
 VStone_Outpaint_Pad = stoneV_Outpaint_Pad
 VStone_ExtendLeft_1xWidth = stoneV_ExtendLeft_1xWidth
@@ -3063,6 +3086,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_MinimaxH3_LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
     "VStone_MinimaxH3_LatentUpscaler3D": MinimaxH3LatentUpscaler3D,
     "stoneV_H3_Gen_Video": stoneV_H3_Gen_Video,
+    "stoneV_Split3_Pick": stoneV_Split3_Pick,
     "stoneV_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "stoneV_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "stoneV_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -3087,6 +3111,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "stoneV_MinimaxH3_LatentUpscaler3D": "stoneV Minimax H3 Latent Upscaler (3D)",
     "VStone_MinimaxH3_LatentUpscaler3D": "stoneV Minimax H3 Latent Upscaler (3D)",
     "stoneV_H3_Gen_Video": "stoneV: MiniMax-H3 Gen Video",
+    "stoneV_Split3_Pick": "stoneV: Split Image in 3 (Pick Left / Right)",
     "stoneV_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
     "stoneV_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
     "stoneV_ScreenX_Combine3": "stoneV 2: ScreenX Combine 3 Plates (Left + Center + Right)",
