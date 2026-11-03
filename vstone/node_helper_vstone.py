@@ -332,10 +332,63 @@ def create_solid_pad_tensor(
     return pad
 
 
+OUTER_BG_CHOICES = [
+    "black (#000000 - Nền ngoài hình thang màu Đen)",
+    "white (#FFFFFF - Nền ngoài hình thang màu Trắng)",
+    "fill_full_wing (Tô tràn màu vùng bù cả khung chữ nhật cánh)",
+]
+
+
+def _parse_outer_bg_rgb(outer_bg_mode: str, pad_rgb: tuple[float, float, float]) -> tuple[float, float, float]:
+    mode = (outer_bg_mode or "").lower()
+    if mode.startswith("white"):
+        return (1.0, 1.0, 1.0)
+    if mode.startswith("fill_full_wing"):
+        return pad_rgb
+    return (0.0, 0.0, 0.0)
+
+
+def _build_screenx_wing_trapezoid_mask(
+    new_H: int,
+    wing_W: int,
+    pad_top: int,
+    inner_H: int,
+    pad_bottom: int,
+    side: str,
+    device: Any,
+    dtype: Any,
+) -> torch.Tensor:
+    """
+    Tạo mask hình thang cân cho cánh Trái ('left') hoặc cánh Phải ('right') chuẩn ScreenX:
+    - Cạnh sát mép tấm giữa (1): cao đúng bằng `inner_H` (từ `pad_top` đến `pad_top + inner_H`).
+    - Cạnh biên ngoài cùng: bung rộng toàn chiều cao `new_H` (từ `0` đến `new_H`, tức `outer_height_ratio * inner_H`).
+    Trả về tensor 2D [new_H, wing_W] giá trị 1.0 trong hình thang, 0.0 ngoài hình thang.
+    """
+    if wing_W <= 0 or new_H <= 0:
+        return torch.zeros((max(0, new_H), max(0, wing_W)), dtype=dtype, device=device)
+
+    y = torch.arange(new_H, device=device, dtype=torch.float32).unsqueeze(1)
+    if wing_W == 1:
+        t = torch.ones((1, 1), device=device, dtype=torch.float32)
+    elif side == "left":
+        # x = 0 là cạnh biên ngoài (t = 1.0), x = wing_W - 1 là cạnh sát tấm giữa 1 (t = 0.0)
+        t = torch.linspace(1.0, 0.0, steps=wing_W, device=device, dtype=torch.float32).unsqueeze(0)
+    else:
+        # x = 0 là cạnh sát tấm giữa 1 (t = 0.0), x = wing_W - 1 là cạnh biên ngoài (t = 1.0)
+        t = torch.linspace(0.0, 1.0, steps=wing_W, device=device, dtype=torch.float32).unsqueeze(0)
+
+    y_top = float(pad_top) * (1.0 - t)
+    y_bot = float(pad_top + inner_H) + float(pad_bottom) * t
+    inside = (y >= (y_top - 0.5)) & (y < (y_bot + 0.5))
+    return inside.to(dtype=dtype)
+
+
 def vstone_outpaint_pad_tensor(
     image: torch.Tensor,
     add_left_ratio: float = 0.0,
     add_right_ratio: float = 0.0,
+    outer_height_ratio: float = 1.3,
+    outer_bg_color: str = OUTER_BG_CHOICES[0],
     extra_left_px: int = 0,
     extra_right_px: int = 0,
     extra_top_px: int = 0,
@@ -346,9 +399,12 @@ def vstone_outpaint_pad_tensor(
     base_image_for_width: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, int, int]:
     """
-    Nhận 1 tấm ảnh [B, H, W, C]:
-    - Giữ nguyên 100% từng pixel của ảnh gốc (không resize, không blur).
-    - Mở rộng tạo vùng bù bên Trái / bên Phải (theo tỷ lệ chiều rộng W hoặc số pixel) và tô màu đã chọn.
+    Nhận 1 tấm ảnh gốc [B, H, W, C] (Tấm 1 ở giữa):
+    - Giữ nguyên 100% từng pixel của tấm gốc 1 (không resize, không blur).
+    - Mở rộng tạo vùng bù cánh Trái (2) và/hoặc cánh Phải (3):
+      + Cạnh sát mép tấm 1 có chiều cao = 1.0 * H (bằng khung rộng gốc).
+      + Cạnh biên ngoài cùng bung rộng theo `outer_height_ratio` (ví dụ 1.3 * H).
+      + Vùng bù hình thang được tô màu đã chọn (Xám #808080 / Đỏ / Xanh).
     - Trả về (padded_image [B, new_H, new_W, 3], outpaint_mask [B, new_H, new_W], new_W, new_H).
     """
     if image.ndim != 4:
@@ -363,22 +419,63 @@ def vstone_outpaint_pad_tensor(
 
     pad_left = max(0, int(round(unit_W * float(add_left_ratio))) + int(extra_left_px))
     pad_right = max(0, int(round(unit_W * float(add_right_ratio))) + int(extra_right_px))
-    pad_top = max(0, int(extra_top_px))
-    pad_bottom = max(0, int(extra_bottom_px))
 
-    rgb = _parse_fill_rgb(fill_color, custom_hex)
+    # Tính độ bung chiều cao ở cạnh biên theo outer_height_ratio (ví dụ 1.3x)
+    effective_ratio = max(1.0, float(outer_height_ratio)) if (pad_left > 0 or pad_right > 0) else 1.0
+    target_outer_H = max(H, int(round(H * effective_ratio)))
+    flare_extra_H = max(0, target_outer_H - H)
+    flare_top = flare_extra_H // 2
+    flare_bottom = flare_extra_H - flare_top
 
-    left_block = create_solid_pad_tensor(B, H, pad_left, C, rgb, device, dtype)
-    right_block = create_solid_pad_tensor(B, H, pad_right, C, rgb, device, dtype)
-    row_img = torch.cat([left_block, orig_rgb, right_block], dim=2)
+    pad_top = flare_top + max(0, int(extra_top_px))
+    pad_bottom = flare_bottom + max(0, int(extra_bottom_px))
+
     new_W = pad_left + W + pad_right
-
-    top_block = create_solid_pad_tensor(B, pad_top, new_W, C, rgb, device, dtype)
-    bottom_block = create_solid_pad_tensor(B, pad_bottom, new_W, C, rgb, device, dtype)
-    padded_image = torch.cat([top_block, row_img, bottom_block], dim=1)
     new_H = pad_top + H + pad_bottom
 
-    mask = torch.ones((B, new_H, new_W), dtype=dtype, device=device)
+    pad_rgb = _parse_fill_rgb(fill_color, custom_hex)
+    bg_rgb = _parse_outer_bg_rgb(outer_bg_color, pad_rgb)
+    is_full_wing_fill = (outer_bg_color or "").lower().startswith("fill_full_wing")
+
+    # Khởi tạo toàn bộ khung nền bằng màu nền ngoài (Đen / Trắng)
+    padded_image = create_solid_pad_tensor(B, new_H, new_W, C, bg_rgb, device, dtype)
+    mask = torch.zeros((B, new_H, new_W), dtype=dtype, device=device)
+
+    fill_pixel = torch.tensor(pad_rgb[:C], dtype=dtype, device=device).view(1, 1, 1, C)
+
+    # Tô vùng bù hình thang bên Trái (Cánh 2: cạnh sát tấm 1 = H, cạnh biên trái = new_H)
+    if pad_left > 0:
+        trap_l = _build_screenx_wing_trapezoid_mask(new_H, pad_left, pad_top, H, pad_bottom, "left", device, dtype)
+        if is_full_wing_fill:
+            padded_image[:, :, :pad_left, :] = fill_pixel
+            mask[:, :, :pad_left] = 1.0
+        else:
+            trap_l_4d = trap_l.unsqueeze(0).unsqueeze(-1)
+            padded_image[:, :, :pad_left, :] = padded_image[:, :, :pad_left, :] * (1.0 - trap_l_4d) + fill_pixel * trap_l_4d
+            mask[:, :, :pad_left] = trap_l.unsqueeze(0).expand(B, -1, -1)
+
+    # Tô vùng bù hình thang bên Phải (Cánh 3: cạnh sát tấm 1 = H, cạnh biên phải = new_H)
+    if pad_right > 0:
+        trap_r = _build_screenx_wing_trapezoid_mask(new_H, pad_right, pad_top, H, pad_bottom, "right", device, dtype)
+        x0 = pad_left + W
+        if is_full_wing_fill:
+            padded_image[:, :, x0:, :] = fill_pixel
+            mask[:, :, x0:] = 1.0
+        else:
+            trap_r_4d = trap_r.unsqueeze(0).unsqueeze(-1)
+            padded_image[:, :, x0:, :] = padded_image[:, :, x0:, :] * (1.0 - trap_r_4d) + fill_pixel * trap_r_4d
+            mask[:, :, x0:] = trap_r.unsqueeze(0).expand(B, -1, -1)
+
+    # Nếu người dùng cộng thêm extra_top_px / extra_bottom_px trực tiếp ở vùng giữa
+    if extra_top_px > 0 and flare_extra_H == 0:
+        padded_image[:, :pad_top, pad_left : pad_left + W, :] = fill_pixel
+        mask[:, :pad_top, pad_left : pad_left + W] = 1.0
+    if extra_bottom_px > 0 and flare_extra_H == 0:
+        padded_image[:, pad_top + H :, pad_left : pad_left + W, :] = fill_pixel
+        mask[:, pad_top + H :, pad_left : pad_left + W] = 1.0
+
+    # Đặt tấm ảnh gốc (1) vào chính giữa (giữ nguyên 100% độ nét gốc, mask = 0.0)
+    padded_image[:, pad_top : pad_top + H, pad_left : pad_left + W, :] = orig_rgb
     mask[:, pad_top : pad_top + H, pad_left : pad_left + W] = 0.0
 
     if feather_mask_px > 0:
@@ -401,6 +498,174 @@ def vstone_outpaint_pad_tensor(
             )
 
     return padded_image, mask, new_W, new_H
+
+
+def _resize_bhwc(img: torch.Tensor, target_h: int, target_w: int) -> torch.Tensor:
+    if img.shape[1] == target_h and img.shape[2] == target_w:
+        return img
+    nchw = img.movedim(-1, 1)
+    resized = F.interpolate(nchw, size=(target_h, target_w), mode="bicubic", align_corners=False)
+    return resized.movedim(1, -1).clamp(0.0, 1.0)
+
+
+def vstone_screenx_combine3_tensor(
+    center_image: torch.Tensor,
+    left_image: torch.Tensor | None = None,
+    right_image: torch.Tensor | None = None,
+    outer_height_ratio: float = 1.3,
+    wing_width_ratio: float = 1.0,
+    blend_width_px: int = 32,
+    center_priority: float = 0.75,
+    apply_trapezoid_clip: bool = True,
+    outer_bg_color: str = OUTER_BG_CHOICES[0],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Ghép 3 tấm chuẩn ScreenX [2 Trái | 1 Giữa Gốc | 3 Phải]:
+    - Tấm 1 (center_image): Giữ nguyên 100% ảnh gốc ở trung tâm.
+    - Tấm 2 (left_image) & Tấm 3 (right_image): Tự động nhận diện dù đầu vào là ảnh 2W (vừa gen từ Extend Left/Right)
+      hay ảnh 1W (chỉ riêng cánh), trích xuất đúng cánh 2 & 3.
+    - Hòa trộn nhẹ (blend) ở 2 đường giáp mí (2 <-> 1 và 1 <-> 3) với đường cong ưu tiên giữ tấm giữa 1 (`center_priority`).
+    - Cắt khung hình thang bung rộng `1.0 * H -> outer_height_ratio * H` (ví dụ 1.3x) ở 2 cánh.
+    """
+    center_rgb = center_image[:, :, :, :3]
+    B, H, W, C = center_rgb.shape
+    device = center_rgb.device
+    dtype = center_rgb.dtype
+
+    wing_W = max(1, int(round(W * float(wing_width_ratio))))
+    eff_ratio = max(1.0, float(outer_height_ratio))
+    new_H = max(H, int(round(H * eff_ratio)))
+    flare_extra = new_H - H
+    pad_top = flare_extra // 2
+    pad_bottom = flare_extra - pad_top
+    total_W = wing_W + W + wing_W
+
+    bg_rgb = _parse_outer_bg_rgb(outer_bg_color, (0.0, 0.0, 0.0))
+    combined = create_solid_pad_tensor(B, new_H, total_W, C, bg_rgb, device, dtype)
+
+    # --- 1. Trích xuất Cánh Trái (2) và phần giao thoa với Tấm Giữa (1) ---
+    left_wing = create_solid_pad_tensor(B, new_H, wing_W, C, bg_rgb, device, dtype)
+    left_center_overlap: torch.Tensor | None = None
+
+    if left_image is not None and left_image.ndim == 4:
+        l_rgb = left_image[:, :, :, :3].to(device=device, dtype=dtype)
+        if l_rgb.shape[0] != B:
+            l_rgb = l_rgb[:1].expand(B, -1, -1, -1) if l_rgb.shape[0] == 1 else l_rgb[:B]
+        _, l_H, l_W, _ = l_rgb.shape
+        norm_l_W = float(l_W) * (float(new_H) / float(max(l_H, 1)))
+
+        if norm_l_W >= (2.0 * wing_W + 0.5 * W):
+            # Trường hợp ảnh 3 màn (3W)
+            l_full = _resize_bhwc(l_rgb, new_H, total_W)
+            left_wing = l_full[:, :, :wing_W, :]
+            left_center_overlap = l_full[:, :, wing_W : wing_W + W, pad_top : pad_top + H] if False else l_full[:, pad_top : pad_top + H, wing_W : wing_W + W, :]
+        elif norm_l_W >= (wing_W + 0.45 * W):
+            # Trường hợp ảnh 2W từ nhánh Extend Left: [Cánh Trái 2 | Tấm Giữa 1_AI]
+            l_ext = _resize_bhwc(l_rgb, new_H, wing_W + W)
+            left_wing = l_ext[:, :, :wing_W, :]
+            left_center_overlap = l_ext[:, pad_top : pad_top + H, wing_W : wing_W + W, :]
+        else:
+            # Trường hợp ảnh 1W chỉ chứa riêng Cánh Trái 2
+            left_wing = _resize_bhwc(l_rgb, new_H, wing_W)
+
+    # --- 2. Trích xuất Cánh Phải (3) và phần giao thoa với Tấm Giữa (1) ---
+    right_wing = create_solid_pad_tensor(B, new_H, wing_W, C, bg_rgb, device, dtype)
+    right_center_overlap: torch.Tensor | None = None
+
+    if right_image is not None and right_image.ndim == 4:
+        r_rgb = right_image[:, :, :, :3].to(device=device, dtype=dtype)
+        if r_rgb.shape[0] != B:
+            r_rgb = r_rgb[:1].expand(B, -1, -1, -1) if r_rgb.shape[0] == 1 else r_rgb[:B]
+        _, r_H, r_W, _ = r_rgb.shape
+        norm_r_W = float(r_W) * (float(new_H) / float(max(r_H, 1)))
+
+        if norm_r_W >= (2.0 * wing_W + 0.5 * W):
+            # Trường hợp ảnh 3 màn (3W)
+            r_full = _resize_bhwc(r_rgb, new_H, total_W)
+            right_wing = r_full[:, :, wing_W + W :, :]
+            right_center_overlap = r_full[:, pad_top : pad_top + H, wing_W : wing_W + W, :]
+        elif norm_r_W >= (wing_W + 0.45 * W):
+            # Trường hợp ảnh 2W từ nhánh Extend Right: [Tấm Giữa 1_AI | Cánh Phải 3]
+            r_ext = _resize_bhwc(r_rgb, new_H, W + wing_W)
+            right_wing = r_ext[:, :, W : W + wing_W, :]
+            right_center_overlap = r_ext[:, pad_top : pad_top + H, :W, :]
+        else:
+            # Trường hợp ảnh 1W chỉ chứa riêng Cánh Phải 3
+            right_wing = _resize_bhwc(r_rgb, new_H, wing_W)
+
+    # --- 3. Hòa trộn nhẹ ở mép nối (2 <-> 1 và 1 <-> 3) ưu tiên giữ Tấm Giữa (1) ---
+    center_blended = center_rgb.clone()
+    b_px = max(0, min(int(blend_width_px), W // 2, wing_W // 2))
+    prio = max(0.50, min(0.98, float(center_priority)))
+
+    if b_px > 0:
+        # Đường cong trọng số w_center(u) tăng cực nhanh từ mép (u=0) vào trong tấm giữa (u=1)
+        # giúp xóa hoàn toàn đường cắt mà vẫn ưu tiên giữ tối đa chi tiết gốc của tấm 1.
+        u = torch.linspace(0.0, 1.0, steps=b_px, device=device, dtype=dtype)
+        smooth_u = 3.0 * (u ** 2) - 2.0 * (u ** 3)
+        gamma = max(0.20, 1.25 - prio)
+        w_start = prio * 0.55  # Ngay tại sát mép nối, tấm gốc 1 vẫn giữ ~40-54% trọng số
+        w_center_left = (w_start + (1.0 - w_start) * (smooth_u ** gamma)).view(1, 1, b_px, 1)
+
+        if left_center_overlap is not None:
+            # Blend nhẹ phần giao thoa vào mép trái của tấm 1 + khớp màu sát mép cánh 2
+            ai_slice_l = left_center_overlap[:, :, :b_px, :]
+            orig_slice_l = center_blended[:, :, :b_px, :]
+            center_blended[:, :, :b_px, :] = orig_slice_l * w_center_left + ai_slice_l * (1.0 - w_center_left)
+
+            # Khử độ lệch sáng nhẹ ở sát mép trong của Cánh Trái (2)
+            edge_diff_l = (center_blended[:, :, 0:1, :] - left_wing[:, pad_top : pad_top + H, -1:, :]) * prio
+            wing_decay_l = (1.0 - smooth_u).flip(0).view(1, 1, b_px, 1) * 0.5
+            left_wing[:, pad_top : pad_top + H, -b_px:, :] = (
+                left_wing[:, pad_top : pad_top + H, -b_px:, :] + edge_diff_l * wing_decay_l
+            ).clamp(0.0, 1.0)
+        elif left_image is not None:
+            # Nếu đầu vào chỉ là cánh 1W rời: tự động hòa trộn ánh sáng sát mép với cột đầu tiên của tấm 1
+            edge_diff_l = (center_blended[:, :, 0:1, :] - left_wing[:, pad_top : pad_top + H, -1:, :]) * prio
+            wing_decay_l = (1.0 - smooth_u).flip(0).view(1, 1, b_px, 1) * 0.75
+            left_wing[:, pad_top : pad_top + H, -b_px:, :] = (
+                left_wing[:, pad_top : pad_top + H, -b_px:, :] + edge_diff_l * wing_decay_l
+            ).clamp(0.0, 1.0)
+
+        w_center_right = w_center_left.flip(2)
+        if right_center_overlap is not None:
+            ai_slice_r = right_center_overlap[:, :, -b_px:, :]
+            orig_slice_r = center_blended[:, :, -b_px:, :]
+            center_blended[:, :, -b_px:, :] = orig_slice_r * w_center_right + ai_slice_r * (1.0 - w_center_right)
+
+            edge_diff_r = (center_blended[:, :, -1:, :] - right_wing[:, pad_top : pad_top + H, 0:1, :]) * prio
+            wing_decay_r = (1.0 - smooth_u).view(1, 1, b_px, 1) * 0.5
+            right_wing[:, pad_top : pad_top + H, :b_px, :] = (
+                right_wing[:, pad_top : pad_top + H, :b_px, :] + edge_diff_r * wing_decay_r
+            ).clamp(0.0, 1.0)
+        elif right_image is not None:
+            edge_diff_r = (center_blended[:, :, -1:, :] - right_wing[:, pad_top : pad_top + H, 0:1, :]) * prio
+            wing_decay_r = (1.0 - smooth_u).view(1, 1, b_px, 1) * 0.75
+            right_wing[:, pad_top : pad_top + H, :b_px, :] = (
+                right_wing[:, pad_top : pad_top + H, :b_px, :] + edge_diff_r * wing_decay_r
+            ).clamp(0.0, 1.0)
+
+    # --- 4. Áp dụng Mask Hình Thang ScreenX (1.0 * H -> outer_height_ratio * H) ---
+    trap_l = _build_screenx_wing_trapezoid_mask(new_H, wing_W, pad_top, H, pad_bottom, "left", device, dtype)
+    trap_r = _build_screenx_wing_trapezoid_mask(new_H, wing_W, pad_top, H, pad_bottom, "right", device, dtype)
+
+    screenx_mask = torch.zeros((B, new_H, total_W), dtype=dtype, device=device)
+    screenx_mask[:, :, :wing_W] = trap_l.unsqueeze(0).expand(B, -1, -1)
+    screenx_mask[:, pad_top : pad_top + H, wing_W : wing_W + W] = 1.0
+    screenx_mask[:, :, wing_W + W :] = trap_r.unsqueeze(0).expand(B, -1, -1)
+
+    if apply_trapezoid_clip and not (outer_bg_color or "").lower().startswith("fill_full_wing"):
+        bg_pixel = torch.tensor(bg_rgb[:C], dtype=dtype, device=device).view(1, 1, 1, C)
+        tl_4d = trap_l.unsqueeze(0).unsqueeze(-1)
+        tr_4d = trap_r.unsqueeze(0).unsqueeze(-1)
+        left_wing = left_wing * tl_4d + bg_pixel * (1.0 - tl_4d)
+        right_wing = right_wing * tr_4d + bg_pixel * (1.0 - tr_4d)
+
+    combined[:, :, :wing_W, :] = left_wing
+    combined[:, pad_top : pad_top + H, wing_W : wing_W + W, :] = center_blended
+    combined[:, :, wing_W + W :, :] = right_wing
+
+    return combined, left_wing, center_rgb, right_wing, screenx_mask
 
 
 def blend_restore_original_tensor(
@@ -463,7 +728,7 @@ def blend_restore_original_tensor(
 
 
 # ==============================================================================
-# NODE 1: VStone Outpaint (Tạo vùng bù Trái / Phải & Chọn màu tô Xám / Đỏ / Xanh)
+# NODE 1: VStone Outpaint (Tạo vùng bù Hình Thang ScreenX Trái / Phải & Chọn màu tô)
 # ==============================================================================
 class VStone_Outpaint_Pad:
     @classmethod
@@ -485,8 +750,18 @@ class VStone_Outpaint_Pad:
                     "step": 0.1,
                     "tooltip": "Số lần chiều rộng cộng thêm qua bên PHẢI (1.0 = +1 lần chiều rộng)."
                 }),
+                "outer_height_ratio": ("FLOAT", {
+                    "default": 1.3,
+                    "min": 1.0,
+                    "max": 2.5,
+                    "step": 0.05,
+                    "tooltip": "Tỉ số bung rộng cạnh biên ngoài chuẩn ScreenX (1.3 = cạnh sát tấm 1 cao 1.0xH, cạnh biên bung ra 1.3xH; để 1.0 nếu muốn khung phẳng)."
+                }),
                 "fill_color": (COLOR_CHOICES, {
                     "default": COLOR_CHOICES[0],
+                }),
+                "outer_bg_color": (OUTER_BG_CHOICES, {
+                    "default": OUTER_BG_CHOICES[0],
                 }),
                 "custom_hex": ("STRING", {
                     "default": "#808080",
@@ -512,7 +787,9 @@ class VStone_Outpaint_Pad:
         image: torch.Tensor,
         add_left_widths: float = 0.0,
         add_right_widths: float = 1.0,
+        outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
+        outer_bg_color: str = OUTER_BG_CHOICES[0],
         custom_hex: str = "#808080",
         extra_left_px: int = 0,
         extra_right_px: int = 0,
@@ -520,11 +797,14 @@ class VStone_Outpaint_Pad:
         extra_bottom_px: int = 0,
         feather_mask_px: int = 0,
         base_image_for_width: torch.Tensor | None = None,
+        **kwargs,
     ):
         padded_img, mask, new_w, new_h = vstone_outpaint_pad_tensor(
             image=image,
             add_left_ratio=add_left_widths,
             add_right_ratio=add_right_widths,
+            outer_height_ratio=outer_height_ratio,
+            outer_bg_color=outer_bg_color,
             extra_left_px=extra_left_px,
             extra_right_px=extra_right_px,
             extra_top_px=extra_top_px,
@@ -538,7 +818,7 @@ class VStone_Outpaint_Pad:
 
 
 # ==============================================================================
-# NODE 2: VStone +Qua Trái 1 Lần Chiều Rộng (Chọn Màu Tô Xám / Đỏ / Xanh)
+# NODE 2: VStone +Qua Trái 1 Lần Chiều Rộng (ScreenX Bung Cạnh Biên 1.3x)
 # ==============================================================================
 class VStone_ExtendLeft_1xWidth:
     @classmethod
@@ -547,7 +827,15 @@ class VStone_ExtendLeft_1xWidth:
             "required": {
                 "image": ("IMAGE",),
                 "width_multiplier_left": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.1}),
+                "outer_height_ratio": ("FLOAT", {
+                    "default": 1.3,
+                    "min": 1.0,
+                    "max": 2.5,
+                    "step": 0.05,
+                    "tooltip": "Tỉ số bung rộng cạnh biên trái chuẩn ScreenX (1.3 = cạnh sát tấm 1 cao 1.0xH, cạnh biên trái bung ra 1.3xH)."
+                }),
                 "fill_color": (COLOR_CHOICES, {"default": COLOR_CHOICES[0]}),
+                "outer_bg_color": (OUTER_BG_CHOICES, {"default": OUTER_BG_CHOICES[0]}),
                 "custom_hex": ("STRING", {"default": "#808080"}),
                 "extra_left_px": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 8}),
                 "feather_mask_px": ("INT", {"default": 0, "min": 0, "max": 512, "step": 4}),
@@ -566,7 +854,9 @@ class VStone_ExtendLeft_1xWidth:
         self,
         image: torch.Tensor,
         width_multiplier_left: float = 1.0,
+        outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
+        outer_bg_color: str = OUTER_BG_CHOICES[0],
         custom_hex: str = "#808080",
         extra_left_px: int = 0,
         feather_mask_px: int = 0,
@@ -577,6 +867,8 @@ class VStone_ExtendLeft_1xWidth:
             image=image,
             add_left_ratio=width_multiplier_left,
             add_right_ratio=0.0,
+            outer_height_ratio=outer_height_ratio,
+            outer_bg_color=outer_bg_color,
             extra_left_px=extra_left_px,
             fill_color=fill_color,
             custom_hex=custom_hex,
@@ -587,7 +879,7 @@ class VStone_ExtendLeft_1xWidth:
 
 
 # ==============================================================================
-# NODE 3: VStone +Qua Phải 1 Lần Chiều Rộng (Chọn Màu Tô Xám / Đỏ / Xanh)
+# NODE 3: VStone +Qua Phải 1 Lần Chiều Rộng (ScreenX Bung Cạnh Biên 1.3x)
 # ==============================================================================
 class VStone_ExtendRight_1xWidth:
     @classmethod
@@ -596,7 +888,15 @@ class VStone_ExtendRight_1xWidth:
             "required": {
                 "image": ("IMAGE",),
                 "width_multiplier_right": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.1}),
+                "outer_height_ratio": ("FLOAT", {
+                    "default": 1.3,
+                    "min": 1.0,
+                    "max": 2.5,
+                    "step": 0.05,
+                    "tooltip": "Tỉ số bung rộng cạnh biên phải chuẩn ScreenX (1.3 = cạnh sát tấm 1 cao 1.0xH, cạnh biên phải bung ra 1.3xH)."
+                }),
                 "fill_color": (COLOR_CHOICES, {"default": COLOR_CHOICES[0]}),
+                "outer_bg_color": (OUTER_BG_CHOICES, {"default": OUTER_BG_CHOICES[0]}),
                 "custom_hex": ("STRING", {"default": "#808080"}),
                 "extra_right_px": ("INT", {"default": 0, "min": 0, "max": 4096, "step": 8}),
                 "feather_mask_px": ("INT", {"default": 0, "min": 0, "max": 512, "step": 4}),
@@ -615,7 +915,9 @@ class VStone_ExtendRight_1xWidth:
         self,
         image: torch.Tensor,
         width_multiplier_right: float = 1.0,
+        outer_height_ratio: float = 1.3,
         fill_color: str = COLOR_CHOICES[0],
+        outer_bg_color: str = OUTER_BG_CHOICES[0],
         custom_hex: str = "#808080",
         extra_right_px: int = 0,
         feather_mask_px: int = 0,
@@ -626,6 +928,8 @@ class VStone_ExtendRight_1xWidth:
             image=image,
             add_left_ratio=0.0,
             add_right_ratio=width_multiplier_right,
+            outer_height_ratio=outer_height_ratio,
+            outer_bg_color=outer_bg_color,
             extra_right_px=extra_right_px,
             fill_color=fill_color,
             custom_hex=custom_hex,
@@ -636,7 +940,94 @@ class VStone_ExtendRight_1xWidth:
 
 
 # ==============================================================================
-# NODE 4: Ghép khôi phục ảnh gốc (Seamless Restore)
+# NODE 4: VStone ScreenX Combine 3 Tấm (2 Trái + 1 Giữa Gốc + 3 Phải)
+# ==============================================================================
+class VStone_ScreenX_Combine3:
+    """
+    Ghép 3 tấm ảnh chuẩn ScreenX [2 Trái | 1 Giữa Gốc | 3 Phải]:
+    - Giữ nguyên tấm giữa (1) gốc.
+    - Hai tấm hai bên Trái (2) và Phải (3) được blend nhẹ với tấm giữa, ưu tiên giữ tấm giữa (`center_priority`).
+    - Cắt khung hình thang bung rộng từ 1.0x (sát mép tấm 1) ra `outer_height_ratio` (ví dụ 1.3x ở cạnh biên ngoài).
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "center_image_1": ("IMAGE",),
+                "left_image_2": ("IMAGE",),
+                "right_image_3": ("IMAGE",),
+                "outer_height_ratio": ("FLOAT", {
+                    "default": 1.3,
+                    "min": 1.0,
+                    "max": 2.5,
+                    "step": 0.05,
+                    "tooltip": "Tỉ số bung rộng cạnh biên ngoài chuẩn ScreenX (1.3 = cạnh sát tấm 1 bằng 1.0xH, cạnh biên ngoài bung 1.3xH)."
+                }),
+                "wing_width_ratio": ("FLOAT", {
+                    "default": 1.0,
+                    "min": 0.1,
+                    "max": 5.0,
+                    "step": 0.1,
+                    "tooltip": "Tỉ lệ chiều rộng mỗi cánh (2, 3) so với chiều rộng tấm giữa (1)."
+                }),
+                "blend_width_px": ("INT", {
+                    "default": 32,
+                    "min": 0,
+                    "max": 512,
+                    "step": 4,
+                    "tooltip": "Độ rộng vùng blend nhẹ ở 2 mép nối (2 <-> 1 và 1 <-> 3)."
+                }),
+                "center_priority": ("FLOAT", {
+                    "default": 0.75,
+                    "min": 0.50,
+                    "max": 0.98,
+                    "step": 0.05,
+                    "tooltip": "Mức độ ưu tiên giữ tấm giữa (1) khi blend mép (càng cao càng ưu tiên giữ nguyên chi tiết tấm 1)."
+                }),
+                "apply_trapezoid_clip": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Cắt chuẩn khung hình thang 2 - 1 - 3 theo tỉ số bung 1.3x."
+                }),
+                "outer_bg_color": (OUTER_BG_CHOICES, {
+                    "default": OUTER_BG_CHOICES[0],
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "MASK")
+    RETURN_NAMES = ("combined_screenx", "left_wing_2", "center_1", "right_wing_3", "screenx_mask")
+    FUNCTION = "combine_screenx"
+    CATEGORY = "vstone"
+
+    def combine_screenx(
+        self,
+        center_image_1: torch.Tensor,
+        left_image_2: torch.Tensor,
+        right_image_3: torch.Tensor,
+        outer_height_ratio: float = 1.3,
+        wing_width_ratio: float = 1.0,
+        blend_width_px: int = 32,
+        center_priority: float = 0.75,
+        apply_trapezoid_clip: bool = True,
+        outer_bg_color: str = OUTER_BG_CHOICES[0],
+    ):
+        combined, left_wing, center_orig, right_wing, sx_mask = vstone_screenx_combine3_tensor(
+            center_image=center_image_1,
+            left_image=left_image_2,
+            right_image=right_image_3,
+            outer_height_ratio=outer_height_ratio,
+            wing_width_ratio=wing_width_ratio,
+            blend_width_px=blend_width_px,
+            center_priority=center_priority,
+            apply_trapezoid_clip=apply_trapezoid_clip,
+            outer_bg_color=outer_bg_color,
+        )
+        return (combined, left_wing, center_orig, right_wing, sx_mask)
+
+
+# ==============================================================================
+# NODE 5: Ghép khôi phục ảnh gốc (Seamless Restore)
 # ==============================================================================
 class VStone_SeamlessRestore:
     @classmethod
@@ -669,7 +1060,7 @@ class VStone_SeamlessRestore:
 
 
 # ==============================================================================
-# NODE 5: VStone Cloud Sync & Model Downloader (Cầu nối Laptop <-> H200 Hàn Quốc)
+# NODE 6: VStone Cloud Sync & Model Downloader (Cầu nối Laptop <-> H200 Hàn Quốc)
 # ==============================================================================
 class VStone_CloudSyncHub:
     """
@@ -761,6 +1152,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_Outpaint_Pad": VStone_Outpaint_Pad,
     "VStone_ExtendLeft_1xWidth": VStone_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": VStone_ExtendRight_1xWidth,
+    "VStone_ScreenX_Combine3": VStone_ScreenX_Combine3,
     "VStone_SeamlessRestore": VStone_SeamlessRestore,
     "VStone_CloudSyncHub": VStone_CloudSyncHub,
     "VStone_ScreenX_ExtendCanvas": VStone_ScreenX_ExtendCanvas,
@@ -770,8 +1162,9 @@ VSTONE_NODE_CLASS_MAPPINGS = {
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "VStone_Outpaint_Pad": "VStone: Outpaint Tạo Vùng Bù (Chọn Màu Xám / Đỏ / Xanh)",
-    "VStone_ExtendLeft_1xWidth": "VStone: Outpaint +Qua Trái 1 Lần Chiều Rộng (Chọn Màu Tô)",
-    "VStone_ExtendRight_1xWidth": "VStone: Outpaint +Qua Phải 1 Lần Chiều Rộng (Chọn Màu Tô)",
+    "VStone_ExtendLeft_1xWidth": "VStone: Outpaint +Qua Trái 1 Lần Chiều Rộng (ScreenX 1.3x)",
+    "VStone_ExtendRight_1xWidth": "VStone: Outpaint +Qua Phải 1 Lần Chiều Rộng (ScreenX 1.3x)",
+    "VStone_ScreenX_Combine3": "VStone: ScreenX Combine 3 Tấm (2 Trái + 1 Giữa Gốc + 3 Phải)",
     "VStone_SeamlessRestore": "VStone: Ghép Khôi Phục Ảnh Gốc (Seamless Restore)",
     "VStone_CloudSyncHub": "VStone: Cloud Sync & Model Downloader (Laptop <-> H200)",
     "VStone_ScreenX_ExtendCanvas": "VStone: Screen X Mở Rộng Khung Ngang (Trái + Phải)",
