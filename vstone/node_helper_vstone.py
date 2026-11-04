@@ -3160,12 +3160,12 @@ def _synthesize_master_wide_from_2d_refs(
     sampler_name: str,
     scheduler: str,
     max_window_mp: float = 1.4,
+    keep_model_patches: bool = False,
 ) -> torch.Tensor:
     """
-    Giai đoạn 1: Đưa toàn bộ 3-5 tấm ảnh Reference qua VAE 2D (`reference_latents` 2D đầy đủ)
+    Giai đoạn 1: Đưa toàn bộ 1-5 tấm ảnh Reference qua VAE 2D (`reference_latents` 2D đầy đủ)
     để Qwen-Image-2.1 hiểu đúng 100% môi trường 2D của các tấm Ref và tổng hợp thành
-    1 Tấm Background Dài Thống Nhất (`Master Center Long`, tỉ lệ ~2:1) trước khi mở rộng 2 cánh dài.
-    Tự động dùng Base Model (tạm bỏ qua Outpaint LoRA ở bước tổng hợp không có nền xám) để ảnh không bị vỡ.
+    1 Tấm Phong Cảnh Panorama Dài Thống Nhất (`target_w x target_h`, tỉ lệ 2.5:1 -> 4.0:1).
     """
     import uuid
     import nodes
@@ -3189,13 +3189,14 @@ def _synthesize_master_wide_from_2d_refs(
     ref_tags = ", ".join(f"<image{i}>" for i in range(1, len(images_dict) + 1))
     other_tags = ", ".join(f"<image{i}>" for i in range(2, len(images_dict) + 1)) or "<image1>"
     synth_prompt = (
-        f"Task: Environment Background Reconstruction and Continuous Panoramic Scene Synthesis. "
-        f"Analyze the fed-in reference images ({ref_tags}) to understand their spatial context, architectural layout, "
-        f"terrain, background structures, surface materials, lighting direction, and atmosphere. "
-        f"Reconstruct the exact environment from {ref_tags} into one logical, coherent, wide-angle background plate: "
-        f"anchor the central scene on <image1> and continuously extend and connect it with the reconstructed environmental structures "
-        f"from {other_tags} across the frame, maintaining aligned perspective, a single continuous horizon and ground plane, "
-        f"and natural spatial transitions without split borders or collage seams. "
+        f"Task: Unified Ultra-Wide Panoramic Landscape Synthesis from Reference Context ({ref_tags}). "
+        f"Analyze the spatial context, architectural style, terrain, vegetation, background structures, "
+        f"surface materials, sky, and lighting atmosphere across {ref_tags}. "
+        f"Synthesize and harmonize all environmental elements from {ref_tags} into one single unbroken, "
+        f"ultra-wide panoramic landscape scene: anchor the primary environmental theme on <image1> and "
+        f"seamlessly integrate the surrounding contextual elements from {other_tags} across the wide horizontal frame, "
+        f"maintaining a single continuous horizon line, coherent wide-angle perspective, unified lighting, "
+        f"and natural spatial transitions without split borders, frames, or collage seams. "
         + (user_prompt or "").strip()
     ).strip()
 
@@ -3214,19 +3215,20 @@ def _synthesize_master_wide_from_2d_refs(
     enc_args = list(enc_out.args) if hasattr(enc_out, "args") else list(enc_out)
     positive, negative = enc_args[0], enc_args[1]
 
-    # Tạo khung Latent dài (Wide 2:1) cho Tấm Giữa Dài
+    # Tạo khung Latent dài chuẩn tỉ lệ Panorama (gen_w x gen_h)
     wide_latent = torch.zeros([1, 64, gen_h // 16, gen_w // 16], device=mm.intermediate_device())
     latent_dict = {"samples": wide_latent}
 
-    # Tự động dùng Base Model sạch (không áp Outpaint LoRA khi tổng hợp 3-5 ảnh Ref không có vùng xám)
+    # Nếu chưa qua _prepare_panorama_hq_model (keep_model_patches=False), tự gỡ Outpaint LoRA cũ
     synth_model = model
-    try:
-        if hasattr(model, "clone") and getattr(model, "patches", None):
-            synth_model = model.clone()
-            synth_model.patches = {}
-            synth_model.patches_uuid = uuid.uuid4()
-    except Exception:
-        synth_model = model
+    if not keep_model_patches:
+        try:
+            if hasattr(model, "clone") and getattr(model, "patches", None):
+                synth_model = model.clone()
+                synth_model.patches = {}
+                synth_model.patches_uuid = uuid.uuid4()
+        except Exception:
+            synth_model = model
 
     _vstone_free_vram(unload_models=False)
     sampled = nodes.common_ksampler(
@@ -3472,14 +3474,278 @@ def _run_qwen21_outpaint_pass(
     return decoded
 
 
+def _prepare_panorama_hq_model(model, lora_hq_strength: float = 0.65):
+    """
+    Chuẩn bị Model cho quy trình Vẽ Panorama Tổng Hòa (Pha 1) & Upscale Hi-Pass (Pha 2):
+    - Tự động gỡ bỏ Outpaint LoRA (vốn chỉ dành cho vẽ hộp xám #808080, nếu để lại sẽ làm hỏng bố cục tổng hòa).
+    - Tự động tìm và nạp LoRA `High quality.safetensors` (nếu có trong `models/loras`) ở mức `lora_hq_strength`
+      để tăng độ sắc nét, chiều sâu không gian và chi tiết phong cảnh Panorama.
+    """
+    import uuid
+    import nodes
+    import folder_paths
+
+    clean_model = model
+    try:
+        if hasattr(model, "clone") and getattr(model, "patches", None):
+            clean_model = model.clone()
+            clean_model.patches = {}
+            clean_model.patches_uuid = uuid.uuid4()
+    except Exception:
+        clean_model = model
+
+    if float(lora_hq_strength) <= 0.01:
+        return clean_model
+
+    try:
+        available_loras = folder_paths.get_filename_list("loras") or []
+        hq_name = None
+        for cand in ("High quality.safetensors", "High_quality.safetensors"):
+            if cand in available_loras:
+                hq_name = cand
+                break
+        if hq_name is None:
+            for item in available_loras:
+                if "high" in item.lower() and "quality" in item.lower():
+                    hq_name = item
+                    break
+        if hq_name is not None:
+            clean_model = nodes.LoraLoaderModelOnly().load_lora_model_only(
+                clean_model, hq_name, float(lora_hq_strength)
+            )[0]
+    except Exception:
+        pass
+    return clean_model
+
+
+def _upscale_with_ultrasharp_or_lanczos(img: torch.Tensor, target_w: int, target_h: int) -> torch.Tensor:
+    """
+    Phóng to ảnh Panorama Pha 1 lên kích thước Pha 2 `(target_w, target_h)`:
+    - Ưu tiên dùng model `4x-UltraSharp.safetensors` trong `models/upscale_models` (nếu đã tải về máy) để giữ cạnh sắc nét.
+    - Nếu chưa có thì dùng Lanczos kết hợp Unsharp Mask tăng chi tiết tần số cao trước khi vào bước Hi-Pass Denoise thấp.
+    """
+    import folder_paths
+
+    rgb = img[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
+    up_img = None
+    try:
+        up_list = folder_paths.get_filename_list("upscale_models") or []
+        up_name = None
+        for cand in ("4x-UltraSharp.safetensors", "4x-UltraSharp.pth", "4x_NMKD-Siax_200k.pth"):
+            if cand in up_list:
+                up_name = cand
+                break
+        if up_name is None and up_list:
+            for item in up_list:
+                if "ultrasharp" in item.lower() or "4x" in item.lower():
+                    up_name = item
+                    break
+        if up_name is not None:
+            loader_cls = _get_target_node_classes("UpscaleModelLoader", "comfy_extras.nodes_upscale_model")
+            upscaler_cls = _get_target_node_classes("ImageUpscaleWithModel", "comfy_extras.nodes_upscale_model")
+            if loader_cls and upscaler_cls:
+                ldr = loader_cls[0]()
+                up_model_out = ldr.execute(up_name) if hasattr(ldr, "execute") else ldr.load_model(up_name)
+                up_model = up_model_out[0]
+                ups = upscaler_cls[0]()
+                up_res = ups.execute(up_model, rgb) if hasattr(ups, "execute") else ups.upscale(up_model, rgb)
+                up_img = up_res[0][:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
+                del up_model
+                _vstone_free_vram(unload_models=False)
+    except Exception:
+        up_img = None
+
+    if up_img is None:
+        up_img = _chunked_cpu_resize(rgb, target_w, target_h, "lanczos", "disabled", chunk_size=1)
+    elif int(up_img.shape[2]) != target_w or int(up_img.shape[1]) != target_h:
+        up_img = _chunked_cpu_resize(up_img, target_w, target_h, "lanczos", "disabled", chunk_size=1)
+
+    # Nhấn nhẹ tần số cao (Unsharp Mask 15%) để mồi chi tiết cho Pha 2 Hi-Pass
+    nchw = up_img.permute(0, 3, 1, 2)
+    blurred = F.avg_pool2d(F.pad(nchw, (1, 1, 1, 1), mode="reflect"), kernel_size=3, stride=1).permute(0, 2, 3, 1)
+    sharpened = (up_img + (up_img - blurred) * 0.18).clamp(0.0, 1.0)
+    return sharpened
+
+
+def _phase2_tiled_hipass_upscale(
+    hq_model,
+    clip,
+    vae,
+    phase1_pano: torch.Tensor,
+    all_refs: list[torch.Tensor],
+    up_w: int,
+    up_h: int,
+    hi_pass_denoise: float,
+    hi_pass_steps: int,
+    tile_size_px: int,
+    tile_overlap_px: int,
+    user_prompt: str,
+    negative_prompt: str,
+    seed: int,
+    cfg: float,
+    sampler_name: str,
+    scheduler: str,
+    uid=None,
+) -> tuple[torch.Tensor, list[torch.Tensor]]:
+    """
+    Pha 2: Phóng to tấm Panorama tổng thể từ Pha 1 lên độ phân giải 5K/6K `(up_w x up_h)`,
+    sau đó chia thành các ô nhỏ chồng lấp (`tile_size_px`, `tile_overlap_px`) và chạy Hi-Pass KSampler
+    với `denoise` thấp (`0.25 - 0.38`) trực tiếp trên Latent của từng ô (`vae.encode(tile)`):
+    - KHÔNG cắt nối / KHÔNG tạo hộp xám `#808080`.
+    - Bố cục, đường chân trời và ánh sáng của Pha 1 được giữ nguyên 100%, không bao giờ sinh đường seam.
+    - Bơm chi tiết bề mặt sắc nét chuẩn Hi-Pass 5K/6K cho toàn bộ bức Panorama.
+    """
+    import nodes
+
+    _vstone_ui_status(
+        uid,
+        f"🔍 [Pha 2/2 - Hi-Pass Upscale] Đang phóng to Panorama lên {up_w}x{up_h}px (4x-UltraSharp / Lanczos)...",
+    )
+    upscaled = _upscale_with_ultrasharp_or_lanczos(phase1_pano, up_w, up_h)
+    if float(hi_pass_denoise) <= 0.02:
+        return upscaled, [upscaled]
+
+    # Tính danh sách tọa độ X của các ô Tile chồng lấp trải dọc chiều ngang up_w
+    t_w = max(768, min(up_w, int(round(float(tile_size_px) / 64.0)) * 64))
+    ov_w = max(192, min(t_w // 2, int(round(float(tile_overlap_px) / 64.0)) * 64))
+    stride_w = max(256, t_w - ov_w)
+
+    tile_starts: list[int] = [0]
+    while tile_starts[-1] + t_w < up_w:
+        next_x = tile_starts[-1] + stride_w
+        if next_x + t_w >= up_w:
+            tile_starts.append(max(0, up_w - t_w))
+            break
+        tile_starts.append(next_x)
+
+    qwen_enc_classes = _get_target_node_classes("TextEncodeQwenImage21", "comfy_extras.nodes_qwen")
+    if not qwen_enc_classes:
+        raise RuntimeError("Không tìm thấy node TextEncodeQwenImage21 trong ComfyUI.")
+
+    hipass_prompt = (
+        "High-resolution panoramic landscape refinement and detail enhancement of <image1>. "
+        "Preserve the exact composition, horizon line, geometry, perspective, and lighting of <image1> "
+        "while enhancing ultra-sharp micro-textures, crisp architectural details, natural foliage, "
+        "surface materials, and atmospheric clarity. " + (user_prompt or "").strip()
+    ).strip()
+
+    # Giới hạn diện tích lấy mẫu mỗi ô Tile ~1.55 MP để chạy cực nhanh và nhẹ VRAM rồi trả lại đúng kích thước Tile
+    max_tile_mp = 1.55
+    tile_pixels = float(t_w * up_h)
+    if tile_pixels > max_tile_mp * 1_000_000.0 * 1.05:
+        t_scale = math.sqrt((max_tile_mp * 1_000_000.0) / tile_pixels)
+        work_tw = max(64, int(round((t_w * t_scale) / 64.0)) * 64)
+        work_th = max(64, int(round((up_h * t_scale) / 64.0)) * 64)
+    else:
+        work_tw, work_th = t_w, up_h
+
+    # Trong ComfyUI, KSampler.set_steps chia `int(steps / denoise)`, nên truyền `eff_steps = max(5, round(hi_pass_steps * denoise))`
+    # để số bước chạy thực tế trên mỗi ô Tile đúng bằng `~6 - 10` bước thuộc phần đuôi lịch trình Hi-Pass!
+    den = max(0.05, min(0.55, float(hi_pass_denoise)))
+    eff_steps = max(5, int(round(float(hi_pass_steps) * den)))
+
+    accum_img = torch.zeros_like(upscaled)
+    accum_weight = torch.zeros((1, 1, up_w, 1), dtype=torch.float32)
+    tile_previews: list[torch.Tensor] = []
+
+    num_tiles = len(tile_starts)
+    for idx, x0 in enumerate(tile_starts):
+        x1 = x0 + t_w
+        _vstone_ui_status(
+            uid,
+            f"✨ [Pha 2/2 - Hi-Pass Upscale] Đang tinh chỉnh Ô Tile {idx + 1}/{num_tiles} [{x0}:{x1}] (denoise={den:.2f})...",
+        )
+        raw_tile = upscaled[:, :, x0:x1, :]
+        if work_tw != t_w or work_th != up_h:
+            work_tile = _chunked_cpu_resize(raw_tile, work_tw, work_th, "lanczos", "disabled", chunk_size=1)
+        else:
+            work_tile = raw_tile
+
+        images_dict: dict[str, torch.Tensor] = {"image_1": work_tile}
+        enc_out = qwen_enc_classes[0].execute(
+            clip=clip,
+            prompt=hipass_prompt,
+            negative_prompt=negative_prompt or "",
+            vae=vae,
+            resolution=0,
+            images=images_dict,
+        )
+        enc_args = list(enc_out.args) if hasattr(enc_out, "args") else list(enc_out)
+        positive, negative, latent_dict = enc_args[0], enc_args[1], enc_args[2]
+
+        # Lấy trực tiếp Latent thật của work_tile từ reference_latents[0] để chạy Hi-Pass Denoise thấp (KHÔNG dùng zeros!)
+        ref_lats = positive[0][1].get("reference_latents", None)
+        tile_lat = ref_lats[0] if (ref_lats and len(ref_lats) > 0) else vae.encode(work_tile[:, :, :, :3])
+        if tile_lat is not None:
+            target_shape = latent_dict["samples"].shape
+            if tile_lat.ndim == 5 and len(target_shape) == 4 and tile_lat.shape[2] == 1:
+                tile_lat = tile_lat.squeeze(2)
+            elif tile_lat.ndim == 4 and len(target_shape) == 5 and target_shape[2] == 1:
+                tile_lat = tile_lat.unsqueeze(2)
+            if tuple(tile_lat.shape) == tuple(target_shape):
+                latent_dict = latent_dict.copy()
+                latent_dict["samples"] = tile_lat.clone().to(
+                    device=latent_dict["samples"].device, dtype=latent_dict["samples"].dtype
+                )
+                # Khóa mềm biên Trái/Phải của ô Tile bằng noise_mask để mép nối giữa các ô khớp màu và chi tiết 100%
+                mask_1d = torch.ones((work_tw,), dtype=torch.float32)
+                border_feather = max(32, min(work_tw // 4, int(round(ov_w * work_tw / float(t_w) * 0.5))))
+                if idx > 0 and border_feather >= 8:
+                    mask_1d[:border_feather] = _cosine_alpha_1d(border_feather, mask_1d.device, mask_1d.dtype)
+                if idx < (num_tiles - 1) and border_feather >= 8:
+                    mask_1d[-border_feather:] = 1.0 - _cosine_alpha_1d(border_feather, mask_1d.device, mask_1d.dtype)
+                latent_dict["noise_mask"] = mask_1d.view(1, 1, 1, work_tw).expand(1, 1, work_th, work_tw).contiguous()
+
+        _vstone_free_vram(unload_models=False)
+        sampled = nodes.common_ksampler(
+            model=hq_model,
+            seed=int(seed) + idx * 37,
+            steps=int(eff_steps),
+            cfg=float(cfg),
+            sampler_name=sampler_name,
+            scheduler=scheduler,
+            positive=positive,
+            negative=negative,
+            latent=latent_dict,
+            denoise=float(den),
+        )[0]
+
+        decoded_tile = vae.decode(sampled["samples"])
+        if decoded_tile.ndim == 5:
+            decoded_tile = decoded_tile[0]
+        decoded_tile = decoded_tile[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
+        if int(decoded_tile.shape[2]) != t_w or int(decoded_tile.shape[1]) != up_h:
+            decoded_tile = _chunked_cpu_resize(decoded_tile, t_w, up_h, "lanczos", "disabled", chunk_size=1)
+
+        # Đồng bộ nhẹ màu/độ sáng của ô Tile sau Hi-Pass với raw_tile gốc để 100% không đổi tông màu
+        decoded_tile = _match_color_stats(decoded_tile, raw_tile, strength=0.60)
+        tile_previews.append(decoded_tile)
+
+        # Tạo cửa sổ trọng số Cosine 1D mượt ở 2 biên chồng lấp để cộng dồn không vết nối
+        w_1d = torch.ones((t_w,), dtype=torch.float32)
+        if idx > 0 and ov_w > 0:
+            w_1d[:ov_w] = _cosine_alpha_1d(ov_w, w_1d.device, w_1d.dtype).clamp(min=1e-3)
+        if idx < (num_tiles - 1) and ov_w > 0:
+            w_1d[-ov_w:] = (1.0 - _cosine_alpha_1d(ov_w, w_1d.device, w_1d.dtype)).clamp(min=1e-3)
+        w_view = w_1d.view(1, 1, t_w, 1)
+
+        accum_img[:, :, x0:x1, :] += decoded_tile * w_view
+        accum_weight[:, :, x0:x1, :] += w_view
+        _vstone_free_vram(unload_models=False)
+
+    final_pano = (accum_img / accum_weight.clamp(min=1e-5)).clamp(0.0, 1.0)
+    return final_pano, tile_previews
+
+
 class stoneV_Panorama360_AutoLoop:
     """
-    Node All-in-One vẽ Panorama siêu rộng (hướng tới 360°) & mở rộng chiều cao bằng Qwen-Image-2.1:
-    - Nhận từ 1 đến 5 tấm ảnh (`image_1` làm khung gốc trung tâm + `ref_image_2..5` làm bộ tham chiếu bối cảnh/góc quay).
-    - Tự động mở rộng chiều cao Trên/Dưới (`height_expand_ratio`, ví dụ 1.35x) cao hơn ảnh gốc.
-    - Tự động lặp cuốn chiếu `loop_steps` vòng (mỗi vòng chỉ lấy `keep_anchor_ratio = 0.5` nửa tấm ngoài cùng làm neo + vùng xám `#808080`).
-    - Tự động chọn/xoay vòng các ảnh Reference (`Sequential`, `All Refs Together`, hoặc `Directional Split`).
-    - Tùy chọn khép kín 2 đầu Trái - Phải thành vòng tròn 360° không vết nối (`close_360_loop = True`).
+    Node All-in-One Vẽ Phong Cảnh Panorama 2 Pha (KHÔNG CẮT NỐI - Zero Outpaint Seam):
+    - Pha 1 (Tổng Hòa Ngữ Cảnh Từ 1-5 Ảnh Ref): Đưa toàn bộ `image_1` + `ref_image_2..5` qua 2D VAE & Qwen3-VL
+      cùng LoRA `High quality.safetensors` để vẽ 1 Tấm Ảnh Dài Phong Cảnh Panorama thống nhất ngay từ đầu
+      theo tỉ lệ chuẩn Panorama (`3.0:1`, `3.5:1`, `4.0:1`, hoặc `2.5:1`) — hoàn toàn KHÔNG cắt nối hay đệm vùng xám!
+    - Pha 2 (Upscale Hi-Pass Bằng Cách Cắt Nhỏ Chạy Denoise Thấp): Phóng to bức Panorama Pha 1 lên 4K/5K/6K
+      (`4x-UltraSharp` / Lanczos), chia thành các ô Tile chồng lấp rộng (`512px`) và chạy Hi-Pass `KSampler`
+      với `denoise` thấp (`0.28 - 0.35`) để bơm chi tiết sắc nét mà giữ nguyên 100% bố cục liền mạch của Pha 1.
     """
 
     @classmethod
@@ -3490,66 +3756,13 @@ class stoneV_Panorama360_AutoLoop:
                 "clip": ("CLIP",),
                 "vae": ("VAE",),
                 "image_1": ("IMAGE",),
-                "panorama_mode": ([
-                    "1. Sequential Bridge (Mỗi bước lặp ưu tiên 1 tấm Ref kế tiếp Ref 2 -> 3 -> 4 -> 5)",
-                    "2. All Refs Together (Đưa toàn bộ 3-5 tấm Ref vào cùng lúc ở mọi bước lặp)",
-                    "3. Directional Split (Ref 2,3 dẫn hướng bên Phải - Ref 4,5 dẫn hướng bên Trái)",
-                ], {
-                    "default": "1. Sequential Bridge (Mỗi bước lặp ưu tiên 1 tấm Ref kế tiếp Ref 2 -> 3 -> 4 -> 5)"
-                }),
-                "direction": ([
-                    "Both Sides Alternating (Mở rộng đều sang cả Phải & Trái)",
-                    "Right Progressive (Mở rộng cuốn chiếu liên tiếp sang Phải)",
-                    "Left Progressive (Mở rộng cuốn chiếu liên tiếp sang Trái)",
-                ], {
-                    "default": "Both Sides Alternating (Mở rộng đều sang cả Phải & Trái)"
-                }),
-                "loop_steps": ("INT", {
-                    "default": 2,
-                    "min": 1,
-                    "max": 12,
-                    "step": 1,
-                    "tooltip": "Số cánh dài mở rộng sang 2 bên (Mặc định 2 = 1 Cánh Phải Dài + 1 Cánh Trái Dài ghép với Tấm Giữa = 3 Cánh Dài chống Tiling)."
-                }),
-                "height_expand_ratio": ("FLOAT", {
-                    "default": 0.50,
-                    "min": 0.25,
-                    "max": 2.5,
-                    "step": 0.05,
-                    "tooltip": "Hệ số Chiều Cao nhân với Chiều Dài chuẩn 2K (2048px) của 1 tấm (0.50 = cao 1024px -> 2048x1024; 0.56 = cao 1152px; 0.60 = cao 1216px)."
-                }),
-                "step_extend_ratio": ("FLOAT", {
-                    "default": 1.0,
-                    "min": 0.5,
-                    "max": 1.6,
-                    "step": 0.05,
-                    "tooltip": "Hệ số chiều dài mỗi tấm Cánh so với chuẩn 2K 2048px (1.0 = mỗi tấm Cánh dài đúng 2048px; 1.2 = mỗi tấm Cánh dài 2464px)."
-                }),
-                "keep_anchor_ratio": ("FLOAT", {
-                    "default": 0.50,
-                    "min": 0.25,
-                    "max": 0.85,
-                    "step": 0.05,
-                    "tooltip": "Tỉ lệ phần mồi neo lấy từ tấm trước trong mỗi cửa sổ 2K (0.50 = lấy đúng 1024px nửa tấm làm mồi neo + 1024px vẽ nối tiếp mới = đủ 1 tấm 2048px)."
-                }),
-                "close_360_loop": ("BOOLEAN", {
-                    "default": False,
-                    "tooltip": "Bật nếu muốn thêm nhịp khép kín 2 đầu thành hình cầu/trụ 360°. Tắt (False) để vẽ Background Panorama 3 cánh dài tự nhiên không lặp."
-                }),
-                "blend_width_px": ("INT", {
-                    "default": 48,
-                    "min": 8,
-                    "max": 256,
-                    "step": 4,
-                    "tooltip": "Độ rộng vùng hòa trộn Cosine giữa các bước lặp để xóa sạch vết ghép."
-                }),
                 "prompt": ("STRING", {
                     "multiline": True,
                     "default": (
-                        "Create a logical, coherent ultra-wide environment background plate. "
-                        "Use the fed-in reference images to understand the spatial context, reconstruct their exact environment, "
-                        "architecture, terrain, surface textures, and lighting, and draw a continuous, seamless panoramic extension "
-                        "with aligned perspective and horizon line."
+                        "Create a breathtaking, coherent ultra-wide panoramic landscape background. "
+                        "Synthesize and harmonize the environmental context, architecture, terrain, vegetation, sky, "
+                        "and lighting from all reference images into one single unbroken wide-angle panorama "
+                        "with a continuous horizon line and natural depth."
                     )
                 }),
                 "negative_prompt": ("STRING", {
@@ -3566,16 +3779,60 @@ class stoneV_Panorama360_AutoLoop:
                 "scheduler": (["simple", "beta", "normal", "sgm_uniform"], {"default": "simple"}),
             },
             "optional": {
+                "panorama_ratio": ([
+                    "1. Ratio 3.0:1 - Chuẩn Panorama Phong Cảnh (Pha 1: 2304x768 -> Pha 2: 4608x1536)",
+                    "2. Ratio 3.5:1 - Siêu Rộng Ultra-Wide (Pha 1: 2560x704 -> Pha 2: 5120x1408)",
+                    "3. Ratio 4.0:1 - Toàn Cảnh Cực Dài (Pha 1: 2688x640 -> Pha 2: 5376x1280)",
+                    "4. Ratio 2.5:1 - Điện Ảnh Rộng 21:9 (Pha 1: 2176x832 -> Pha 2: 4352x1664)",
+                ], {
+                    "default": "1. Ratio 3.0:1 - Chuẩn Panorama Phong Cảnh (Pha 1: 2304x768 -> Pha 2: 4608x1536)"
+                }),
+                "upscale_factor": ("FLOAT", {
+                    "default": 2.0,
+                    "min": 1.0,
+                    "max": 3.0,
+                    "step": 0.25,
+                    "tooltip": "Hệ số phóng to ở Pha 2 Hi-Pass Upscale (2.0x = từ 2304x768 lên 4608x1536; 2.5x = lên 5760x1920)."
+                }),
+                "hi_pass_denoise": ("FLOAT", {
+                    "default": 0.32,
+                    "min": 0.00,
+                    "max": 0.55,
+                    "step": 0.02,
+                    "tooltip": "Mức Denoise thấp ở Pha 2 khi cắt ô nhỏ chạy Hi-Pass (0.28 - 0.35 giúp bơm chi tiết 5K/6K cực nét mà KHÔNG làm lệch bố cục hay sinh đường seam)."
+                }),
+                "hi_pass_steps": ("INT", {
+                    "default": 18,
+                    "min": 6,
+                    "max": 40,
+                    "step": 1,
+                    "tooltip": "Tổng số bước lịch trình (Schedule Steps) cho Pha 2 Hi-Pass (với denoise=0.32 sẽ chạy ~6 bước lấy mẫu thực tế cho mỗi ô Tile)."
+                }),
+                "tile_size_px": ("INT", {
+                    "default": 1536,
+                    "min": 1024,
+                    "max": 2048,
+                    "step": 64,
+                    "tooltip": "Chiều rộng mỗi ô cắt nhỏ (Tile) ở Pha 2 Hi-Pass Upscale (Mặc định 1536px)."
+                }),
+                "tile_overlap_px": ("INT", {
+                    "default": 512,
+                    "min": 256,
+                    "max": 768,
+                    "step": 64,
+                    "tooltip": "Độ rộng vùng chồng lấp Cosine giữa các ô Tile ở Pha 2 (Mặc định 512px xóa sạch 100% ranh giới giữa các ô)."
+                }),
+                "lora_hq_strength": ("FLOAT", {
+                    "default": 0.65,
+                    "min": 0.00,
+                    "max": 1.20,
+                    "step": 0.05,
+                    "tooltip": "Tự động gỡ Outpaint LoRA cũ và nạp LoRA 'High quality.safetensors' ở cường độ này để hỗ trợ vẽ phong cảnh Panorama sắc nét."
+                }),
                 "ref_image_2": ("IMAGE",),
                 "ref_image_3": ("IMAGE",),
                 "ref_image_4": ("IMAGE",),
                 "ref_image_5": ("IMAGE",),
-                "fill_mode": ([
-                    "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
-                    "Green #00FF00 (Dùng riêng cho 360 Panorama Outpaint LoRA v0.1 hệ cầu VR)",
-                ], {
-                    "default": "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)"
-                }),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -3591,42 +3848,16 @@ class stoneV_Panorama360_AutoLoop:
     def VALIDATE_INPUTS(cls, **kwargs):
         return True
 
-    def _select_step_refs(
-        self,
-        step_idx: int,
-        side: str,
-        base_img: torch.Tensor,
-        extra_refs: list[torch.Tensor],
-        panorama_mode: str,
-    ) -> list[torch.Tensor]:
-        if not extra_refs:
-            return [base_img]
-        if panorama_mode.startswith("3."):
-            right_pool = extra_refs[:2] if len(extra_refs) >= 2 else extra_refs
-            left_pool = extra_refs[2:] if len(extra_refs) > 2 else extra_refs[-1:]
-            pool = right_pool if side == "right" else left_pool
-            return pool + [base_img]
-        # Mặc định (Mode 1 & Mode 2): Đưa toàn bộ bộ ảnh Ref làm ngữ cảnh chung (Semantic Context)
-        # để AI hiểu tổng thể 1 background thống nhất mà không bị Tiling từng tấm lẻ.
-        return extra_refs + [base_img]
-
-    def _build_step_prompt(self, side_desc: str, num_refs: int, user_prompt: str, is_green: bool = False) -> str:
-        color_label = "green (#00FF00)" if is_green else "gray (#808080)"
-        equi_prefix = "360 degree equirectangular panorama. " if is_green else ""
-        base_instr = (
-            f"{equi_prefix}Outpaint <image1> by replacing all solid {color_label} areas on the {side_desc} "
-            f"with a seamless continuation of the scene, using <image2> as the full scene reference to faithfully reconstruct "
-            f"its environment, architecture, terrain, background structures, and lighting into one continuous, unified background plate."
-        )
-        clean_user = (user_prompt or "").strip()
-        return f"{base_instr} {clean_user}".strip()
-
-    def _make_blank_canvas(self, h: int, w: int, is_green: bool) -> torch.Tensor:
-        if is_green:
-            c = torch.zeros((1, h, w, 3), dtype=torch.float32)
-            c[:, :, :, 1] = 1.0
-            return c
-        return torch.full((1, h, w, 3), 128.0 / 255.0, dtype=torch.float32)
+    def _resolve_base_dimensions(self, panorama_ratio: str) -> tuple[int, int]:
+        r_str = str(panorama_ratio or "")
+        if "3.5:1" in r_str or r_str.startswith("2."):
+            return 2560, 704
+        if "4.0:1" in r_str or r_str.startswith("3."):
+            return 2688, 640
+        if "2.5:1" in r_str or r_str.startswith("4."):
+            return 2176, 832
+        # Mặc định 3.0:1 (Chuẩn Panorama Phong Cảnh)
+        return 2304, 768
 
     def generate_panorama(
         self,
@@ -3634,15 +3865,6 @@ class stoneV_Panorama360_AutoLoop:
         clip,
         vae,
         image_1: torch.Tensor,
-        panorama_mode: str,
-        direction: str,
-        loop_steps: int = 4,
-        height_expand_ratio: float = 1.35,
-        step_extend_ratio: float = 1.0,
-        keep_anchor_ratio: float = 0.5,
-        close_360_loop: bool = True,
-        blend_width_px: int = 48,
-        fill_mode: str = "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
         prompt: str = "",
         negative_prompt: str = "",
         seed: int = 42,
@@ -3650,32 +3872,50 @@ class stoneV_Panorama360_AutoLoop:
         cfg: float = 1.0,
         sampler_name: str = "euler",
         scheduler: str = "simple",
+        panorama_ratio: str = "1. Ratio 3.0:1 - Chuẩn Panorama Phong Cảnh (Pha 1: 2304x768 -> Pha 2: 4608x1536)",
+        upscale_factor: float = 2.0,
+        hi_pass_denoise: float = 0.32,
+        hi_pass_steps: int = 18,
+        tile_size_px: int = 1536,
+        tile_overlap_px: int = 512,
+        lora_hq_strength: float = 0.65,
         ref_image_2: torch.Tensor | None = None,
         ref_image_3: torch.Tensor | None = None,
         ref_image_4: torch.Tensor | None = None,
         ref_image_5: torch.Tensor | None = None,
         **kwargs,
     ):
+        uid = kwargs.get("unique_id", None)
         base_img = image_1[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
-        raw_h, raw_w = int(base_img.shape[1]), int(base_img.shape[2])
 
-        # Tự động khôi phục nếu trình duyệt lưu cache thứ tự widget cũ hoặc prompt mặc định cũ
-        if isinstance(prompt, str) and (prompt.startswith("Gray #808080") or prompt.startswith("Green #00FF00")):
-            fill_mode = prompt
+        stale_prefixes = (
+            "Gray #808080", "Green #00FF00", "1. Sequential", "2. Rotate",
+            "3. First", "Both Sides", "Right Only", "Left Only",
+        )
+        if not isinstance(prompt, str) or any(prompt.startswith(p) for p in stale_prefixes):
             prompt = ""
         if not (prompt or "").strip() or (prompt or "").strip().startswith("Seamless ultra-wide"):
             prompt = (
-                "Create a logical, coherent ultra-wide environment background plate. "
-                "Use the fed-in reference images to understand the spatial context, reconstruct their exact environment, "
-                "architecture, terrain, surface textures, and lighting, and draw a continuous, seamless panoramic extension "
-                "with aligned perspective and horizon line."
+                "Create a breathtaking, coherent ultra-wide panoramic landscape background. "
+                "Synthesize and harmonize the environmental context, architecture, terrain, vegetation, sky, "
+                "and lighting from all reference images into one single unbroken wide-angle panorama "
+                "with a continuous horizon line and natural depth."
+            )
+        if not isinstance(negative_prompt, str) or any(negative_prompt.startswith(p) for p in stale_prefixes):
+            negative_prompt = (
+                "tiled images, split panels, collage, picture frames, borders, gray background, mismatched perspective, "
+                "broken horizon, disconnected walls or floor, blurry, distorted geometry, watermark, text"
             )
         try:
             seed = int(seed)
+            if seed < 0:
+                seed = 42
         except Exception:
             seed = 42
         try:
-            steps = max(4, int(steps))
+            steps = int(steps)
+            if steps < 8 or steps > 60:
+                steps = 24
         except Exception:
             steps = 24
         try:
@@ -3686,187 +3926,119 @@ class stoneV_Panorama360_AutoLoop:
             sampler_name = "euler"
         if scheduler not in ("simple", "beta", "normal", "sgm_uniform"):
             scheduler = "simple"
+        try:
+            upscale_factor = float(upscale_factor)
+            if upscale_factor < 1.0 or upscale_factor > 3.0:
+                upscale_factor = 2.0
+        except Exception:
+            upscale_factor = 2.0
+        try:
+            hi_pass_denoise = float(hi_pass_denoise)
+            if hi_pass_denoise < 0.0 or hi_pass_denoise > 0.65:
+                hi_pass_denoise = 0.32
+        except Exception:
+            hi_pass_denoise = 0.32
+        try:
+            hi_pass_steps = int(hi_pass_steps)
+            if hi_pass_steps < 6 or hi_pass_steps > 50:
+                hi_pass_steps = 18
+        except Exception:
+            hi_pass_steps = 18
+        try:
+            tile_size_px = int(tile_size_px)
+            if tile_size_px < 768 or tile_size_px > 2560:
+                tile_size_px = 1536
+        except Exception:
+            tile_size_px = 1536
+        try:
+            tile_overlap_px = int(tile_overlap_px)
+            if tile_overlap_px < 192 or tile_overlap_px > 1024:
+                tile_overlap_px = 512
+        except Exception:
+            tile_overlap_px = 512
+        try:
+            lora_hq_strength = float(lora_hq_strength)
+            if lora_hq_strength < 0.0 or lora_hq_strength > 1.5:
+                lora_hq_strength = 0.65
+        except Exception:
+            lora_hq_strength = 0.65
 
-        # Tất cả ảnh đầu vào (image_1 + ref_image_2..5) CHỈ được coi là Ảnh Tham Chiếu (Reference)
-        # Chiều dài chuẩn 1 tấm được khóa cố định ở mức 2K (2048px), bất kể kích thước ảnh đầu vào lộn xộn thế nào.
-        plate_w = 2048
-        raw_h_ratio = float(height_expand_ratio)
-        # Tương thích ngược nếu trình duyệt cũ chưa F5 vẫn gửi giá trị > 1.0 (như 1.35 cũ)
-        eff_h_ratio = (0.50 * (raw_h_ratio / 1.35)) if raw_h_ratio > 1.0 else max(0.25, raw_h_ratio)
-        pano_h = max(512, int(round((plate_w * eff_h_ratio) / 32.0)) * 32)
-
-        # Mỗi tấm Cánh (Wing) cũng có chiều dài chuẩn 2K (2048px khi step_extend_ratio = 1.0)
-        eff_keep_ratio = 0.50 if abs(float(keep_anchor_ratio) - 0.35) < 0.02 else float(keep_anchor_ratio)
-        eff_ext_ratio = 1.0 if float(step_extend_ratio) == 1.2 and raw_h_ratio > 1.0 else float(step_extend_ratio)
-        win_w = max(1024, int(round((plate_w * eff_ext_ratio) / 64.0)) * 64)
-        anchor_w = max(512, min(win_w - 512, int(round((plate_w * eff_keep_ratio) / 64.0)) * 64))
-        ext_w = max(512, win_w - anchor_w)
-        is_green = str(fill_mode).startswith("Green")
-
-        extra_refs: list[torch.Tensor] = []
+        # Thu thập và đồng bộ ánh sáng/nhiệt độ màu của toàn bộ 1-5 ảnh ngữ cảnh Reference
+        all_2d_refs: list[torch.Tensor] = [base_img]
         for r in (ref_image_2, ref_image_3, ref_image_4, ref_image_5):
             if r is not None and hasattr(r, "shape") and r.ndim == 4:
-                extra_refs.append(r[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0))
+                r_clean = r[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
+                all_2d_refs.append(_match_color_stats(r_clean, base_img, strength=0.45))
 
-        # Xác định thứ tự các hướng mở rộng theo số bước lặp
-        sides_plan: list[str] = []
-        for i in range(int(loop_steps)):
-            if direction.startswith("Right"):
-                sides_plan.append("right")
-            elif direction.startswith("Left"):
-                sides_plan.append("left")
-            else:
-                sides_plan.append("right" if (i % 2 == 0) else "left")
+        base_w, base_h = self._resolve_base_dimensions(panorama_ratio)
+        eff_scale = max(1.0, min(3.0, float(upscale_factor)))
+        up_w = max(base_w, int(round((base_w * eff_scale) / 64.0)) * 64)
+        up_h = max(base_h, int(round((base_h * eff_scale) / 64.0)) * 64)
 
-        step_previews: list[torch.Tensor] = []
-        uid = kwargs.get("unique_id", None)
-        total_passes = 1 + len(sides_plan) + (1 if close_360_loop else 0)
+        # Tự động chuẩn bị Model với LoRA High quality.safetensors (loại bỏ Outpaint LoRA cũ nếu có)
+        hq_model = _prepare_panorama_hq_model(model, lora_hq_strength=float(lora_hq_strength))
 
-        # Giai đoạn 1: Coi toàn bộ image_1 + ref_image_2..5 là ảnh Ref 2D để tái tạo 1 Tấm Giữa Chuẩn 2K (2048 x pano_h)
-        center_w = plate_w
-        all_2d_refs = [base_img] + extra_refs
+        # ======================================================================
+        # PHA 1: TỔNG HÒA NGỮ CẢNH 1-5 ẢNH REF VẼ 1 TẤM PANORAMA DÀI TỈ LỆ CHUẨN (KHÔNG CẮT NỐI)
+        # ======================================================================
         _vstone_ui_status(
             uid,
-            f"🚀 [NODE MỚI v3.0 - 2K Plate] Nhịp 1/{total_passes}: Tái tạo Tấm Giữa 2K ({center_w}x{pano_h}) từ {len(all_2d_refs)} ảnh Ref 2D...",
+            f"🌅 [Pha 1/2 - Tổng Hòa Panorama] Đang vẽ 1 tấm Panorama liền mạch ({base_w}x{base_h}px) từ {len(all_2d_refs)} ảnh Ref (Không cắt nối)...",
         )
-        pano_img = _synthesize_master_wide_from_2d_refs(
-            model=model,
+        phase1_pano = _synthesize_master_wide_from_2d_refs(
+            model=hq_model,
             clip=clip,
             vae=vae,
             all_refs=all_2d_refs,
-            target_w=center_w,
-            target_h=pano_h,
+            target_w=base_w,
+            target_h=base_h,
             user_prompt=prompt,
             negative_prompt=negative_prompt,
             seed=int(seed),
-            steps=steps,
-            cfg=cfg,
+            steps=int(steps),
+            cfg=float(cfg),
             sampler_name=sampler_name,
             scheduler=scheduler,
+            max_window_mp=2.1,
+            keep_model_patches=True,
         )
-        step_previews.append(_chunked_cpu_resize(pano_img, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
 
-        master_center_ref = pano_img
+        # ======================================================================
+        # PHA 2: UPSCALE + HI-PASS TILED REFINEMENT (CẮT Ô NHỎ CHẠY DENOISE THẤP, KHÔNG LỘ SEAM)
+        # ======================================================================
+        if eff_scale <= 1.02 and float(hi_pass_denoise) <= 0.02:
+            final_h, final_w = int(phase1_pano.shape[1]), int(phase1_pano.shape[2])
+            _vstone_ui_status(uid, f"✅ [Hoàn Tất Pha 1] Panorama: {final_w}x{final_h}px")
+            return (phase1_pano.clamp(0.0, 1.0), phase1_pano.clamp(0.0, 1.0), final_w, final_h)
 
-        # Giai đoạn 2: Từ Tấm Giữa Dài, mở rộng 2 Cánh Dài (Cánh Phải Dài & Cánh Trái Dài) có đầy đủ 2D Ref Latents
-        # và ghép nối 3 Cánh Dài [Cánh Trái Dài | Tấm Giữa Dài | Cánh Phải Dài]
-        for step_idx, side in enumerate(sides_plan):
-            _vstone_ui_status(
-                uid,
-                f"🚀 [NODE MỚI v3.0 - 2D Master] Nhịp {step_idx + 2}/{total_passes}: Đang vẽ Cánh Dài ({side.upper()}) có 2D Ref Latents...",
-            )
-            if panorama_mode.startswith("3."):
-                step_refs = self._select_step_refs(step_idx, side, base_img, extra_refs, panorama_mode)
-            elif extra_refs:
-                primary_idx = step_idx % len(extra_refs)
-                primary_ref = extra_refs[primary_idx]
-                if panorama_mode.startswith("2."):
-                    others = [r for idx_r, r in enumerate(extra_refs) if idx_r != primary_idx]
-                    step_refs = ([primary_ref] + others + [master_center_ref])[:4]
-                elif len(extra_refs) > len(sides_plan):
-                    sec_ref = extra_refs[(step_idx + len(sides_plan)) % len(extra_refs)]
-                    step_refs = [primary_ref, sec_ref, master_center_ref]
-                else:
-                    step_refs = [primary_ref, master_center_ref]
-            else:
-                step_refs = [master_center_ref]
-            step_seed = int(seed) + (step_idx + 1) * 101
+        final_pano, _ = _phase2_tiled_hipass_upscale(
+            hq_model=hq_model,
+            clip=clip,
+            vae=vae,
+            phase1_pano=phase1_pano,
+            all_refs=all_2d_refs,
+            up_w=up_w,
+            up_h=up_h,
+            hi_pass_denoise=float(hi_pass_denoise),
+            hi_pass_steps=int(hi_pass_steps),
+            tile_size_px=int(tile_size_px),
+            tile_overlap_px=int(tile_overlap_px),
+            user_prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=int(seed) + 500,
+            cfg=float(cfg),
+            sampler_name=sampler_name,
+            scheduler=scheduler,
+            uid=uid,
+        )
 
-            if side == "right":
-                anchor_slice = pano_img[:, :, -anchor_w:, :]
-                canvas_img = self._make_blank_canvas(pano_h, win_w, is_green)
-                canvas_img[:, :, :anchor_w, :] = anchor_slice
-                step_prompt = self._build_step_prompt("right", len(step_refs), prompt, is_green=is_green)
-                gen_win = _run_qwen21_outpaint_pass(
-                    model=model,
-                    clip=clip,
-                    vae=vae,
-                    canvas_img=canvas_img,
-                    ref_images_list=step_refs,
-                    prompt=step_prompt,
-                    negative_prompt=negative_prompt,
-                    seed=step_seed,
-                    steps=steps,
-                    cfg=cfg,
-                    sampler_name=sampler_name,
-                    scheduler=scheduler,
-                )
-                pano_img = _stitch_horizontal_cosine(pano_img, gen_win, anchor_w, blend_width_px, anchor_side="left")
-                step_previews.append(gen_win)
-            else:
-                anchor_slice = pano_img[:, :, :anchor_w, :]
-                canvas_img = self._make_blank_canvas(pano_h, win_w, is_green)
-                canvas_img[:, :, ext_w:, :] = anchor_slice
-                step_prompt = self._build_step_prompt("left", len(step_refs), prompt, is_green=is_green)
-                gen_win = _run_qwen21_outpaint_pass(
-                    model=model,
-                    clip=clip,
-                    vae=vae,
-                    canvas_img=canvas_img,
-                    ref_images_list=step_refs,
-                    prompt=step_prompt,
-                    negative_prompt=negative_prompt,
-                    seed=step_seed,
-                    steps=steps,
-                    cfg=cfg,
-                    sampler_name=sampler_name,
-                    scheduler=scheduler,
-                )
-                pano_img = _stitch_horizontal_cosine(gen_win, pano_img, anchor_w, blend_width_px, anchor_side="right")
-                step_previews.append(gen_win)
-
-        # Nhịp cuối (Tùy chọn): Khép kín vòng tròn 360° (nối mượt mép Phải cuối cùng vào mép Trái đầu tiên)
-        if close_360_loop:
-            half_anchor = max(64, int(round((anchor_w * 0.75) / 32.0)) * 32)
-            bridge_ext = max(64, int(round((ext_w * 0.75) / 32.0)) * 32)
-            bridge_w = half_anchor * 2 + bridge_ext
-
-            right_edge = pano_img[:, :, -half_anchor:, :]
-            left_edge = pano_img[:, :, :half_anchor, :]
-
-            bridge_canvas = self._make_blank_canvas(pano_h, bridge_w, is_green)
-            bridge_canvas[:, :, :half_anchor, :] = right_edge
-            bridge_canvas[:, :, half_anchor + bridge_ext :, :] = left_edge
-
-            bridge_refs = [right_edge, left_edge, base_img]
-            color_lbl = "green (#00FF00)" if is_green else "gray (#808080)"
-            bridge_prompt = (
-                f"Outpaint <image1> by replacing the central solid {color_lbl} bridge area "
-                "with a 100% seamless panoramic connection that joins the left scene and the right scene "
-                "into one continuous 360-degree horizon and environment. " + (prompt or "").strip()
-            )
-            gen_bridge = _run_qwen21_outpaint_pass(
-                model=model,
-                clip=clip,
-                vae=vae,
-                canvas_img=bridge_canvas,
-                ref_images_list=bridge_refs,
-                prompt=bridge_prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed) + 999,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-            # Ghép phần cầu nối mới vẽ (half_anchor + bridge_ext) vào đuôi phải của Panorama
-            bridge_left_and_mid = gen_bridge[:, :, : half_anchor + bridge_ext, :]
-            pano_img = _stitch_horizontal_cosine(pano_img, bridge_left_and_mid, half_anchor, blend_width_px)
-
-            # Đồng thời hòa trộn phần neo bên phải của gen_bridge vào đầu bên trái của Panorama để khép kín 360° không vết gợn
-            wrap_bw = min(int(blend_width_px), half_anchor, int(pano_img.shape[2]) // 4)
-            if wrap_bw >= 4:
-                wrap_src = gen_bridge[:, :, half_anchor + bridge_ext : half_anchor + bridge_ext + wrap_bw, :]
-                wrap_dst = pano_img[:, :, :wrap_bw, :]
-                alpha_w = _cosine_alpha_1d(wrap_bw, pano_img.device, pano_img.dtype).view(1, 1, wrap_bw, 1)
-                pano_img[:, :, :wrap_bw, :] = wrap_src * (1.0 - alpha_w) + wrap_dst * alpha_w
-
-            step_previews.append(_chunked_cpu_resize(gen_bridge, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
-
-        preview_batch = torch.cat(step_previews, dim=0) if step_previews else pano_img
-        final_h, final_w = int(pano_img.shape[1]), int(pano_img.shape[2])
-        _vstone_ui_status(uid, f"✅ [NODE MỚI v3.0 - 2D Master] Hoàn tất Panorama 3 Cánh Dài: {final_w}x{final_h}px")
-        return (pano_img.clamp(0.0, 1.0), preview_batch.clamp(0.0, 1.0), final_w, final_h)
+        final_h, final_w = int(final_pano.shape[1]), int(final_pano.shape[2])
+        _vstone_ui_status(
+            uid,
+            f"✅ [Hoàn Tất 2 Pha - Zero Seam] Pha 1 ({base_w}x{base_h}) -> Pha 2 Hi-Pass ({final_w}x{final_h}px, denoise={float(hi_pass_denoise):.2f})",
+        )
+        # Đầu ra 1: Ảnh Panorama 5K/6K sau Pha 2 Hi-Pass; Đầu ra 2 (Preview): Ảnh Panorama gốc Pha 1 để đối chiếu
+        return (final_pano.clamp(0.0, 1.0), phase1_pano.clamp(0.0, 1.0), final_w, final_h)
 
 
 class stoneV_Panorama_Stitch2:

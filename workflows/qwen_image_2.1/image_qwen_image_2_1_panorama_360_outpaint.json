@@ -110,9 +110,9 @@
       "outputs": [
         {"name": "MODEL", "type": "MODEL", "links": [7], "slot_index": 0}
       ],
-      "title": "LoRA Outpaint (Strength 1.0: Tự tắt khi Gen Tấm Giữa, bật 100% khi Vẽ Nối để khớp mí tuyệt đối)",
+      "title": "LoRA Hỗ Trợ Panorama & Hi-Pass (High quality.safetensors - Tăng độ nét & chiều sâu phong cảnh)",
       "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
-      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 1.0]
+      "widgets_values": ["High quality.safetensors", 0.65]
     },
     {
       "id": 8,
@@ -166,18 +166,10 @@
         {"name": "panorama_width", "type": "INT", "links": null, "slot_index": 2},
         {"name": "panorama_height", "type": "INT", "links": null, "slot_index": 3}
       ],
-      "title": "6. stoneV Panorama 360: Vẽ 3 Cánh Dài Từ Ngữ Cảnh Chung 3-5 Ref (Chống Tiling 100% + Mở Rộng Chiều Cao)",
+      "title": "6. stoneV Panorama 2 Pha: Pha 1 Tổng Hòa 1-5 Ảnh Ref (Không Cắt Nối) -> Pha 2 Upscale Hi-Pass Cắt Nhỏ Denoise Thấp",
       "properties": {"Node name for S&R": "stoneV_Panorama360_AutoLoop"},
       "widgets_values": [
-        "1. Sequential Bridge (Mỗi bước lặp ưu tiên 1 tấm Ref kế tiếp Ref 2 -> 3 -> 4 -> 5)",
-        "Both Sides Alternating (Mở rộng đều sang cả Phải & Trái)",
-        2,
-        0.5,
-        1.0,
-        0.5,
-        false,
-        48,
-        "Create a logical, coherent ultra-wide environment background plate. Use the fed-in reference images to understand the spatial context, reconstruct their exact environment, architecture, terrain, surface textures, and lighting, and draw a continuous, seamless panoramic extension with aligned perspective and horizon line.",
+        "Create a breathtaking, coherent ultra-wide panoramic landscape background. Synthesize and harmonize the environmental context, architecture, terrain, vegetation, sky, and lighting from all reference images into one single unbroken wide-angle panorama with a continuous horizon line and natural depth.",
         "tiled images, split panels, collage, picture frames, borders, gray background, mismatched perspective, broken horizon, disconnected walls or floor, blurry, distorted geometry, watermark, text",
         42,
         "fixed",
@@ -185,7 +177,13 @@
         1.0,
         "euler",
         "simple",
-        "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)"
+        "1. Ratio 3.0:1 - Chuẩn Panorama Phong Cảnh (Pha 1: 2304x768 -> Pha 2: 4608x1536)",
+        2.0,
+        0.32,
+        18,
+        1536,
+        512,
+        0.65
       ]
     },
     {
@@ -199,9 +197,9 @@
       "inputs": [
         {"name": "images", "type": "IMAGE", "link": 10}
       ],
-      "title": "7. Kết Quả Panorama Siêu Rộng (Gần 360° & Mở Rộng Chiều Cao)",
+      "title": "7. Kết Quả Panorama Hoàn Chỉnh Sau Pha 2 Hi-Pass Upscale (4608x1536 - Không Vết Nối)",
       "properties": {"Node name for S&R": "SaveImage"},
-      "widgets_values": ["stoneV_Qwen21_Panorama360"]
+      "widgets_values": ["stoneV_Qwen21_Panorama_HiPass"]
     },
     {
       "id": 12,
@@ -214,7 +212,7 @@
       "inputs": [
         {"name": "images", "type": "IMAGE", "link": 11}
       ],
-      "title": "8. Xem Từng Nhịp Vẽ Cuốn Chiếu (Step Windows Preview)",
+      "title": "8. Xem Ảnh Panorama Gốc Pha 1 (Trước Khi Upscale Hi-Pass)",
       "properties": {"Node name for S&R": "PreviewImage"}
     },
     {
@@ -254,7 +252,7 @@
   ],
   "groups": [
     {
-      "title": "stoneV Panorama 360° (Qwen-Image-2.1): Outpainting Cuốn Chiếu Đa Tham Chiếu (3 - 5 Ảnh Ref) + Mở Rộng Chiều Cao + Khép Vòng 360°",
+      "title": "stoneV Panorama 2 Pha (Qwen-Image-2.1): Pha 1 Tổng Hòa 1-5 Ảnh Ngữ Cảnh Vẽ Panorama Dài (Không Cắt Nối) -> Pha 2 Upscale Hi-Pass Cắt Nhỏ Denoise Thấp",
       "bounding": [40, 20, 2000, 1280],
       "color": "#2a5d7c",
       "font_size": 24
