@@ -110,9 +110,9 @@
       "outputs": [
         {"name": "MODEL", "type": "MODEL", "links": [7], "slot_index": 0}
       ],
-      "title": "LoRA Outpaint (Multi-Ref: Giữ Strength 0.45 - 0.55 để không vỡ ảnh)",
+      "title": "LoRA Outpaint (Strength 1.0: Tự tắt khi Gen Tấm Giữa, bật 100% khi Vẽ Nối để khớp mí tuyệt đối)",
       "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
-      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 0.5]
+      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 1.0]
     },
     {
       "id": 8,

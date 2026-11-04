@@ -110,9 +110,9 @@
       "outputs": [
         {"name": "MODEL", "type": "MODEL", "links": [7], "slot_index": 0}
       ],
-      "title": "LoRA Outpaint (Tự động bật khi vẽ Ô Xanh Lá & Xanh Dương, tự tắt khi Gen Ô Đỏ)",
+      "title": "LoRA Outpaint (Strength 1.0: Tự tắt khi Gen Ô Đỏ 1, bật 100% khi Vẽ Nối để khớp mí tuyệt đối)",
       "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
-      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 0.5]
+      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 1.0]
     },
     {
       "id": 8,
