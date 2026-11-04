@@ -1,5 +1,5 @@
 {
-  "id": "abf771f6-e4b7-49b1-a777-90d360959f6c",
+  "id": "49ccd513-8384-406c-9ec1-99eea61a1e8a",
   "revision": 0,
   "last_node_id": 163,
   "last_link_id": 327,
@@ -467,7 +467,7 @@
       "title": "Cách dùng",
       "properties": {},
       "widgets_values": [
-        "## huy_minhmax_screenx_video\n\nĐầu vào chỉ có 1 video. Video vừa được ghim trên canvas bằng mask, vừa làm tham chiếu đầy đủ `<Video 1>`. H3 vẽ phần cánh.\n\n**Đầu vào**\nVideo gốc, 24 fps. Nên cắt sẵn đúng 17k+5 frame (107, 124, 141... tối đa 362). Video lệch lưới sẽ mất tới 16 frame cuối.\n\n**Chỉnh trước khi chạy**\n- **Outpaint Pad:** cánh trái thì `add_left_widths` 1, `add_right_widths` 0. Cánh phải thì ngược lại.\n- **`outer_height_ratio`:** 1.3 cho cánh ScreenX, 1.0 nếu chỉ mở ngang.\n\n**OOM:** giảm `megapixels` ở node Cỡ video tham chiếu trước, rồi tới node Cỡ canvas.\n\n**Sau khi gen**\nLấy phần cánh rồi ghép với video gốc.\n"
+        "## huy_minhmax_paintout\n\nĐầu vào chỉ có 1 video. Video vừa được ghim trên canvas bằng mask, vừa làm tham chiếu đầy đủ `<Video 1>`. H3 vẽ phần cánh.\n\n**Đầu vào**\nVideo gốc, 24 fps. Nên cắt sẵn đúng 17k+5 frame (107, 124, 141... tối đa 362). Video lệch lưới sẽ mất tới 16 frame cuối.\n\n**Chỉnh trước khi chạy**\n- **Outpaint Pad:** cánh trái thì `add_left_widths` 1, `add_right_widths` 0. Cánh phải thì ngược lại.\n- **`outer_height_ratio`:** 1.3 cho cánh ScreenX, 1.0 nếu chỉ mở ngang.\n\n**OOM:** giảm `megapixels` ở node Cỡ video tham chiếu trước, rồi tới node Cỡ canvas.\n\n**Sau khi gen**\nLấy phần cánh rồi ghép với video gốc.\n"
       ],
       "color": "#322",
       "bgcolor": "#533"
@@ -1668,7 +1668,7 @@
         "ver": "0.33.0"
       },
       "widgets_values": [
-        "video/huy_minhmax_screenx_video",
+        "video/huy_minhmax_paintout",
         "auto",
         "auto"
       ]
