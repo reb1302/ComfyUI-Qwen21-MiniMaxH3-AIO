@@ -44,9 +44,83 @@ COLOR_CHOICES = [
 ]
 
 # Danh mục LoRA & Model chuẩn để bấm tải 1-click ngay trên máy H200 Hàn Quốc
+LTX25_OUTPAINT_SUITE_MODELS: list[dict[str, str]] = [
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/resolve/main/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+    },
+    {
+        "folder": "diffusion_models",
+        "filename": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+    },
+    {
+        "folder": "latent_upscale_models",
+        "filename": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+    },
+    {
+        "folder": "vae",
+        "filename": "ltx-2.5-video-vae-bf16.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors",
+    },
+    {
+        "folder": "vae",
+        "filename": "ltx-2.5-audio-vae-bf16.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors",
+    },
+    {
+        "folder": "text_encoders",
+        "filename": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+    },
+    {
+        "folder": "text_encoders",
+        "filename": "gemma4_e2b_it_bf16.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_bf16.safetensors",
+    },
+]
+
 PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
     "ALL Laptop LoRAs + Upscalers (Tự tải trọn bộ LoRA + 4x-UltraSharp + DMAD + 3D Upscaler)": ("__ALL_LAPTOP_LORAS__", "", ""),
     "ALL Laptop LoRAs (Tự tải High quality + Outpaint v2 + 360)": ("__ALL_LAPTOP_LORAS__", "", ""),
+    "ALL LTX-2.5 Outpaint/Inpaint Suite (Tự cài ComfyUI-LTXVideo + Tải trọn bộ 7 Model LTX-2.5 Outpaint)": ("__ALL_LTX25_OUTPAINT__", "", ""),
+    "LTX-2.5 IC-LoRA In-Outpainting 0.9 (ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors)": (
+        "loras",
+        "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/resolve/main/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+    ),
+    "LTX-2.5 22B Distilled Transformer BF16 (ltx-2.5-22b-distilled-transformer-bf16.safetensors)": (
+        "diffusion_models",
+        "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+    ),
+    "LTX-2.5 Latent Spatial Upscaler x2 BF16 (ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors)": (
+        "latent_upscale_models",
+        "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+    ),
+    "LTX-2.5 Video VAE BF16 (ltx-2.5-video-vae-bf16.safetensors)": (
+        "vae",
+        "ltx-2.5-video-vae-bf16.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors",
+    ),
+    "LTX-2.5 Audio VAE BF16 (ltx-2.5-audio-vae-bf16.safetensors)": (
+        "vae",
+        "ltx-2.5-audio-vae-bf16.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors",
+    ),
+    "LTX-2.5 Gemma4-12B Text Encoder BF16 (gemma4-12b-with-proj-ltx-2.5-bf16.safetensors)": (
+        "text_encoders",
+        "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+    ),
+    "LTX-2.5 Gemma4-E2B Prompt Enhancer BF16 (gemma4_e2b_it_bf16.safetensors)": (
+        "text_encoders",
+        "gemma4_e2b_it_bf16.safetensors",
+        "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_bf16.safetensors",
+    ),
     "4x-UltraSharp.safetensors (AI Pixel Upscaler 4K-16K cho H200 & RTX - 64MB)": (
         "upscale_models",
         "4x-UltraSharp.safetensors",
@@ -203,6 +277,10 @@ import hashlib
 _LAST_SYNCED_HASH: str = ""
 
 DEFAULT_SYNC_WORKFLOWS = [
+    "workflows/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
+    "workflows/ltx_2.5/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/ltx_2.5/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
     "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
@@ -228,6 +306,54 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_outpaint.json",
 ]
+
+
+def _ensure_ltx_video_custom_node(comfy_root: str | None = None) -> str:
+    """Tự động kiểm tra và cài đặt Lightricks/ComfyUI-LTXVideo vào custom_nodes nếu chưa có."""
+    root = comfy_root or _get_comfy_root()
+    if not root:
+        return "[LTX-2.5] Không tìm thấy thư mục ComfyUI."
+    ltx_dir = os.path.join(root, "custom_nodes", "ComfyUI-LTXVideo")
+    git_bin = shutil.which("git")
+    if os.path.isdir(ltx_dir):
+        if git_bin and os.path.isdir(os.path.join(ltx_dir, ".git")):
+            try:
+                subprocess.run(
+                    [git_bin, "-C", ltx_dir, "pull", "--ff-only"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+            except Exception:
+                pass
+        return f"[LTX-2.5] Custom Node ComfyUI-LTXVideo đã sẵn sàng tại: {ltx_dir}"
+    if not git_bin:
+        return "[LTX-2.5] Không tìm thấy git để clone ComfyUI-LTXVideo."
+    try:
+        os.makedirs(os.path.join(root, "custom_nodes"), exist_ok=True)
+        res = subprocess.run(
+            [git_bin, "clone", "https://github.com/Lightricks/ComfyUI-LTXVideo.git", ltx_dir],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        req_txt = os.path.join(ltx_dir, "requirements.txt")
+        if os.path.isfile(req_txt):
+            import sys as _sys_p
+            subprocess.run(
+                [_sys_p.executable, "-m", "pip", "install", "-r", req_txt],
+                capture_output=True,
+                text=True,
+                timeout=180,
+                check=False,
+            )
+        if res.returncode == 0 and os.path.isdir(ltx_dir):
+            return f"[LTX-2.5] Đã tự động cài đặt ComfyUI-LTXVideo tại: {ltx_dir}"
+        return f"[LTX-2.5] Cảnh báo khi clone ComfyUI-LTXVideo: {res.stderr.strip()}"
+    except Exception as e:
+        return f"[LTX-2.5] Lỗi cài ComfyUI-LTXVideo: {e}"
 
 
 def _http_get_bytes(url: str, timeout: int = 15) -> bytes:
@@ -1844,6 +1970,12 @@ class stoneV_CloudSyncHub:
                 folder, fname, url = PRESET_DOWNLOAD_CATALOG[preset_model]
                 if folder == "__ALL_LAPTOP_LORAS__":
                     for item in DEFAULT_AUTO_SYNC_LORAS:
+                        reports.append(
+                            download_file_to_comfy_models(item["folder"], item["filename"], item["url"])
+                        )
+                elif folder == "__ALL_LTX25_OUTPAINT__":
+                    reports.append(_ensure_ltx_video_custom_node())
+                    for item in LTX25_OUTPAINT_SUITE_MODELS:
                         reports.append(
                             download_file_to_comfy_models(item["folder"], item["filename"], item["url"])
                         )

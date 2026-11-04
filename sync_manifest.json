@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-04T15:50:09+07:00",
+  "updated_at": "2026-11-04T16:19:00+07:00",
   "loras": [
     {
       "filename": "High quality.safetensors",
@@ -63,6 +63,10 @@
     }
   ],
   "workflows": [
+    "workflows/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
+    "workflows/ltx_2.5/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/ltx_2.5/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/minimax_h3/huy_minhmax_paintout_fun.json",
     "workflows/minimax_h3/video_minimax_h3_i2v_latent_upscaler.json",
     "workflows/minimax_h3/video_minimax_h3_r2v_latent_upscaler.json",
