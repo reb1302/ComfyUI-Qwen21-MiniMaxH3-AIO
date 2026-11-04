@@ -2907,6 +2907,20 @@ def _cosine_alpha_1d(length: int, device: torch.device, dtype: torch.dtype) -> t
     return (0.5 * (1.0 - torch.cos(math.pi * t))).to(dtype=dtype)
 
 
+def _feather_mask(mask: torch.Tensor, radius: int) -> torch.Tensor:
+    """
+    Làm mềm biên (feather) cho mask [B, H, W] (0.0 = vùng ảnh gốc, 1.0 = vùng AI vẽ mới).
+    Chỉ làm mềm lấn vào bên trong vùng ảnh gốc (giữ nguyên 1.0 ở vùng bù xám/xanh bên ngoài
+    để không bao giờ bị lem màu nền xám vào đường giáp mí).
+    """
+    r = max(1, int(radius))
+    m4 = mask.unsqueeze(1).to(dtype=torch.float32)
+    k = 2 * r + 1
+    blurred = F.avg_pool2d(F.pad(m4, (r, r, r, r), mode="replicate"), kernel_size=k, stride=1)
+    blurred = F.avg_pool2d(F.pad(blurred, (r, r, r, r), mode="replicate"), kernel_size=k, stride=1).squeeze(1)
+    return torch.maximum(mask, blurred).clamp(0.0, 1.0)
+
+
 def _stitch_horizontal_cosine(left_img: torch.Tensor, right_img: torch.Tensor, overlap_w: int, blend_w: int) -> torch.Tensor:
     """
     Ghép ngang 2 ảnh `left_img` [1, H, W_L, 3] và `right_img` [1, H, W_R, 3]
