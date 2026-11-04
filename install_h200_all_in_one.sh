@@ -171,25 +171,12 @@ if [ "$DOWNLOAD_BF16" = true ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# BUOC 6: Tao script khoi chay start_h200.sh (bat --highvram)
+# BUOC 6: Tao script khoi chay start_h200.sh (bat --highvram + auto-sync an toan)
 # ------------------------------------------------------------------------------
-echo -e "\n[6/6] Tao script khoi chay $COMFY_DIR/start_h200.sh..."
-cat << 'EOF' > "$COMFY_DIR/start_h200.sh"
-#!/usr/bin/env bash
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$DIR/venv/bin/activate"
-export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
-ATTN_FLAG=""
-if python -c "import sageattention" &> /dev/null; then
-    echo "[INFO] SageAttention san sang -> Bat --use-sage-attention"
-    ATTN_FLAG="--use-sage-attention"
-else
-    echo "[INFO] Chay PyTorch Native FlashAttention/SDPA"
+echo -e "\n[6/6] Cai dat script khoi chay $COMFY_DIR/start_h200.sh..."
+if [ -f "$SCRIPT_DIR/start_h200.sh" ] && [ "$SCRIPT_DIR/start_h200.sh" != "$COMFY_DIR/start_h200.sh" ]; then
+    cp -f "$SCRIPT_DIR/start_h200.sh" "$COMFY_DIR/start_h200.sh"
 fi
-echo "Khoi dong ComfyUI tren NVIDIA H200 (--highvram $ATTN_FLAG, port ${1:-8188})..."
-python "$DIR/main.py" --listen 0.0.0.0 --port "${1:-8188}" --highvram $ATTN_FLAG
-read -rp "Nhan Enter de dong cua so..."
-EOF
 chmod +x "$COMFY_DIR/start_h200.sh"
 
 echo "=============================================================================="

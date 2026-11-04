@@ -17,49 +17,93 @@ PORT="${1:-8188}"
 source "$COMFY_DIR/venv/bin/activate"
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 
-# 1. Tu dong git pull neu dang dung trong repo ComfyUI-Qwen21-MiniMaxH3-AIO
+# 1. Tu dong git fetch + reset --hard neu dang dung trong repo ComfyUI-Qwen21-MiniMaxH3-AIO
+#    (Tranh loi git pull bi ket khi file local bi 0KB hoac dirty do auto-sync)
 REPO_DIR=""
 if [ -d "$SCRIPT_DIR/.git" ]; then
     REPO_DIR="$SCRIPT_DIR"
+elif [ -d "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/.git" ]; then
+    REPO_DIR="$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO"
 elif [ -d "$COMFY_DIR/../ComfyUI-Qwen21-MiniMaxH3-AIO/.git" ]; then
     REPO_DIR="$(cd "$COMFY_DIR/../ComfyUI-Qwen21-MiniMaxH3-AIO" && pwd)"
 fi
 
 if [ -n "$REPO_DIR" ]; then
-    echo "[SYNC] Dang git pull code moi nhat tai $REPO_DIR ..."
-    git -C "$REPO_DIR" pull --ff-only || true
+    echo "[SYNC] Dang cap nhat code moi nhat tai $REPO_DIR ..."
+    git -C "$REPO_DIR" fetch origin main && git -C "$REPO_DIR" reset --hard origin/main || true
 fi
 
-# 2. Copy truc tiep node_helper_vstone.py vao CA 3 vi tri trong ComfyUI/custom_nodes/
+# 2. Cap nhat an toan (Atomic + chong 0KB) vao ComfyUI/custom_nodes/
 echo "[SYNC] Dang cap nhat VStone Nodes & Workflows vao $COMFY_DIR/custom_nodes/ ..."
 mkdir -p "$COMFY_DIR/custom_nodes/vstone"
 mkdir -p "$COMFY_DIR/user/default/workflows"
 mkdir -p "$COMFY_DIR/models/loras"
 
-if [ -n "$REPO_DIR" ] && [ -f "$REPO_DIR/vstone/node_helper_vstone.py" ]; then
-    cp -f "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py"
-    cp -f "$REPO_DIR/vstone/__init__.py" "$COMFY_DIR/custom_nodes/vstone/__init__.py"
-    cp -f "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/node_helper_vstone.py"
+# Xoa cac file .tmp rac hoac ban copy trung lap o goc custom_nodes/ gay xung dot
+rm -f "$COMFY_DIR/custom_nodes/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/"*.tmp "$COMFY_DIR/custom_nodes/vstone/"*.tmp 2>/dev/null || true
+
+safe_copy_if_valid() {
+    local src="$1"
+    local dst="$2"
+    local min_bytes="${3:-50}"
+    if [ -f "$src" ]; then
+        local sz
+        sz=$(wc -c < "$src" 2>/dev/null || echo 0)
+        if [ "$sz" -ge "$min_bytes" ]; then
+            local real_src real_dst
+            real_src=$(readlink -f "$src" 2>/dev/null || echo "$src")
+            real_dst=$(readlink -f "$dst" 2>/dev/null || echo "$dst")
+            if [ "$real_src" != "$real_dst" ]; then
+                cp -f "$src" "$dst.tmp.$$" && mv -f "$dst.tmp.$$" "$dst"
+            fi
+            return 0
+        fi
+    fi
+    return 1
+}
+
+safe_curl_to() {
+    local url="$1"
+    local dst="$2"
+    local min_bytes="${3:-50}"
+    local tmp="$dst.curl.$$.tmp"
+    if curl -4 -fsSL "$url" -o "$tmp" 2>/dev/null; then
+        local sz
+        sz=$(wc -c < "$tmp" 2>/dev/null || echo 0)
+        if [ "$sz" -ge "$min_bytes" ]; then
+            mv -f "$tmp" "$dst"
+            return 0
+        fi
+    fi
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+}
+
+if [ -n "$REPO_DIR" ] && safe_copy_if_valid "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" 10000; then
+    safe_copy_if_valid "$REPO_DIR/vstone/__init__.py" "$COMFY_DIR/custom_nodes/vstone/__init__.py" 50 || true
     if [ -d "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO" ]; then
         mkdir -p "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone"
-        cp -f "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/node_helper_vstone.py"
-        cp -f "$REPO_DIR/vstone/__init__.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/__init__.py"
+        safe_copy_if_valid "$REPO_DIR/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/node_helper_vstone.py" 10000 || true
+        safe_copy_if_valid "$REPO_DIR/vstone/__init__.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/__init__.py" 50 || true
+        safe_copy_if_valid "$REPO_DIR/__init__.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/__init__.py" 100 || true
     fi
     if [ -d "$REPO_DIR/workflows" ]; then
         cp -rf "$REPO_DIR/workflows/"* "$COMFY_DIR/user/default/workflows/" 2>/dev/null || true
     fi
     if [ "$SCRIPT_DIR/start_h200.sh" != "$COMFY_DIR/start_h200.sh" ]; then
-        cp -f "$REPO_DIR/start_h200.sh" "$COMFY_DIR/start_h200.sh" 2>/dev/null || true
+        safe_copy_if_valid "$REPO_DIR/start_h200.sh" "$COMFY_DIR/start_h200.sh" 500 || true
         chmod +x "$COMFY_DIR/start_h200.sh" 2>/dev/null || true
     fi
 else
     SHA=$(git ls-remote https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO.git refs/heads/main 2>/dev/null | awk '{print $1}')
     REF="${SHA:-main}"
-    curl -4 -sL "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/$REF/vstone/node_helper_vstone.py" -o "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" || true
-    curl -4 -sL "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/$REF/vstone/__init__.py" -o "$COMFY_DIR/custom_nodes/vstone/__init__.py" || true
-    cp -f "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/node_helper_vstone.py" 2>/dev/null || true
-    if [ -d "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone" ]; then
-        cp -f "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/node_helper_vstone.py" 2>/dev/null || true
+    safe_curl_to "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/$REF/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" 10000 || true
+    safe_curl_to "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/$REF/vstone/__init__.py" "$COMFY_DIR/custom_nodes/vstone/__init__.py" 50 || true
+    if [ -d "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO" ]; then
+        mkdir -p "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone"
+        safe_curl_to "https://raw.githubusercontent.com/reb1302/ComfyUI-Qwen21-MiniMaxH3_AIO/$REF/__init__.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/__init__.py" 100 || true
+        safe_copy_if_valid "$COMFY_DIR/custom_nodes/vstone/node_helper_vstone.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/node_helper_vstone.py" 10000 || true
+        safe_copy_if_valid "$COMFY_DIR/custom_nodes/vstone/__init__.py" "$COMFY_DIR/custom_nodes/ComfyUI_Qwen21_MiniMaxH3_AIO/vstone/__init__.py" 50 || true
     fi
 fi
 
