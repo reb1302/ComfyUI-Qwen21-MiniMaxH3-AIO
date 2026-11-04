@@ -3033,10 +3033,15 @@ def _synthesize_master_wide_from_2d_refs(
             images_dict[f"image_{idx}"] = _prepare_ref_for_qwen21(r_img, target_res=768)
 
     ref_tags = ", ".join(f"<image{i}>" for i in range(1, len(images_dict) + 1))
+    other_tags = ", ".join(f"<image{i}>" for i in range(2, len(images_dict) + 1)) or "<image1>"
     synth_prompt = (
-        f"Synthesize one single, seamless ultra-wide panoramic environment combining the exact scene, "
-        f"architecture, terrain, lighting, textures, and atmosphere from {ref_tags} into one unified wide-angle background. "
-        f"Maintain a single continuous horizon line and natural spatial transition across the entire wide frame without split screens or borders. "
+        f"Task: Environment Background Reconstruction and Continuous Panoramic Scene Synthesis. "
+        f"Analyze the fed-in reference images ({ref_tags}) to understand their spatial context, architectural layout, "
+        f"terrain, background structures, surface materials, lighting direction, and atmosphere. "
+        f"Reconstruct the exact environment from {ref_tags} into one logical, coherent, wide-angle background plate: "
+        f"anchor the central scene on <image1> and continuously extend and connect it with the reconstructed environmental structures "
+        f"from {other_tags} across the frame, maintaining aligned perspective, a single continuous horizon and ground plane, "
+        f"and natural spatial transitions without split borders or collage seams. "
         + (user_prompt or "").strip()
     ).strip()
 
@@ -3242,11 +3247,19 @@ class stoneV_Panorama360_AutoLoop:
                 }),
                 "prompt": ("STRING", {
                     "multiline": True,
-                    "default": "Seamless ultra-wide 360 panoramic continuation of the environment, consistent horizon line, natural lighting, high detail architectural and landscape continuity."
+                    "default": (
+                        "Create a logical, coherent ultra-wide environment background plate. "
+                        "Use the fed-in reference images to understand the spatial context, reconstruct their exact environment, "
+                        "architecture, terrain, surface textures, and lighting, and draw a continuous, seamless panoramic extension "
+                        "with aligned perspective and horizon line."
+                    )
                 }),
                 "negative_prompt": ("STRING", {
                     "multiline": True,
-                    "default": "visible seams, split screen, gray border, blurry, distorted perspective, broken horizon, watermark, text"
+                    "default": (
+                        "tiled images, split panels, collage, picture frames, borders, gray background, mismatched perspective, "
+                        "broken horizon, disconnected walls or floor, blurry, distorted geometry, watermark, text"
+                    )
                 }),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
                 "steps": ("INT", {"default": 24, "min": 4, "max": 60, "step": 1}),
@@ -3302,18 +3315,32 @@ class stoneV_Panorama360_AutoLoop:
     def _build_step_prompt(self, side_desc: str, num_refs: int, user_prompt: str, is_green: bool = False) -> str:
         color_label = "green (#00FF00)" if is_green else "gray (#808080)"
         equi_prefix = "360 degree equirectangular panorama. " if is_green else ""
+        anchor_side = "left" if side_desc == "right" else ("right" if side_desc == "left" else "center")
         if num_refs >= 2:
-            ref_tags = ", ".join(f"<image{i + 2}>" for i in range(num_refs))
+            extra_tags = ", ".join(f"<image{i + 2}>" for i in range(1, num_refs))
             base_instr = (
-                f"{equi_prefix}Outpaint <image1> by replacing all solid {color_label} areas on the {side_desc} "
-                f"with one continuous, unified wide-angle panoramic background. "
-                f"Use reference {ref_tags} strictly as global environment, atmosphere, lighting, and architectural style context — "
-                f"do NOT tile, copy, or repeat individual frames or foreground objects; extend the horizon and scenery smoothly as one single cohesive space."
+                f"{equi_prefix}Task: Sequential Environment Background Outpainting. "
+                f"In <image1>, replace all solid {color_label} areas on the {side_desc} by continuously drawing and extending "
+                f"the existing environment from the {anchor_side} anchor of <image1>. "
+                f"Use the fed-in reference <image2> and context {extra_tags} to understand the spatial context "
+                f"and faithfully reconstruct the actual environment, architecture, terrain, background structures, surface materials, and lighting from <image2> "
+                f"into the {side_desc} area. "
+                f"Connect the floor/ground plane, walls, horizon line, and perspective smoothly and logically from <image1> "
+                f"into the reconstructed environment of <image2> as one single, seamless background plate."
+            )
+        elif num_refs == 1:
+            base_instr = (
+                f"{equi_prefix}Task: Sequential Environment Background Outpainting. "
+                f"In <image1>, replace all solid {color_label} areas on the {side_desc} by continuously drawing and extending "
+                f"the existing environment from the {anchor_side} anchor of <image1>. "
+                f"Use the fed-in reference <image2> to understand the spatial context and faithfully reconstruct its environment, "
+                f"architecture, terrain, structures, and lighting into the {side_desc} area as one logical, continuous background plate."
             )
         else:
             base_instr = (
-                f"{equi_prefix}Outpaint <image1> by replacing all solid {color_label} areas on the {side_desc} "
-                f"with one continuous, unified wide-angle panoramic background, using <image2> as global environment context without tiling or repeating objects."
+                f"{equi_prefix}Task: Sequential Environment Background Outpainting. "
+                f"In <image1>, replace all solid {color_label} areas on the {side_desc} by continuously drawing and extending "
+                f"the existing environment into a logical, seamless wide-angle background plate."
             )
         clean_user = (user_prompt or "").strip()
         return f"{base_instr} {clean_user}".strip()
@@ -3356,12 +3383,16 @@ class stoneV_Panorama360_AutoLoop:
         base_img = image_1[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
         raw_h, raw_w = int(base_img.shape[1]), int(base_img.shape[2])
 
-        # Tự động khôi phục nếu trình duyệt lưu cache thứ tự widget cũ
+        # Tự động khôi phục nếu trình duyệt lưu cache thứ tự widget cũ hoặc prompt mặc định cũ
         if isinstance(prompt, str) and (prompt.startswith("Gray #808080") or prompt.startswith("Green #00FF00")):
             fill_mode = prompt
+            prompt = ""
+        if not (prompt or "").strip() or (prompt or "").strip().startswith("Seamless ultra-wide"):
             prompt = (
-                "Seamless ultra-wide 360 panoramic continuation of the environment, "
-                "consistent horizon line, natural lighting, high detail architectural and landscape continuity."
+                "Create a logical, coherent ultra-wide environment background plate. "
+                "Use the fed-in reference images to understand the spatial context, reconstruct their exact environment, "
+                "architecture, terrain, surface textures, and lighting, and draw a continuous, seamless panoramic extension "
+                "with aligned perspective and horizon line."
             )
         try:
             seed = int(seed)
@@ -3494,8 +3525,16 @@ class stoneV_Panorama360_AutoLoop:
             if panorama_mode.startswith("3."):
                 step_refs = self._select_step_refs(step_idx, side, base_img, extra_refs, panorama_mode)
             elif extra_refs:
-                dir_ref = extra_refs[step_idx % len(extra_refs)] if side == "right" else extra_refs[-(1 + (step_idx % len(extra_refs)))]
-                step_refs = [master_center_ref, dir_ref]
+                primary_idx = step_idx % len(extra_refs)
+                primary_ref = extra_refs[primary_idx]
+                if panorama_mode.startswith("2."):
+                    others = [r for idx_r, r in enumerate(extra_refs) if idx_r != primary_idx]
+                    step_refs = ([primary_ref] + others + [master_center_ref])[:4]
+                elif len(extra_refs) > len(sides_plan):
+                    sec_ref = extra_refs[(step_idx + len(sides_plan)) % len(extra_refs)]
+                    step_refs = [primary_ref, sec_ref, master_center_ref]
+                else:
+                    step_refs = [primary_ref, master_center_ref]
             else:
                 step_refs = [master_center_ref]
             step_seed = int(seed) + (step_idx + 1) * 101
