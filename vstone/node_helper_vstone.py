@@ -1806,7 +1806,10 @@ class stoneV_CloudSyncHub:
                 ], {
                     "default": "loras"
                 }),
-            }
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
         }
 
     RETURN_TYPES = ("STRING",)
@@ -1829,6 +1832,7 @@ class stoneV_CloudSyncHub:
         preset_model: str,
         custom_url: str = "",
         custom_target_folder: str = "loras",
+        unique_id: Any = None,
     ):
         reports: list[str] = []
 
@@ -1852,7 +1856,7 @@ class stoneV_CloudSyncHub:
                     reports.append(download_file_to_comfy_models(custom_target_folder, fn, u))
 
         final_report = "\n".join(reports) if reports else "Done."
-        print(final_report)
+        _vstone_ui_status(unique_id, f"✅ Đã nạp VStone v3.0 (2D Master + 3 Wings)\n{final_report.splitlines()[0]}")
         return {"ui": {"text": [final_report]}, "result": (final_report,)}
 
 
@@ -2901,6 +2905,19 @@ class MinimaxH3LatentUpscaler3D:
 # ==============================================================================
 # NODE 6: stoneV Panorama 360 Multi-Ref Outpaint Loop (Qwen-Image-2.1)
 # ==============================================================================
+def _vstone_ui_status(unique_id: Any, text: str) -> None:
+    """Hiển thị trực tiếp dòng trạng thái + phiên bản ngay bên dưới Node trên màn hình trình duyệt ComfyUI."""
+    print(text)
+    if not unique_id:
+        return
+    try:
+        import server
+        if hasattr(server, "PromptServer") and getattr(server.PromptServer, "instance", None) is not None:
+            server.PromptServer.instance.send_progress_text(text, str(unique_id))
+    except Exception:
+        pass
+
+
 def _cosine_alpha_1d(length: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
     if length <= 1:
         return torch.ones((1,), device=device, dtype=dtype)
@@ -3248,7 +3265,10 @@ class stoneV_Panorama360_AutoLoop:
                 ], {
                     "default": "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)"
                 }),
-            }
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
         }
 
     RETURN_TYPES = ("IMAGE", "IMAGE", "INT", "INT")
@@ -3398,12 +3418,18 @@ class stoneV_Panorama360_AutoLoop:
                 sides_plan.append("right" if (i % 2 == 0) else "left")
 
         step_previews: list[torch.Tensor] = []
+        uid = kwargs.get("unique_id", None)
+        total_passes = 1 + len(sides_plan) + (1 if close_360_loop else 0)
 
         # Giai đoạn 1: Tạo 1 Ảnh Background Dài Thống Nhất (Tấm Giữa Dài - Master Center Long)
         # từ toàn bộ bộ ảnh Ref 2D (`reference_latents` qua VAE) để hiểu đúng 100% môi trường Ref mà không bị Tiling
         if extra_refs and not panorama_mode.startswith("3."):
             center_w = max(base_w, int(round((base_w * 1.6) / 32.0)) * 32)
             all_2d_refs = [base_img] + extra_refs
+            _vstone_ui_status(
+                uid,
+                f"🚀 [NODE MỚI v3.0 - 2D Master] Nhịp 1/{total_passes}: Đang tổng hợp 1 Tấm Giữa Dài ({center_w}x{pano_h}) từ {len(all_2d_refs)} ảnh Ref 2D...",
+            )
             pano_img = _synthesize_master_wide_from_2d_refs(
                 model=model,
                 clip=clip,
@@ -3423,6 +3449,10 @@ class stoneV_Panorama360_AutoLoop:
         elif pad_top > 0 or pad_bottom > 0:
             center_pad_x = max(64, int(round((base_w * 0.25) / 32.0)) * 32)
             center_w = base_w + 2 * center_pad_x
+            _vstone_ui_status(
+                uid,
+                f"🚀 [NODE MỚI v3.0 - 2D Master] Nhịp 1/{total_passes}: Mở rộng Tấm Giữa ({center_w}x{pano_h})...",
+            )
             step1_canvas = self._make_blank_canvas(pano_h, center_w, is_green)
             step1_canvas[:, pad_top : pad_top + base_h, center_pad_x : center_pad_x + base_w, :] = base_img
 
@@ -3457,6 +3487,10 @@ class stoneV_Panorama360_AutoLoop:
         # Giai đoạn 2: Từ Tấm Giữa Dài, mở rộng 2 Cánh Dài (Cánh Phải Dài & Cánh Trái Dài) có đầy đủ 2D Ref Latents
         # và ghép nối 3 Cánh Dài [Cánh Trái Dài | Tấm Giữa Dài | Cánh Phải Dài]
         for step_idx, side in enumerate(sides_plan):
+            _vstone_ui_status(
+                uid,
+                f"🚀 [NODE MỚI v3.0 - 2D Master] Nhịp {step_idx + 2}/{total_passes}: Đang vẽ Cánh Dài ({side.upper()}) có 2D Ref Latents...",
+            )
             if panorama_mode.startswith("3."):
                 step_refs = self._select_step_refs(step_idx, side, base_img, extra_refs, panorama_mode)
             elif extra_refs:
@@ -3559,6 +3593,7 @@ class stoneV_Panorama360_AutoLoop:
 
         preview_batch = torch.cat(step_previews, dim=0) if step_previews else pano_img
         final_h, final_w = int(pano_img.shape[1]), int(pano_img.shape[2])
+        _vstone_ui_status(uid, f"✅ [NODE MỚI v3.0 - 2D Master] Hoàn tất Panorama 3 Cánh Dài: {final_w}x{final_h}px")
         return (pano_img.clamp(0.0, 1.0), preview_batch.clamp(0.0, 1.0), final_w, final_h)
 
 
