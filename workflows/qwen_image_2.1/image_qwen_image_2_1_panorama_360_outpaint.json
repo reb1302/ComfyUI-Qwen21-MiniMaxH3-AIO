@@ -110,8 +110,9 @@
       "outputs": [
         {"name": "MODEL", "type": "MODEL", "links": [7], "slot_index": 0}
       ],
+      "title": "LoRA Outpaint (Multi-Ref: Giữ Strength 0.45 - 0.55 để không vỡ ảnh)",
       "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
-      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 1.0]
+      "widgets_values": ["qwen-image-2.1-outpaint-v2.safetensors", 0.5]
     },
     {
       "id": 8,
@@ -176,6 +177,7 @@
         0.5,
         true,
         48,
+        "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
         "Seamless ultra-wide 360 panoramic continuation of the environment, consistent horizon line, natural lighting, high detail architectural and landscape continuity.",
         "visible seams, split screen, gray border, blurry, distorted perspective, broken horizon, watermark, text",
         42,

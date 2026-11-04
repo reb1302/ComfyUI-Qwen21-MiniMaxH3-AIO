@@ -3089,6 +3089,12 @@ class stoneV_Panorama360_AutoLoop:
                     "step": 4,
                     "tooltip": "Độ rộng vùng hòa trộn Cosine giữa các bước lặp để xóa sạch vết ghép."
                 }),
+                "fill_mode": ([
+                    "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
+                    "Green #00FF00 (Dùng riêng cho 360 Panorama Outpaint LoRA v0.1 hệ cầu VR)",
+                ], {
+                    "default": "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)"
+                }),
                 "prompt": ("STRING", {
                     "multiline": True,
                     "default": "Seamless ultra-wide 360 panoramic continuation of the environment, consistent horizon line, natural lighting, high detail architectural and landscape continuity."
@@ -3146,21 +3152,30 @@ class stoneV_Panorama360_AutoLoop:
             out.append(base_img)
         return out
 
-    def _build_step_prompt(self, side_desc: str, num_refs: int, user_prompt: str) -> str:
+    def _build_step_prompt(self, side_desc: str, num_refs: int, user_prompt: str, is_green: bool = False) -> str:
+        color_label = "green (#00FF00)" if is_green else "gray (#808080)"
+        equi_prefix = "360 degree equirectangular panorama. " if is_green else ""
         if num_refs >= 2:
             ref_tags = " and ".join(f"<image{i + 2}>" for i in range(num_refs))
             base_instr = (
-                f"Outpaint <image1> by replacing all solid gray (#808080) areas on the {side_desc} "
+                f"{equi_prefix}Outpaint <image1> by replacing all solid {color_label} areas on the {side_desc} "
                 f"with a seamless panoramic continuation of the scene, naturally incorporating the environment, "
                 f"structures, lighting, and atmosphere from reference {ref_tags} while preserving exact horizon and perspective continuity."
             )
         else:
             base_instr = (
-                f"Outpaint <image1> by replacing all solid gray (#808080) areas on the {side_desc} "
+                f"{equi_prefix}Outpaint <image1> by replacing all solid {color_label} areas on the {side_desc} "
                 f"with a seamless panoramic continuation of the scene, using <image2> as the full scene reference."
             )
         clean_user = (user_prompt or "").strip()
         return f"{base_instr} {clean_user}".strip()
+
+    def _make_blank_canvas(self, h: int, w: int, is_green: bool) -> torch.Tensor:
+        if is_green:
+            c = torch.zeros((1, h, w, 3), dtype=torch.float32)
+            c[:, :, :, 1] = 1.0
+            return c
+        return torch.full((1, h, w, 3), 128.0 / 255.0, dtype=torch.float32)
 
     def generate_panorama(
         self,
@@ -3176,6 +3191,7 @@ class stoneV_Panorama360_AutoLoop:
         keep_anchor_ratio: float = 0.5,
         close_360_loop: bool = True,
         blend_width_px: int = 48,
+        fill_mode: str = "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
         prompt: str = "",
         negative_prompt: str = "",
         seed: int = 42,
@@ -3212,7 +3228,7 @@ class stoneV_Panorama360_AutoLoop:
         anchor_w = max(64, min(base_w, int(round((base_w * float(keep_anchor_ratio)) / 32.0)) * 32))
         ext_w = max(64, int(round((base_w * float(step_extend_ratio)) / 32.0)) * 32)
         win_w = anchor_w + ext_w
-        gray_val = 128.0 / 255.0
+        is_green = str(fill_mode).startswith("Green")
 
         extra_refs: list[torch.Tensor] = []
         for r in (ref_image_2, ref_image_3, ref_image_4, ref_image_5):
@@ -3238,7 +3254,7 @@ class stoneV_Panorama360_AutoLoop:
         if pad_top > 0 or pad_bottom > 0:
             # Nếu có mở rộng chiều cao (height_expand_ratio > 1.0), ta đặt toàn bộ base_img vào bước 1
             # hoặc nếu mở cả 2 bên thì kết hợp nắp Trên/Dưới mượt mà cho toàn bộ tấm trung tâm
-            step1_canvas = torch.full((1, pano_h, base_w + ext_w, 3), gray_val, dtype=torch.float32)
+            step1_canvas = self._make_blank_canvas(pano_h, base_w + ext_w, is_green)
             if first_side == "right":
                 step1_canvas[:, pad_top : pad_top + base_h, :base_w, :] = base_img
                 side_desc = "right, top, and bottom"
@@ -3246,7 +3262,7 @@ class stoneV_Panorama360_AutoLoop:
                 step1_canvas[:, pad_top : pad_top + base_h, ext_w : ext_w + base_w, :] = base_img
                 side_desc = "left, top, and bottom"
 
-            step1_prompt = self._build_step_prompt(side_desc, len(first_refs), prompt)
+            step1_prompt = self._build_step_prompt(side_desc, len(first_refs), prompt, is_green=is_green)
             gen1 = _run_qwen21_outpaint_pass(
                 model=model,
                 clip=clip,
@@ -3275,9 +3291,9 @@ class stoneV_Panorama360_AutoLoop:
             # Chạy bước 0 bình thường trên pano_img đã có chiều cao pano_h
             if first_side == "right":
                 anchor_slice = pano_img[:, :, -anchor_w:, :]
-                c_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                c_img = self._make_blank_canvas(pano_h, win_w, is_green)
                 c_img[:, :, :anchor_w, :] = anchor_slice
-                s_prompt = self._build_step_prompt("right", len(first_refs), prompt)
+                s_prompt = self._build_step_prompt("right", len(first_refs), prompt, is_green=is_green)
                 g_out = _run_qwen21_outpaint_pass(
                     model, clip, vae, c_img, first_refs, s_prompt, negative_prompt,
                     int(seed), steps, cfg, sampler_name, scheduler
@@ -3286,9 +3302,9 @@ class stoneV_Panorama360_AutoLoop:
                 step_previews.append(g_out)
             else:
                 anchor_slice = pano_img[:, :, :anchor_w, :]
-                c_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                c_img = self._make_blank_canvas(pano_h, win_w, is_green)
                 c_img[:, :, ext_w:, :] = anchor_slice
-                s_prompt = self._build_step_prompt("left", len(first_refs), prompt)
+                s_prompt = self._build_step_prompt("left", len(first_refs), prompt, is_green=is_green)
                 g_out = _run_qwen21_outpaint_pass(
                     model, clip, vae, c_img, first_refs, s_prompt, negative_prompt,
                     int(seed), steps, cfg, sampler_name, scheduler
@@ -3304,9 +3320,9 @@ class stoneV_Panorama360_AutoLoop:
 
             if side == "right":
                 anchor_slice = pano_img[:, :, -anchor_w:, :]
-                canvas_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                canvas_img = self._make_blank_canvas(pano_h, win_w, is_green)
                 canvas_img[:, :, :anchor_w, :] = anchor_slice
-                step_prompt = self._build_step_prompt("right", len(step_refs), prompt)
+                step_prompt = self._build_step_prompt("right", len(step_refs), prompt, is_green=is_green)
                 gen_win = _run_qwen21_outpaint_pass(
                     model=model,
                     clip=clip,
@@ -3325,9 +3341,9 @@ class stoneV_Panorama360_AutoLoop:
                 step_previews.append(gen_win)
             else:
                 anchor_slice = pano_img[:, :, :anchor_w, :]
-                canvas_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                canvas_img = self._make_blank_canvas(pano_h, win_w, is_green)
                 canvas_img[:, :, ext_w:, :] = anchor_slice
-                step_prompt = self._build_step_prompt("left", len(step_refs), prompt)
+                step_prompt = self._build_step_prompt("left", len(step_refs), prompt, is_green=is_green)
                 gen_win = _run_qwen21_outpaint_pass(
                     model=model,
                     clip=clip,
@@ -3354,13 +3370,14 @@ class stoneV_Panorama360_AutoLoop:
             right_edge = pano_img[:, :, -half_anchor:, :]
             left_edge = pano_img[:, :, :half_anchor, :]
 
-            bridge_canvas = torch.full((1, pano_h, bridge_w, 3), gray_val, dtype=torch.float32)
+            bridge_canvas = self._make_blank_canvas(pano_h, bridge_w, is_green)
             bridge_canvas[:, :, :half_anchor, :] = right_edge
             bridge_canvas[:, :, half_anchor + bridge_ext :, :] = left_edge
 
             bridge_refs = [right_edge, left_edge, base_img]
+            color_lbl = "green (#00FF00)" if is_green else "gray (#808080)"
             bridge_prompt = (
-                "Outpaint <image1> by replacing the central solid gray (#808080) bridge area "
+                f"Outpaint <image1> by replacing the central solid {color_lbl} bridge area "
                 "with a 100% seamless panoramic connection that joins the left scene and the right scene "
                 "into one continuous 360-degree horizon and environment. " + (prompt or "").strip()
             )
