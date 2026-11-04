@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-04T14:05:35+07:00",
+  "updated_at": "2026-11-04T14:19:44+07:00",
   "loras": [
     {
       "filename": "High quality.safetensors",
@@ -70,6 +70,7 @@
   "workflows": [
     "workflows/minimax_h3/huy_minhmax_screenx.json",
     "workflows/minimax_h3/huy_minhmax_outpaint_fl2va.json",
+    "workflows/minimax_h3/huy_minhmax_outpaint_qwen.json",
     "workflows/minimax_h3/video_minimax_h3_r2v_image_video.json",
     "workflows/minimax_h3/video_minimax_h3_i2v_latent_upscaler.json",
     "workflows/minimax_h3/video_minimax_h3_r2v_latent_upscaler.json",
