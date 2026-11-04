@@ -1863,6 +1863,101 @@ class stoneV_Video_Outpaint_Prepare:
 
 
 # ==============================================================================
+# NODE 5: stoneV ScreenX Cut (Cắt ảnh ScreenX thành 1 bên để gen video từng cánh)
+# ==============================================================================
+SCREENX_CUT_MODES = {
+    "cánh + 50% ảnh giữa": 0.5,
+    "cánh + 100% ảnh giữa": 1.0,
+    "chỉ cánh": 0.0,
+    "cánh + % tự chọn": None,
+}
+
+
+def _h3_canvas_for_image(image_w: int, image_h: int, target_megapixels: float) -> tuple[int, int]:
+    """Khung gen MiniMax-H3 theo tỉ lệ ảnh: bội số 32, không phóng to ảnh nhỏ (0.98 MP với 16:9 ra đúng 1344x768)."""
+    target_pixels = float(target_megapixels) * 1024.0 * 1024.0
+    scale = min(1.0, math.sqrt(target_pixels / float(max(1, image_w * image_h))))
+    out_w = max(32, int(round(image_w * scale / 32.0)) * 32)
+    out_h = max(32, int(round(image_h * scale / 32.0)) * 32)
+    return out_w, out_h
+
+
+class stoneV_ScreenX_Cut:
+    """
+    Nhận ảnh ScreenX đầy đủ [Cánh Trái | Giữa | Cánh Phải], cắt theo chiều dọc lấy đúng 1 bên, giữ nguyên chiều cao:
+    - "cánh + 50% ảnh giữa": cánh + nửa ảnh giữa nằm sát cánh (mặc định, wing_width_ratio = 1.0 thì đúng bằng 1/2 ảnh vào).
+    - "cánh + 100% ảnh giữa": cánh + cả ảnh giữa.
+    - "chỉ cánh": riêng cánh.
+    - "cánh + % tự chọn": cánh + `custom_center_percent` % ảnh giữa nằm sát cánh.
+    `width`, `height` là khung gen cho node MiniMax H3 Reference to Video.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "side": (["left", "right"], {
+                    "default": "left",
+                    "tooltip": "left = lấy bên Cánh Trái, right = lấy bên Cánh Phải.",
+                }),
+                "mode": (list(SCREENX_CUT_MODES), {
+                    "default": "cánh + 50% ảnh giữa",
+                }),
+                "custom_center_percent": ("FLOAT", {
+                    "default": 12.0,
+                    "min": 0.0,
+                    "max": 100.0,
+                    "step": 1.0,
+                    "tooltip": "Chỉ dùng ở chế độ \"cánh + % tự chọn\": số % chiều rộng ảnh giữa lấy kèm cánh.",
+                }),
+                "wing_width_ratio": ("FLOAT", {
+                    "default": 1.0,
+                    "min": 0.1,
+                    "max": 5.0,
+                    "step": 0.1,
+                    "tooltip": "Tỉ lệ chiều rộng mỗi cánh so với ảnh giữa, giống node ScreenX Combine 3 Plates.",
+                }),
+                "target_megapixels": ("FLOAT", {
+                    "default": 0.98,
+                    "min": 0.1,
+                    "max": 4.0,
+                    "step": 0.02,
+                    "tooltip": "Diện tích khung gen. 0.98 là mức chuẩn của model (1344x768 với 16:9). Chỉ ảnh hưởng width, height, không resize ảnh ra.",
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT")
+    RETURN_NAMES = ("image", "width", "height")
+    FUNCTION = "cut"
+    CATEGORY = "stoneV"
+
+    def cut(
+        self,
+        image: torch.Tensor,
+        side: str = "left",
+        mode: str = "cánh + 50% ảnh giữa",
+        custom_center_percent: float = 12.0,
+        wing_width_ratio: float = 1.0,
+        target_megapixels: float = 0.98,
+    ):
+        rgb = image[:, :, :, :3]
+        _, height, total_w, _ = rgb.shape
+        center_w = float(total_w) / (1.0 + 2.0 * float(wing_width_ratio))
+        wing_w = center_w * float(wing_width_ratio)
+
+        center_part = SCREENX_CUT_MODES[mode]
+        if center_part is None:
+            center_part = float(custom_center_percent) / 100.0
+
+        cut_w = max(1, min(total_w, int(round(wing_w + center_w * center_part))))
+        cut = rgb[:, :, :cut_w, :] if side == "left" else rgb[:, :, total_w - cut_w :, :]
+        out_w, out_h = _h3_canvas_for_image(cut_w, height, target_megapixels)
+        return (cut, out_w, out_h)
+
+
+# ==============================================================================
 # RTX Video Super Resolution Pro & AI 4x-UltraSharp 16K Upscaler
 # ==============================================================================
 _ULTRASHARP_CACHE: dict[str, Any] = {}
@@ -2749,6 +2844,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_Outpaint_Pad": stoneV_Outpaint_Pad,
     "stoneV_SeamlessRestore": stoneV_SeamlessRestore,
     "stoneV_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
+    "stoneV_ScreenX_Cut": stoneV_ScreenX_Cut,
     "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "VStone_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -2772,6 +2868,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "stoneV_Outpaint_Pad": "stoneV: Outpaint Pad (Custom Left / Right)",
     "stoneV_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
     "stoneV_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
+    "stoneV_ScreenX_Cut": "stoneV: ScreenX Cut (Cánh + Ảnh Giữa)",
     "VStone_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
     "VStone_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
     "VStone_ScreenX_Combine3": "stoneV 2: ScreenX Combine 3 Plates (Left + Center + Right)",
