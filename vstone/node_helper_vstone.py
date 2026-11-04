@@ -43,83 +43,87 @@ COLOR_CHOICES = [
     "custom_hex (Dùng mã màu Hex bên dưới)",
 ]
 
-# Danh mục LoRA & Model chuẩn để bấm tải 1-click ngay trên máy H200 Hàn Quốc
+# Danh mục LoRA & Model chuẩn để bấm tải 1-click ngay trên máy H200 Hàn Quốc (Mirrors Ungated HTTP 200 - Không cần Token/API Key)
 LTX25_OUTPAINT_SUITE_MODELS: list[dict[str, str]] = [
     {
         "folder": "loras",
         "filename": "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
-        "url": "https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/resolve/main/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+        "url": "https://huggingface.co/oumoumad/LTX-2.3-22b-IC-LoRA-Outpaint/resolve/main/ltx-2.3-22b-ic-lora-outpaint.safetensors",
     },
     {
         "folder": "diffusion_models",
         "filename": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
-        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
     },
     {
         "folder": "latent_upscale_models",
         "filename": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
-        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
     },
     {
         "folder": "vae",
         "filename": "ltx-2.5-video-vae-bf16.safetensors",
-        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-video-vae-bf16.safetensors",
     },
     {
         "folder": "vae",
         "filename": "ltx-2.5-audio-vae-bf16.safetensors",
-        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-audio-vae-bf16.safetensors",
     },
     {
         "folder": "text_encoders",
         "filename": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
-        "url": "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
-    },
-    {
-        "folder": "text_encoders",
-        "filename": "gemma4_e2b_it_bf16.safetensors",
-        "url": "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_bf16.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
     },
 ]
+
+LTX25_URL_BY_FILENAME: dict[str, tuple[str, str]] = {
+    item["filename"]: (item["folder"], item["url"]) for item in LTX25_OUTPAINT_SUITE_MODELS
+}
 
 PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
     "ALL Laptop LoRAs + Upscalers (Tự tải trọn bộ LoRA + 4x-UltraSharp + DMAD + 3D Upscaler)": ("__ALL_LAPTOP_LORAS__", "", ""),
     "ALL Laptop LoRAs (Tự tải High quality + Outpaint v2 + 360)": ("__ALL_LAPTOP_LORAS__", "", ""),
-    "ALL LTX-2.5 Outpaint/Inpaint Suite (Tự cài ComfyUI-LTXVideo + Tải trọn bộ 7 Model LTX-2.5 Outpaint)": ("__ALL_LTX25_OUTPAINT__", "", ""),
+    "ALL LTX-2.5 Outpaint/Inpaint Suite (Tải trọn bộ Model LTX-2.5 Outpaint Ungated - Không cần API Key)": ("__ALL_LTX25_OUTPAINT__", "", ""),
     "LTX-2.5 IC-LoRA In-Outpainting 0.9 (ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors)": (
         "loras",
         "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
-        "https://huggingface.co/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/resolve/main/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+        "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+    ),
+    "LTX-2.3 IC-LoRA Outpaint Black-Sentinel (ltx-2.3-22b-ic-lora-outpaint.safetensors)": (
+        "loras",
+        "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+        "https://huggingface.co/oumoumad/LTX-2.3-22b-IC-LoRA-Outpaint/resolve/main/ltx-2.3-22b-ic-lora-outpaint.safetensors",
     ),
     "LTX-2.5 22B Distilled Transformer BF16 (ltx-2.5-22b-distilled-transformer-bf16.safetensors)": (
         "diffusion_models",
         "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
-        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
     ),
     "LTX-2.5 Latent Spatial Upscaler x2 BF16 (ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors)": (
         "latent_upscale_models",
         "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
-        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
     ),
     "LTX-2.5 Video VAE BF16 (ltx-2.5-video-vae-bf16.safetensors)": (
         "vae",
         "ltx-2.5-video-vae-bf16.safetensors",
-        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-video-vae-bf16.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-video-vae-bf16.safetensors",
     ),
     "LTX-2.5 Audio VAE BF16 (ltx-2.5-audio-vae-bf16.safetensors)": (
         "vae",
         "ltx-2.5-audio-vae-bf16.safetensors",
-        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/vae/ltx-2.5-audio-vae-bf16.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-audio-vae-bf16.safetensors",
     ),
     "LTX-2.5 Gemma4-12B Text Encoder BF16 (gemma4-12b-with-proj-ltx-2.5-bf16.safetensors)": (
         "text_encoders",
         "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
-        "https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
-    ),
-    "LTX-2.5 Gemma4-E2B Prompt Enhancer BF16 (gemma4_e2b_it_bf16.safetensors)": (
-        "text_encoders",
-        "gemma4_e2b_it_bf16.safetensors",
-        "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_bf16.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
     ),
     "4x-UltraSharp.safetensors (AI Pixel Upscaler 4K-16K cho H200 & RTX - 64MB)": (
         "upscale_models",
@@ -1013,10 +1017,11 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
         aria2_bin = shutil.which("aria2c")
         if aria2_bin:
             cmd = [
-                aria2_bin, "--disable-ipv6=true", "-x", "16", "-s", "16", "-k", "1M",
+                aria2_bin, "--check-certificate=false", "--disable-ipv6=true",
+                "--file-allocation=none", "-c", "-x", "16", "-s", "16", "-k", "1M",
                 "--allow-overwrite=true", "-d", target_dir, "-o", tmp_name, url
             ]
-            res = subprocess.run(cmd, check=False, timeout=300)
+            res = subprocess.run(cmd, check=False, timeout=3600)
             if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
                 os.replace(tmp_path, target_path)
                 _clear_comfy_model_cache()
@@ -1024,8 +1029,8 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
 
         curl_bin = shutil.which("curl")
         if curl_bin:
-            cmd = [curl_bin, "-4", "-L", "--max-time", "300", url, "-o", tmp_path]
-            res = subprocess.run(cmd, check=False, timeout=310)
+            cmd = [curl_bin, "-4", "-L", "-C", "-", "--max-time", "3600", url, "-o", tmp_path]
+            res = subprocess.run(cmd, check=False, timeout=3610)
             if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
                 os.replace(tmp_path, target_path)
                 _clear_comfy_model_cache()
@@ -4220,6 +4225,761 @@ class stoneV_Panorama_Stitch2:
         return (out, int(out.shape[2]), int(out.shape[1]))
 
 
+# ==============================================================================
+# NODE 9: LTX-2.5 Outpaint / Inpaint Native VStone Integration (Zero Missing Nodes, Zero API Key)
+# ==============================================================================
+def _ensure_ltx25_model_path(folder_type: str, filename: str) -> str:
+    import folder_paths
+    try:
+        existing = folder_paths.get_full_path(folder_type, filename)
+        if existing and os.path.exists(existing) and os.path.getsize(existing) > 1024 * 1024:
+            return existing
+    except Exception:
+        pass
+    comfy_root = _get_comfy_root()
+    if comfy_root:
+        candidate = os.path.join(comfy_root, "models", folder_type, filename)
+        if os.path.exists(candidate) and os.path.getsize(candidate) > 1024 * 1024:
+            return candidate
+    if filename in LTX25_URL_BY_FILENAME:
+        f_type, url = LTX25_URL_BY_FILENAME[filename]
+        download_file_to_comfy_models(f_type, filename, url)
+        try:
+            existing = folder_paths.get_full_path(folder_type, filename)
+            if existing and os.path.exists(existing):
+                return existing
+        except Exception:
+            pass
+        if comfy_root:
+            candidate = os.path.join(comfy_root, "models", folder_type, filename)
+            if os.path.exists(candidate):
+                return candidate
+    return folder_paths.get_full_path_or_raise(folder_type, filename)
+
+
+class stoneV_LTX25_Outpaint_Loader:
+    """
+    Trình nạp & tự động tải trọn bộ 5 Model LTX-2.5 Outpaint/Inpaint trên H200 (Không cần API Key, Không báo đỏ thiếu file):
+    - Tự động kiểm tra và tải bằng aria2c 16 luồng từ Mirror Ungated HTTP 200 nếu máy H200 chưa có model.
+    - Trả ra cả `model_iclora_stage1` (có gắn IC-LoRA) và `model_base_stage2` (cho Stage 2 High-Res), cùng `latent_downscale_factor`, `clip`, `video_vae`, `audio_vae`.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "unet_name": (
+                    ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
+                    {"default": "ltx-2.5-22b-distilled-transformer-bf16.safetensors"},
+                ),
+                "ic_lora_name": (
+                    [
+                        "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+                        "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+                    ],
+                    {"default": "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors"},
+                ),
+                "ic_lora_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05}),
+                "clip_name": (
+                    ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
+                    {"default": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"},
+                ),
+                "video_vae_name": (
+                    ["ltx-2.5-video-vae-bf16.safetensors"],
+                    {"default": "ltx-2.5-video-vae-bf16.safetensors"},
+                ),
+                "audio_vae_name": (
+                    ["ltx-2.5-audio-vae-bf16.safetensors"],
+                    {"default": "ltx-2.5-audio-vae-bf16.safetensors"},
+                ),
+            },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
+        }
+
+    RETURN_TYPES = ("MODEL", "MODEL", "FLOAT", "CLIP", "VAE", "VAE")
+    RETURN_NAMES = (
+        "model_iclora_stage1",
+        "model_base_stage2",
+        "latent_downscale_factor",
+        "clip",
+        "video_vae",
+        "audio_vae",
+    )
+    FUNCTION = "load_all"
+    CATEGORY = "stoneV"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
+    def load_all(
+        self,
+        unet_name: str,
+        ic_lora_name: str,
+        ic_lora_strength: float,
+        clip_name: str,
+        video_vae_name: str,
+        audio_vae_name: str,
+        unique_id: Any = None,
+    ):
+        import folder_paths
+        import comfy.sd
+        import comfy.utils
+
+        uid = str(unique_id) if unique_id is not None else None
+        _vstone_ui_status(uid, "⏳ [LTX-2.5 Loader] Đang kiểm tra / tự động tải bộ 5 Model LTX-2.5 Outpaint (Ungated)...")
+
+        lora_path = _ensure_ltx25_model_path("loras", ic_lora_name)
+        v_vae_path = _ensure_ltx25_model_path("vae", video_vae_name)
+        a_vae_path = _ensure_ltx25_model_path("vae", audio_vae_name)
+        clip_path = _ensure_ltx25_model_path("text_encoders", clip_name)
+        unet_path = _ensure_ltx25_model_path("diffusion_models", unet_name)
+
+        _vstone_ui_status(uid, "⏳ [LTX-2.5 Loader] Đang nạp Transformer 22B + IC-LoRA + Gemma4-12B + Video/Audio VAE vào H200...")
+        model_base = comfy.sd.load_diffusion_model(unet_path)
+
+        lora_sd, metadata = comfy.utils.load_torch_file(lora_path, safe_load=True, return_metadata=True)
+        latent_downscale_factor = 1.0
+        if metadata:
+            try:
+                if "reference_downscale_factor" in metadata:
+                    latent_downscale_factor = float(metadata["reference_downscale_factor"])
+                else:
+                    for k, v in metadata.items():
+                        if k.endswith("reference_downscale_factor"):
+                            latent_downscale_factor = float(v)
+                            break
+            except Exception:
+                latent_downscale_factor = 1.0
+
+        if float(ic_lora_strength) != 0.0:
+            model_iclora, _ = comfy.sd.load_lora_for_models(model_base, None, lora_sd, float(ic_lora_strength), 0.0)
+        else:
+            model_iclora = model_base
+
+        clip_type = getattr(comfy.sd.CLIPType, "LTXV", comfy.sd.CLIPType.STABLE_DIFFUSION)
+        clip = comfy.sd.load_clip(
+            ckpt_paths=[clip_path],
+            embedding_directory=folder_paths.get_folder_paths("embeddings"),
+            clip_type=clip_type,
+        )
+        video_vae = comfy.sd.VAE(sd=comfy.utils.load_torch_file(v_vae_path))
+        audio_vae = comfy.sd.VAE(sd=comfy.utils.load_torch_file(a_vae_path))
+
+        _vstone_ui_status(uid, f"✅ [LTX-2.5 Loader] Đã nạp hoàn tất (downscale_factor={latent_downscale_factor})")
+        return (model_iclora, model_base, float(latent_downscale_factor), clip, video_vae, audio_vae)
+
+
+class ImagePadForOutpaintMasked:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "left": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
+                "top": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
+                "right": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
+                "bottom": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
+                "feathering": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1}),
+            },
+            "optional": {
+                "mask": ("MASK",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    FUNCTION = "expand_image"
+    CATEGORY = "image"
+
+    def expand_image(self, image, left, top, right, bottom, feathering, mask=None):
+        if mask is not None and torch.allclose(mask, torch.zeros_like(mask)):
+            mask = None
+        B, H, W, C = image.size()
+        new_image = torch.ones((B, H + top + bottom, W + left + right, C), dtype=torch.float32, device=image.device) * 0.5
+        new_image[:, top : top + H, left : left + W, :] = image
+
+        if mask is None:
+            new_mask = torch.ones((B, H + top + bottom, W + left + right), dtype=torch.float32, device=image.device)
+            t = torch.zeros((B, H, W), dtype=torch.float32, device=image.device)
+        else:
+            mask = F.pad(mask, (left, right, top, bottom), mode="constant", value=0)
+            mask = 1.0 - mask
+            t = torch.zeros_like(mask)
+
+        if feathering > 0 and feathering * 2 < H and feathering * 2 < W:
+            ys = torch.arange(H, device=image.device, dtype=torch.float32).view(H, 1)
+            xs = torch.arange(W, device=image.device, dtype=torch.float32).view(1, W)
+            dt = ys if top != 0 else torch.full_like(ys, float(H))
+            db = (H - ys) if bottom != 0 else torch.full_like(ys, float(H))
+            dl = xs if left != 0 else torch.full_like(xs, float(W))
+            dr = (W - xs) if right != 0 else torch.full_like(xs, float(W))
+            d = torch.minimum(torch.minimum(dt, db), torch.minimum(dl, dr))
+            v = ((float(feathering) - d).clamp(min=0.0) / float(feathering)) ** 2
+            if mask is None:
+                t[:, :, :] = v.unsqueeze(0)
+            else:
+                t[:, top : top + H, left : left + W] = v.unsqueeze(0)
+
+        if mask is None:
+            new_mask[:, top : top + H, left : left + W] = t
+            return (new_image, new_mask)
+        return (new_image, mask)
+
+
+class ImagePadForOutpaintTargetSize:
+    upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "lanczos"]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "target_width": ("INT", {"default": 1920, "min": 0, "max": 8192, "step": 8}),
+                "target_height": ("INT", {"default": 1088, "min": 0, "max": 8192, "step": 8}),
+                "feathering": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1}),
+                "upscale_method": (cls.upscale_methods, {"default": "nearest-exact"}),
+            },
+            "optional": {
+                "mask": ("MASK",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_NAMES = ("IMAGE", "MASK")
+    FUNCTION = "expand_image"
+    CATEGORY = "image"
+
+    def expand_image(self, image, target_width, target_height, feathering, upscale_method="nearest-exact", mask=None):
+        import comfy.utils
+        B, H, W, C = image.size()
+        new_height = H
+        new_width = W
+        scaling_factor = min(float(target_width) / float(W), float(target_height) / float(H))
+        if scaling_factor < 1.0:
+            new_width = max(1, int(W * scaling_factor))
+            new_height = max(1, int(H * scaling_factor))
+            image_scaled = comfy.utils.common_upscale(
+                image.movedim(-1, 1), new_width, new_height, upscale_method, "disabled"
+            ).movedim(1, -1)
+        else:
+            image_scaled = image
+
+        if mask is not None:
+            mask_scaled = F.interpolate(mask.unsqueeze(0), size=(new_height, new_width), mode="nearest").squeeze(0)
+        else:
+            mask_scaled = None
+
+        pad_top = max(0, (int(target_height) - new_height) // 2)
+        pad_bottom = max(0, int(target_height) - new_height - pad_top)
+        pad_left = max(0, (int(target_width) - new_width) // 2)
+        pad_right = max(0, int(target_width) - new_width - pad_left)
+        return ImagePadForOutpaintMasked().expand_image(
+            image_scaled, pad_left, pad_top, pad_right, pad_bottom, feathering, mask_scaled
+        )
+
+
+class LTXICLoRALoaderModelOnly:
+    @classmethod
+    def INPUT_TYPES(cls):
+        try:
+            import folder_paths
+            loras = list(folder_paths.get_filename_list("loras"))
+        except Exception:
+            loras = []
+        for default_ltx_lora in (
+            "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+            "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+        ):
+            if default_ltx_lora not in loras:
+                loras.insert(0, default_ltx_lora)
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "lora_name": (loras, {"default": "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors"}),
+                "strength_model": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL", "FLOAT")
+    RETURN_NAMES = ("model", "latent_downscale_factor")
+    FUNCTION = "load_ic_lora"
+    CATEGORY = "Lightricks/IC-LoRA"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
+    def load_ic_lora(self, model, lora_name: str, strength_model: float = 1.0):
+        import comfy.sd
+        import comfy.utils
+        lora_path = _ensure_ltx25_model_path("loras", lora_name)
+        lora, metadata = comfy.utils.load_torch_file(lora_path, safe_load=True, return_metadata=True)
+        latent_downscale_factor = 1.0
+        if metadata:
+            try:
+                if "reference_downscale_factor" in metadata:
+                    latent_downscale_factor = float(metadata["reference_downscale_factor"])
+                else:
+                    for k, v in metadata.items():
+                        if k.endswith("reference_downscale_factor"):
+                            latent_downscale_factor = float(v)
+                            break
+            except Exception:
+                latent_downscale_factor = 1.0
+        if float(strength_model) == 0.0:
+            return (model, latent_downscale_factor)
+        model_lora, _ = comfy.sd.load_lora_for_models(model, None, lora, float(strength_model), 0.0)
+        return (model_lora, latent_downscale_factor)
+
+
+class LTXVDilateLatent:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT",),
+                "horizontal_scale": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1}),
+                "vertical_scale": ("INT", {"default": 1, "min": 1, "max": 100, "step": 1}),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "dilate_latent"
+    CATEGORY = "latent/video"
+
+    def dilate_latent(self, latent: dict, horizontal_scale: int = 1, vertical_scale: int = 1):
+        if horizontal_scale == 1 and vertical_scale == 1:
+            return (latent,)
+        samples = latent["samples"]
+        mask = latent.get("noise_mask", None)
+        dilated_shape = samples.shape[:3] + (
+            samples.shape[3] * int(vertical_scale),
+            samples.shape[4] * int(horizontal_scale),
+        )
+        dilated_samples = torch.zeros(dilated_shape, device=samples.device, dtype=samples.dtype)
+        dilated_samples[..., :: int(vertical_scale), :: int(horizontal_scale)] = samples
+        dilated_mask_shape = (
+            dilated_samples.shape[0],
+            1,
+            dilated_samples.shape[2],
+            dilated_samples.shape[3],
+            dilated_samples.shape[4],
+        )
+        dilated_mask = torch.full(dilated_mask_shape, -1.0, device=samples.device, dtype=samples.dtype)
+        dilated_mask[..., :: int(vertical_scale), :: int(horizontal_scale)] = mask if mask is not None else 1.0
+        return ({"samples": dilated_samples, "noise_mask": dilated_mask},)
+
+
+def _ltx_normalize_mask(mask):
+    if mask is None:
+        return None
+    if mask.dim() == 2:
+        return mask.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+    if mask.dim() == 3:
+        return mask.unsqueeze(0).unsqueeze(0)
+    return mask
+
+
+def _ltx_append_guide_attention_entry(conditioning, pre_filter_count, latent_shape, attention_strength=1.0, attention_mask=None):
+    import node_helpers
+    existing_entries = []
+    for t in conditioning:
+        entries = t[1].get("guide_attention_entries", None)
+        if entries is not None:
+            existing_entries = list(entries)
+            break
+    existing_entries.append(
+        {
+            "pre_filter_count": pre_filter_count,
+            "strength": attention_strength,
+            "pixel_mask": attention_mask,
+            "latent_shape": latent_shape,
+        }
+    )
+    return node_helpers.conditioning_set_values(conditioning, {"guide_attention_entries": existing_entries})
+
+
+class LTXAddVideoICLoRAGuide:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "vae": ("VAE",),
+                "latent": ("LATENT",),
+                "image": ("IMAGE",),
+                "frame_idx": ("INT", {"default": 0, "min": -9999, "max": 9999}),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "latent_downscale_factor": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 10.0, "step": 1.0}),
+                "crop": (["disabled", "center"], {"default": "disabled"}),
+                "use_tiled_encode": ("BOOLEAN", {"default": False}),
+                "tile_size": ("INT", {"default": 256, "min": 64, "max": 512, "step": 32}),
+                "tile_overlap": ("INT", {"default": 64, "min": 16, "max": 256, "step": 16}),
+            },
+            "optional": {
+                "use_streaming": ("BOOLEAN", {"default": False}),
+                "tile_frames": ("INT", {"default": 97, "min": 0, "max": 1000, "step": 1}),
+            },
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
+    RETURN_NAMES = ("positive", "negative", "latent")
+    FUNCTION = "add_guide"
+    CATEGORY = "Lightricks/IC-LoRA"
+
+    def add_guide(
+        self,
+        positive,
+        negative,
+        vae,
+        latent,
+        image,
+        frame_idx=0,
+        strength=1.0,
+        latent_downscale_factor=1.0,
+        crop="disabled",
+        use_tiled_encode=False,
+        tile_size=256,
+        tile_overlap=64,
+        attention_strength=1.0,
+        attention_mask=None,
+        use_streaming=False,
+        tile_frames=97,
+    ):
+        import comfy.utils
+        import comfy_extras.nodes_lt as nodes_lt
+
+        scale_factors = vae.downscale_index_formula
+        latent_image = latent["samples"]
+        noise_mask = nodes_lt.get_noise_mask(latent)
+        _, _, latent_length, latent_height, latent_width = latent_image.shape
+
+        time_scale_factor, width_scale_factor, height_scale_factor = scale_factors
+        num_frames_to_keep = ((image.shape[0] - 1) // time_scale_factor) * time_scale_factor + 1
+        causal_fix = int(frame_idx) == 0 or num_frames_to_keep == 1
+        if not causal_fix:
+            image = torch.cat([image[:1], image], dim=0)
+
+        keep_frames = ((image.shape[0] - 1) // time_scale_factor) * time_scale_factor + 1
+        images_kept = image[:keep_frames]
+        target_width = int(latent_width * width_scale_factor / float(latent_downscale_factor))
+        target_height = int(latent_height * height_scale_factor / float(latent_downscale_factor))
+        pixels = comfy.utils.common_upscale(
+            images_kept.movedim(-1, 1), target_width, target_height, "bilinear", crop=crop
+        ).movedim(1, -1)
+        encode_pixels = pixels[:, :, :, :3]
+        if use_tiled_encode:
+            guide_latent = vae.encode_tiled(encode_pixels, tile_x=int(tile_size), tile_y=int(tile_size), overlap=int(tile_overlap))
+        else:
+            guide_latent = vae.encode(encode_pixels)
+
+        if not causal_fix:
+            guide_latent = guide_latent[:, :, 1:, :, :]
+            encode_pixels = encode_pixels[1:]
+
+        guide_orig_shape = list(guide_latent.shape[2:])
+        guide_mask = None
+        if float(latent_downscale_factor) > 1.0:
+            dilated = LTXVDilateLatent().dilate_latent(
+                {"samples": guide_latent},
+                horizontal_scale=int(latent_downscale_factor),
+                vertical_scale=int(latent_downscale_factor),
+            )[0]
+            guide_mask = dilated["noise_mask"]
+            guide_latent = dilated["samples"]
+
+        iclora_tokens_added = guide_latent.shape[2] * guide_latent.shape[3] * guide_latent.shape[4]
+        if int(frame_idx) >= 0:
+            frame_idx, latent_idx = nodes_lt.LTXVAddGuide.get_latent_index(
+                positive, latent_length, len(encode_pixels), int(frame_idx), scale_factors
+            )
+
+        positive, negative, latent_image, noise_mask = nodes_lt.LTXVAddGuide.append_keyframe(
+            positive,
+            negative,
+            int(frame_idx),
+            latent_image,
+            noise_mask,
+            guide_latent,
+            float(strength),
+            scale_factors,
+            guide_mask=guide_mask,
+            latent_downscale_factor=float(latent_downscale_factor),
+            causal_fix=causal_fix,
+        )
+
+        norm_mask = _ltx_normalize_mask(attention_mask)
+        positive = _ltx_append_guide_attention_entry(
+            positive, iclora_tokens_added, guide_orig_shape, attention_strength=float(attention_strength), attention_mask=norm_mask
+        )
+        negative = _ltx_append_guide_attention_entry(
+            negative, iclora_tokens_added, guide_orig_shape, attention_strength=float(attention_strength), attention_mask=norm_mask
+        )
+        return (positive, negative, {"samples": latent_image, "noise_mask": noise_mask})
+
+
+class LTXAddVideoICLoRAGuideAdvanced(LTXAddVideoICLoRAGuide):
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "vae": ("VAE",),
+                "latent": ("LATENT",),
+                "image": ("IMAGE",),
+                "frame_idx": ("INT", {"default": 0, "min": -9999, "max": 9999}),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "latent_downscale_factor": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 10.0, "step": 1.0}),
+                "crop": (["disabled", "center"], {"default": "disabled"}),
+                "use_tiled_encode": ("BOOLEAN", {"default": False}),
+                "tile_size": ("INT", {"default": 256, "min": 64, "max": 512, "step": 32}),
+                "tile_overlap": ("INT", {"default": 64, "min": 16, "max": 256, "step": 16}),
+                "attention_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            },
+            "optional": {
+                "attention_mask": ("MASK",),
+                "use_streaming": ("BOOLEAN", {"default": False}),
+                "tile_frames": ("INT", {"default": 97, "min": 0, "max": 1000, "step": 1}),
+            },
+        }
+
+
+class LTXVImgToVideoConditionOnly:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "vae": ("VAE",),
+                "image": ("IMAGE",),
+                "latent": ("LATENT",),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0}),
+            },
+            "optional": {
+                "bypass": ("BOOLEAN", {"default": False}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
+    FUNCTION = "generate"
+    CATEGORY = "conditioning/video_models"
+
+    def generate(self, vae, image, latent, strength=1.0, bypass=False):
+        import comfy.utils
+        if bypass:
+            return (latent,)
+        samples = latent["samples"].clone()
+        _, height_scale_factor, width_scale_factor = vae.downscale_index_formula
+        _, _, _, latent_height, latent_width = samples.shape
+        width = latent_width * width_scale_factor
+        height = latent_height * height_scale_factor
+        if image.shape[1] != height or image.shape[2] != width:
+            pixels = comfy.utils.common_upscale(image.movedim(-1, 1), width, height, "bilinear", "center").movedim(1, -1)
+        else:
+            pixels = image
+        t = vae.encode(pixels[:, :, :, :3])
+        samples[:, :, : t.shape[2]] = t
+        conditioning_latent_frames_mask = torch.ones(
+            (1, 1, samples.shape[2], 1, 1), dtype=torch.float32, device=samples.device
+        )
+        conditioning_latent_frames_mask[:, :, : t.shape[2]] = 1.0 - float(strength)
+        return ({"samples": samples, "noise_mask": conditioning_latent_frames_mask},)
+
+
+class LTXVInpaintPreprocess:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "mask": ("MASK",),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "preprocess"
+    CATEGORY = "Lightricks/image_processing"
+
+    def preprocess(self, images: torch.Tensor, mask: torch.Tensor):
+        if mask.ndim == 4:
+            mask = mask[:, :, :, 0]
+        if mask.shape[0] == 1 and images.shape[0] > 1:
+            mask = mask.expand(images.shape[0], -1, -1)
+        min_frames = min(mask.shape[0], images.shape[0])
+        mask = mask[:min_frames]
+        images = images[:min_frames]
+        mask_4d = mask.unsqueeze(-1).to(images.device, dtype=images.dtype)
+        bg_color = torch.tensor((102.0 / 255.0, 1.0, 0.0), device=images.device, dtype=images.dtype).view(1, 1, 1, 3)
+        result = images * (1.0 - mask_4d) + bg_color * mask_4d
+        return (result,)
+
+
+class LTXVDilateVideoMask:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "spatial_radius": ("INT", {"default": 1, "min": 0, "max": 300}),
+                "temporal_radius": ("INT", {"default": 0, "min": 0, "max": 10}),
+            },
+            "optional": {
+                "mask": ("MASK",),
+                "image_as_mask": ("IMAGE",),
+            },
+        }
+
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("mask",)
+    FUNCTION = "dilate"
+    CATEGORY = "Lightricks/mask_operations"
+
+    def dilate(self, spatial_radius: int = 1, temporal_radius: int = 0, mask=None, image_as_mask=None):
+        if mask is None and image_as_mask is None:
+            raise ValueError("Either 'mask' or 'image_as_mask' must be provided.")
+        if mask is None:
+            mask = image_as_mask.mean(dim=-1)
+        if mask.ndim == 4:
+            mask = mask[:, :, :, 0]
+        s_kernel = int(spatial_radius) * 2 + 1
+        t_kernel = int(temporal_radius) * 2 + 1
+        if s_kernel > 1:
+            mask = F.max_pool2d(mask.unsqueeze(1), kernel_size=s_kernel, stride=1, padding=int(spatial_radius)).squeeze(1)
+        if t_kernel > 1:
+            B, H, W = mask.shape
+            mask = mask.permute(1, 2, 0).reshape(H * W, 1, B)
+            mask = F.max_pool1d(mask, kernel_size=t_kernel, stride=1, padding=int(temporal_radius))
+            mask = mask.reshape(H, W, B).permute(2, 0, 1)
+        return ((mask > 0.5).float(),)
+
+
+def _ltx_gauss_blur_2d(x: torch.Tensor) -> torch.Tensor:
+    c = x.shape[1]
+    k1d = torch.tensor([1.0, 4.0, 6.0, 4.0, 1.0], device=x.device, dtype=x.dtype) / 16.0
+    k2d = (k1d[:, None] * k1d[None, :]).view(1, 1, 5, 5).expand(c, 1, 5, 5).contiguous()
+    x_pad = F.pad(x, (2, 2, 2, 2), mode="reflect")
+    return F.conv2d(x_pad, k2d, groups=c)
+
+
+def _ltx_pyr_down(x: torch.Tensor) -> torch.Tensor:
+    return _ltx_gauss_blur_2d(x)[:, :, ::2, ::2]
+
+
+def _ltx_pyr_up(x: torch.Tensor, target_hw: tuple[int, int]) -> torch.Tensor:
+    up = F.interpolate(x, size=target_hw, mode="bilinear", align_corners=False)
+    return _ltx_gauss_blur_2d(up)
+
+
+class LTXVLaplacianPyramidBlend:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image_a": ("IMAGE",),
+                "image_b": ("IMAGE",),
+                "mask": ("MASK",),
+                "trim_to_shortest": ("BOOLEAN", {"default": True}),
+                "mask_low_res_dilation": ("INT", {"default": 5, "min": 0, "max": 15}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "blend"
+    CATEGORY = "Lightricks/utility"
+
+    def blend(
+        self,
+        image_a: torch.Tensor,
+        image_b: torch.Tensor,
+        mask: torch.Tensor,
+        trim_to_shortest: bool = True,
+        mask_low_res_dilation: int = 5,
+    ):
+        if mask.ndim == 4:
+            mask = mask[:, :, :, 0]
+        if mask.ndim == 2:
+            mask = mask.unsqueeze(0)
+        if trim_to_shortest:
+            shortest = min(image_a.shape[0], image_b.shape[0], mask.shape[0])
+            image_a = image_a[:shortest]
+            image_b = image_b[:shortest]
+            mask = mask[:shortest]
+
+        original = image_a.permute(0, 3, 1, 2).float()
+        target = image_b.permute(0, 3, 1, 2).float()
+        mask_4d = mask.unsqueeze(1).float()
+
+        if int(mask_low_res_dilation) > 0:
+            orig_hw = mask_4d.shape[-2:]
+            h, w = orig_hw
+            scale = 64.0 / max(1, max(h, w))
+            rh, rw = max(1, int(round(h * scale))), max(1, int(round(w * scale)))
+            m_low = F.interpolate(mask_4d, size=(rh, rw), mode="bilinear", align_corners=False)
+            rad = int(mask_low_res_dilation)
+            m_low = F.max_pool2d(m_low, kernel_size=rad * 2 + 1, stride=1, padding=rad)
+            mask_4d = F.interpolate(m_low, size=orig_hw, mode="bilinear", align_corners=False)
+
+        B, _, H, W = original.shape
+        levels = max(1, min(6, int(math.log2(max(2, min(H, W)))) - 1))
+        results = []
+        for start in range(0, B, 8):
+            end = min(start + 8, B)
+            g1 = [original[start:end]]
+            g2 = [target[start:end]]
+            gm = [mask_4d[start:end].to(original.device)]
+            for _ in range(levels):
+                if min(g1[-1].shape[-2], g1[-1].shape[-1]) < 4:
+                    break
+                g1.append(_ltx_pyr_down(g1[-1]))
+                g2.append(_ltx_pyr_down(g2[-1]))
+                gm.append(_ltx_pyr_down(gm[-1]))
+
+            l1 = [g1[i] - _ltx_pyr_up(g1[i + 1], g1[i].shape[-2:]) for i in range(len(g1) - 1)] + [g1[-1]]
+            l2 = [g2[i] - _ltx_pyr_up(g2[i + 1], g2[i].shape[-2:]) for i in range(len(g2) - 1)] + [g2[-1]]
+
+            out = l1[-1] * gm[-1] + l2[-1] * (1.0 - gm[-1])
+            for i in range(len(l1) - 2, -1, -1):
+                res_i = l1[i] * gm[i] + l2[i] * (1.0 - gm[i])
+                out = _ltx_pyr_up(out, l1[i].shape[-2:]) + res_i
+            results.append(out.clamp(0.0, 1.0).cpu())
+
+        return (torch.cat(results, dim=0).permute(0, 2, 3, 1),)
+
+
+class LTXVSetAudioRefTokens:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
+                "audio_latent": ("LATENT",),
+            }
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
+    RETURN_NAMES = ("positive", "negative", "frozen_audio")
+    FUNCTION = "set_tokens"
+    CATEGORY = "Lightricks/IC-LoRA"
+
+    def set_tokens(self, positive, negative, audio_latent):
+        import node_helpers
+        latent = audio_latent["samples"]
+        b, c, t, f = latent.shape
+        ref_tokens = latent.permute(0, 2, 1, 3).reshape(b, t, c * f)
+        ref_audio = {"tokens": ref_tokens}
+        positive = node_helpers.conditioning_set_values(positive, {"ref_audio": ref_audio})
+        negative = node_helpers.conditioning_set_values(negative, {"ref_audio": ref_audio})
+        frozen = audio_latent.copy()
+        frozen["noise_mask"] = torch.zeros((b, 1, t, 1), dtype=torch.float32, device=latent.device)
+        return (positive, negative, frozen)
+
+
 # Backward compatibility aliases
 VStone_Outpaint_Pad = stoneV_Outpaint_Pad
 VStone_ExtendLeft_1xWidth = stoneV_ExtendLeft_1xWidth
@@ -4259,9 +5019,33 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
     "VStone_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
     "VStone_Panorama_Stitch2": stoneV_Panorama_Stitch2,
+    "stoneV_LTX25_Outpaint_Loader": stoneV_LTX25_Outpaint_Loader,
+    "ImagePadForOutpaintMasked": ImagePadForOutpaintMasked,
+    "ImagePadForOutpaintTargetSize": ImagePadForOutpaintTargetSize,
+    "LTXICLoRALoaderModelOnly": LTXICLoRALoaderModelOnly,
+    "LTXVDilateLatent": LTXVDilateLatent,
+    "LTXAddVideoICLoRAGuide": LTXAddVideoICLoRAGuide,
+    "LTXAddVideoICLoRAGuideAdvanced": LTXAddVideoICLoRAGuideAdvanced,
+    "LTXVImgToVideoConditionOnly": LTXVImgToVideoConditionOnly,
+    "LTXVInpaintPreprocess": LTXVInpaintPreprocess,
+    "LTXVDilateVideoMask": LTXVDilateVideoMask,
+    "LTXVLaplacianPyramidBlend": LTXVLaplacianPyramidBlend,
+    "LTXVSetAudioRefTokens": LTXVSetAudioRefTokens,
 }
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
+    "stoneV_LTX25_Outpaint_Loader": "stoneV LTX-2.5 Outpaint All-in-One Model Loader (Auto-Download)",
+    "ImagePadForOutpaintMasked": "Pad Image For Outpaint Masked",
+    "ImagePadForOutpaintTargetSize": "Pad Image For Outpaint Target Size",
+    "LTXICLoRALoaderModelOnly": "🅛🅣🅧 IC-LoRA Loader Model Only",
+    "LTXVDilateLatent": "🅛🅣🅧 Dilate Latent",
+    "LTXAddVideoICLoRAGuide": "🅛🅣🅧 Add Video IC-LoRA Guide",
+    "LTXAddVideoICLoRAGuideAdvanced": "🅛🅣🅧 Add Video IC-LoRA Guide Advanced",
+    "LTXVImgToVideoConditionOnly": "🅛🅣🅧 Img To Video Condition Only",
+    "LTXVInpaintPreprocess": "🅛🅣🅧 Inpaint Preprocess (#66FF00)",
+    "LTXVDilateVideoMask": "🅛🅣🅧 Dilate Video Mask",
+    "LTXVLaplacianPyramidBlend": "🅛🅣🅧 Laplacian Pyramid Blend",
+    "LTXVSetAudioRefTokens": "🅛🅣🅧 Set Audio Ref Tokens",
     "RTXVideoSuperResolution": "RTX Video Super Resolution Pro (4K/16K)",
     "stoneV_RTX_VSR_Pro_16K": "stoneV RTX VSR Pro & UltraSharp 16K",
     "VStone_RTX_VSR_Pro_16K": "stoneV RTX VSR Pro & UltraSharp 16K",

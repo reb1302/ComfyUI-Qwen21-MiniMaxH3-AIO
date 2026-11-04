@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-04T16:19:00+07:00",
+  "updated_at": "2026-11-04T16:58:00+07:00",
   "loras": [
     {
       "filename": "High quality.safetensors",
@@ -60,9 +60,41 @@
       "filename": "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/model_patches/minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors",
       "folder": "model_patches"
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+      "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+      "folder": "latent_upscale_models"
+    },
+    {
+      "filename": "ltx-2.5-audio-vae-bf16.safetensors",
+      "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-audio-vae-bf16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "ltx-2.5-video-vae-bf16.safetensors",
+      "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-video-vae-bf16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+      "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+      "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+      "folder": "diffusion_models"
     }
   ],
   "workflows": [
+    "workflows/ltx_2.5/stoneV_LTX25_Outpaint_TwoStage_Pro_H200.json",
+    "workflows/stoneV_LTX25_Outpaint_TwoStage_Pro_H200.json",
     "workflows/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
     "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/ltx_2.5/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
