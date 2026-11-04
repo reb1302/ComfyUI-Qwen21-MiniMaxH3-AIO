@@ -2897,6 +2897,553 @@ class MinimaxH3LatentUpscaler3D:
 
 
 
+# ==============================================================================
+# NODE 6: stoneV Panorama 360 Multi-Ref Outpaint Loop (Qwen-Image-2.1)
+# ==============================================================================
+def _cosine_alpha_1d(length: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    if length <= 1:
+        return torch.ones((1,), device=device, dtype=dtype)
+    t = torch.linspace(0.0, 1.0, steps=length, device=device, dtype=torch.float32)
+    return (0.5 * (1.0 - torch.cos(math.pi * t))).to(dtype=dtype)
+
+
+def _stitch_horizontal_cosine(left_img: torch.Tensor, right_img: torch.Tensor, overlap_w: int, blend_w: int) -> torch.Tensor:
+    """
+    Ghép ngang 2 ảnh `left_img` [1, H, W_L, 3] và `right_img` [1, H, W_R, 3]
+    trong đó phần đầu của `right_img` trùng với `overlap_w` cột cuối của `left_img`.
+    Hòa trộn mượt bằng hàm Cosine trên dải `blend_w` ngay sát biên nối.
+    """
+    h = int(left_img.shape[1])
+    if int(right_img.shape[1]) != h:
+        right_img = _chunked_cpu_resize(right_img, int(right_img.shape[2]), h, "lanczos", "disabled", chunk_size=1)
+    overlap_w = max(0, min(int(overlap_w), int(left_img.shape[2]), int(right_img.shape[2])))
+    if overlap_w == 0:
+        return torch.cat([left_img, right_img], dim=2)
+
+    bw = max(4, min(int(blend_w), overlap_w))
+    keep_left_end = int(left_img.shape[2]) - bw
+    right_blend_start = overlap_w - bw
+
+    left_pure = left_img[:, :, :keep_left_end, :]
+    left_seam = left_img[:, :, keep_left_end : int(left_img.shape[2]), :]
+    right_seam = right_img[:, :, right_blend_start:overlap_w, :]
+    right_pure = right_img[:, :, overlap_w:, :]
+
+    alpha = _cosine_alpha_1d(bw, left_img.device, left_img.dtype).view(1, 1, bw, 1)
+    blended_seam = left_seam * (1.0 - alpha) + right_seam * alpha
+    return torch.cat([left_pure, blended_seam, right_pure], dim=2).clamp(0.0, 1.0)
+
+
+def _prepare_ref_for_qwen21(img: torch.Tensor, target_res: int = 768) -> torch.Tensor:
+    """Chuẩn hóa ảnh Reference về diện tích ~768x768 (bội số của 32) để nhẹ VRAM khi nạp 3-5 tấm Ref."""
+    rgb = img[:1, :, :, :3].to("cpu", dtype=torch.float32)
+    h, w = int(rgb.shape[1]), int(rgb.shape[2])
+    ratio = float(w) / max(1.0, float(h))
+    tw = max(64, int(round(math.sqrt(target_res * target_res * ratio) / 32.0)) * 32)
+    th = max(64, int(round(math.sqrt(target_res * target_res / ratio) / 32.0)) * 32)
+    return _chunked_cpu_resize(rgb, tw, th, "lanczos", "disabled", chunk_size=1)
+
+
+def _run_qwen21_outpaint_pass(
+    model,
+    clip,
+    vae,
+    canvas_img: torch.Tensor,
+    ref_images_list: list[torch.Tensor],
+    prompt: str,
+    negative_prompt: str,
+    seed: int,
+    steps: int,
+    cfg: float,
+    sampler_name: str,
+    scheduler: str,
+    max_window_mp: float = 1.35,
+) -> torch.Tensor:
+    """Chạy 1 bước Qwen-Image-2.1 Outpaint trên khung `canvas_img` với danh sách `ref_images_list`."""
+    import nodes
+    orig_h, orig_w = int(canvas_img.shape[1]), int(canvas_img.shape[2])
+    target_pixels = max(0.4, float(max_window_mp)) * 1_000_000.0
+    cur_pixels = float(orig_w * orig_h)
+    if cur_pixels > target_pixels * 1.05:
+        scale = math.sqrt(target_pixels / cur_pixels)
+        win_w = max(64, int(round((orig_w * scale) / 32.0)) * 32)
+        win_h = max(64, int(round((orig_h * scale) / 32.0)) * 32)
+    else:
+        win_w = max(64, int(round(orig_w / 32.0)) * 32)
+        win_h = max(64, int(round(orig_h / 32.0)) * 32)
+
+    work_canvas = _chunked_cpu_resize(canvas_img[:1, :, :, :3], win_w, win_h, "lanczos", "disabled", chunk_size=1)
+    images_dict: dict[str, torch.Tensor] = {"image_1": work_canvas}
+    for idx, r_img in enumerate(ref_images_list[:5], start=2):
+        if r_img is not None:
+            images_dict[f"image_{idx}"] = _prepare_ref_for_qwen21(r_img, target_res=768)
+
+    qwen_enc_classes = _get_target_node_classes("TextEncodeQwenImage21", "comfy_extras.nodes_qwen")
+    if not qwen_enc_classes:
+        raise RuntimeError("Không tìm thấy node TextEncodeQwenImage21 trong ComfyUI.")
+    qwen_enc_cls = qwen_enc_classes[0]
+
+    enc_out = qwen_enc_cls.execute(
+        clip=clip,
+        prompt=prompt,
+        negative_prompt=negative_prompt or "",
+        vae=vae,
+        resolution=0,
+        images=images_dict,
+    )
+    enc_args = list(enc_out.args) if hasattr(enc_out, "args") else list(enc_out)
+    positive, negative, latent_dict = enc_args[0], enc_args[1], enc_args[2]
+
+    _vstone_free_vram(unload_models=False)
+    sampled = nodes.common_ksampler(
+        model=model,
+        seed=int(seed),
+        steps=int(steps),
+        cfg=float(cfg),
+        sampler_name=sampler_name,
+        scheduler=scheduler,
+        positive=positive,
+        negative=negative,
+        latent=latent_dict,
+        denoise=1.0,
+    )[0]
+
+    decoded = vae.decode(sampled["samples"])
+    if decoded.ndim == 5:
+        decoded = decoded[0]
+    decoded = decoded[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
+    if int(decoded.shape[2]) != orig_w or int(decoded.shape[1]) != orig_h:
+        decoded = _chunked_cpu_resize(decoded, orig_w, orig_h, "lanczos", "disabled", chunk_size=1)
+    _vstone_free_vram(unload_models=False)
+    return decoded
+
+
+class stoneV_Panorama360_AutoLoop:
+    """
+    Node All-in-One vẽ Panorama siêu rộng (hướng tới 360°) & mở rộng chiều cao bằng Qwen-Image-2.1:
+    - Nhận từ 1 đến 5 tấm ảnh (`image_1` làm khung gốc trung tâm + `ref_image_2..5` làm bộ tham chiếu bối cảnh/góc quay).
+    - Tự động mở rộng chiều cao Trên/Dưới (`height_expand_ratio`, ví dụ 1.35x) cao hơn ảnh gốc.
+    - Tự động lặp cuốn chiếu `loop_steps` vòng (mỗi vòng chỉ lấy `keep_anchor_ratio = 0.5` nửa tấm ngoài cùng làm neo + vùng xám `#808080`).
+    - Tự động chọn/xoay vòng các ảnh Reference (`Sequential`, `All Refs Together`, hoặc `Directional Split`).
+    - Tùy chọn khép kín 2 đầu Trái - Phải thành vòng tròn 360° không vết nối (`close_360_loop = True`).
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "clip": ("CLIP",),
+                "vae": ("VAE",),
+                "image_1": ("IMAGE",),
+                "panorama_mode": ([
+                    "1. Sequential Bridge (Mỗi bước lặp ưu tiên 1 tấm Ref kế tiếp Ref 2 -> 3 -> 4 -> 5)",
+                    "2. All Refs Together (Đưa toàn bộ 3-5 tấm Ref vào cùng lúc ở mọi bước lặp)",
+                    "3. Directional Split (Ref 2,3 dẫn hướng bên Phải - Ref 4,5 dẫn hướng bên Trái)",
+                ], {
+                    "default": "1. Sequential Bridge (Mỗi bước lặp ưu tiên 1 tấm Ref kế tiếp Ref 2 -> 3 -> 4 -> 5)"
+                }),
+                "direction": ([
+                    "Both Sides Alternating (Mở rộng đều sang cả Phải & Trái)",
+                    "Right Progressive (Mở rộng cuốn chiếu liên tiếp sang Phải)",
+                    "Left Progressive (Mở rộng cuốn chiếu liên tiếp sang Trái)",
+                ], {
+                    "default": "Both Sides Alternating (Mở rộng đều sang cả Phải & Trái)"
+                }),
+                "loop_steps": ("INT", {
+                    "default": 4,
+                    "min": 1,
+                    "max": 12,
+                    "step": 1,
+                    "tooltip": "Số bước lặp Outpaint cuốn chiếu (4 bước + ảnh gốc = rộng gấp ~5 lần chuẩn Panorama 360°)."
+                }),
+                "height_expand_ratio": ("FLOAT", {
+                    "default": 1.35,
+                    "min": 1.0,
+                    "max": 2.5,
+                    "step": 0.05,
+                    "tooltip": "Tỉ số mở rộng chiều cao Trên/Dưới cao hơn ảnh gốc (1.35 = cao gấp 1.35 lần ảnh gốc)."
+                }),
+                "step_extend_ratio": ("FLOAT", {
+                    "default": 1.0,
+                    "min": 0.4,
+                    "max": 1.5,
+                    "step": 0.1,
+                    "tooltip": "Chiều rộng vùng xám mở thêm ở mỗi bước lặp (1.0 = mỗi bước vẽ thêm 1.0x chiều rộng ảnh gốc)."
+                }),
+                "keep_anchor_ratio": ("FLOAT", {
+                    "default": 0.5,
+                    "min": 0.35,
+                    "max": 0.85,
+                    "step": 0.05,
+                    "tooltip": "Chỉ lấy 0.5 (nửa tấm ngoài cùng) làm mồi neo sát vùng xám để Qwen-Image-2.1 vẽ nét căng."
+                }),
+                "close_360_loop": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Tự động thêm 1 nhịp cầu nối cuối cùng ghép mép Phải ngoài cùng với mép Trái ngoài cùng để khép vòng 360°."
+                }),
+                "blend_width_px": ("INT", {
+                    "default": 48,
+                    "min": 8,
+                    "max": 256,
+                    "step": 4,
+                    "tooltip": "Độ rộng vùng hòa trộn Cosine giữa các bước lặp để xóa sạch vết ghép."
+                }),
+                "prompt": ("STRING", {
+                    "multiline": True,
+                    "default": "Seamless ultra-wide 360 panoramic continuation of the environment, consistent horizon line, natural lighting, high detail architectural and landscape continuity."
+                }),
+                "negative_prompt": ("STRING", {
+                    "multiline": True,
+                    "default": "visible seams, split screen, gray border, blurry, distorted perspective, broken horizon, watermark, text"
+                }),
+                "seed": ("INT", {"default": 42, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
+                "steps": ("INT", {"default": 24, "min": 4, "max": 60, "step": 1}),
+                "cfg": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 10.0, "step": 0.1}),
+                "sampler_name": (["euler", "res_multistep", "dpmpp_2m", "uni_pc"], {"default": "euler"}),
+                "scheduler": (["simple", "beta", "normal", "sgm_uniform"], {"default": "simple"}),
+            },
+            "optional": {
+                "ref_image_2": ("IMAGE",),
+                "ref_image_3": ("IMAGE",),
+                "ref_image_4": ("IMAGE",),
+                "ref_image_5": ("IMAGE",),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "INT", "INT")
+    RETURN_NAMES = ("panorama_image", "step_windows_preview", "panorama_width", "panorama_height")
+    FUNCTION = "generate_panorama"
+    CATEGORY = "stoneV"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
+    def _select_step_refs(
+        self,
+        step_idx: int,
+        side: str,
+        base_img: torch.Tensor,
+        extra_refs: list[torch.Tensor],
+        panorama_mode: str,
+    ) -> list[torch.Tensor]:
+        if not extra_refs:
+            return [base_img]
+        if panorama_mode.startswith("2."):
+            return extra_refs + [base_img]
+        if panorama_mode.startswith("3."):
+            right_pool = extra_refs[:2] if len(extra_refs) >= 2 else extra_refs
+            left_pool = extra_refs[2:] if len(extra_refs) > 2 else extra_refs[-1:]
+            pool = right_pool if side == "right" else left_pool
+            primary = pool[step_idx % len(pool)]
+            return [primary, base_img] + [r for r in pool if r is not primary]
+        # Mode 1: Sequential Bridge
+        primary = extra_refs[step_idx % len(extra_refs)]
+        prev_ref = base_img if step_idx == 0 else extra_refs[(step_idx - 1) % len(extra_refs)]
+        out = [primary, prev_ref]
+        if prev_ref is not base_img:
+            out.append(base_img)
+        return out
+
+    def _build_step_prompt(self, side_desc: str, num_refs: int, user_prompt: str) -> str:
+        if num_refs >= 2:
+            ref_tags = " and ".join(f"<image{i + 2}>" for i in range(num_refs))
+            base_instr = (
+                f"Outpaint <image1> by replacing all solid gray (#808080) areas on the {side_desc} "
+                f"with a seamless panoramic continuation of the scene, naturally incorporating the environment, "
+                f"structures, lighting, and atmosphere from reference {ref_tags} while preserving exact horizon and perspective continuity."
+            )
+        else:
+            base_instr = (
+                f"Outpaint <image1> by replacing all solid gray (#808080) areas on the {side_desc} "
+                f"with a seamless panoramic continuation of the scene, using <image2> as the full scene reference."
+            )
+        clean_user = (user_prompt or "").strip()
+        return f"{base_instr} {clean_user}".strip()
+
+    def generate_panorama(
+        self,
+        model,
+        clip,
+        vae,
+        image_1: torch.Tensor,
+        panorama_mode: str,
+        direction: str,
+        loop_steps: int = 4,
+        height_expand_ratio: float = 1.35,
+        step_extend_ratio: float = 1.0,
+        keep_anchor_ratio: float = 0.5,
+        close_360_loop: bool = True,
+        blend_width_px: int = 48,
+        prompt: str = "",
+        negative_prompt: str = "",
+        seed: int = 42,
+        steps: int = 24,
+        cfg: float = 1.0,
+        sampler_name: str = "euler",
+        scheduler: str = "simple",
+        ref_image_2: torch.Tensor | None = None,
+        ref_image_3: torch.Tensor | None = None,
+        ref_image_4: torch.Tensor | None = None,
+        ref_image_5: torch.Tensor | None = None,
+        **kwargs,
+    ):
+        base_img = image_1[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
+        raw_h, raw_w = int(base_img.shape[1]), int(base_img.shape[2])
+
+        # Chuẩn hóa kích thước cơ sở bội số 32 (giữ độ nét cao và vừa vặn cửa sổ Qwen 2.1)
+        max_base_dim = 1088
+        if max(raw_w, raw_h) > max_base_dim:
+            s_factor = float(max_base_dim) / float(max(raw_w, raw_h))
+            base_w = max(128, int(round((raw_w * s_factor) / 32.0)) * 32)
+            base_h = max(128, int(round((raw_h * s_factor) / 32.0)) * 32)
+            base_img = _chunked_cpu_resize(base_img, base_w, base_h, "lanczos", "disabled", chunk_size=1)
+        else:
+            base_w = max(128, int(round(raw_w / 32.0)) * 32)
+            base_h = max(128, int(round(raw_h / 32.0)) * 32)
+            if base_w != raw_w or base_h != raw_h:
+                base_img = _chunked_cpu_resize(base_img, base_w, base_h, "lanczos", "disabled", chunk_size=1)
+
+        pano_h = max(base_h, int(round((base_h * float(height_expand_ratio)) / 32.0)) * 32)
+        pad_top = (pano_h - base_h) // 2
+        pad_bottom = pano_h - base_h - pad_top
+
+        anchor_w = max(64, min(base_w, int(round((base_w * float(keep_anchor_ratio)) / 32.0)) * 32))
+        ext_w = max(64, int(round((base_w * float(step_extend_ratio)) / 32.0)) * 32)
+        win_w = anchor_w + ext_w
+        gray_val = 128.0 / 255.0
+
+        extra_refs: list[torch.Tensor] = []
+        for r in (ref_image_2, ref_image_3, ref_image_4, ref_image_5):
+            if r is not None and hasattr(r, "shape") and r.ndim == 4:
+                extra_refs.append(r[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0))
+
+        # Xác định thứ tự các hướng mở rộng theo số bước lặp
+        sides_plan: list[str] = []
+        for i in range(int(loop_steps)):
+            if direction.startswith("Right"):
+                sides_plan.append("right")
+            elif direction.startswith("Left"):
+                sides_plan.append("left")
+            else:
+                sides_plan.append("right" if (i % 2 == 0) else "left")
+
+        step_previews: list[torch.Tensor] = []
+
+        # Bước khởi tạo: Mở rộng chiều cao (Top/Bottom) cho tấm gốc `base_img` đồng thời mở rộng bước đầu tiên
+        first_side = sides_plan[0]
+        first_refs = self._select_step_refs(0, first_side, base_img, extra_refs, panorama_mode)
+
+        if pad_top > 0 or pad_bottom > 0:
+            # Nếu có mở rộng chiều cao (height_expand_ratio > 1.0), ta đặt toàn bộ base_img vào bước 1
+            # hoặc nếu mở cả 2 bên thì kết hợp nắp Trên/Dưới mượt mà cho toàn bộ tấm trung tâm
+            step1_canvas = torch.full((1, pano_h, base_w + ext_w, 3), gray_val, dtype=torch.float32)
+            if first_side == "right":
+                step1_canvas[:, pad_top : pad_top + base_h, :base_w, :] = base_img
+                side_desc = "right, top, and bottom"
+            else:
+                step1_canvas[:, pad_top : pad_top + base_h, ext_w : ext_w + base_w, :] = base_img
+                side_desc = "left, top, and bottom"
+
+            step1_prompt = self._build_step_prompt(side_desc, len(first_refs), prompt)
+            gen1 = _run_qwen21_outpaint_pass(
+                model=model,
+                clip=clip,
+                vae=vae,
+                canvas_img=step1_canvas,
+                ref_images_list=first_refs,
+                prompt=step1_prompt,
+                negative_prompt=negative_prompt,
+                seed=int(seed),
+                steps=steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+            )
+
+            # Khôi phục vùng trung tâm của base_img với feather 4 cạnh (trên, dưới, trái/phải)
+            mask1 = torch.ones((1, pano_h, base_w + ext_w), dtype=torch.float32)
+            x0 = 0 if first_side == "right" else ext_w
+            mask1[:, pad_top : pad_top + base_h, x0 : x0 + base_w] = 0.0
+            mask1 = _feather_mask(mask1, max(16, int(blend_width_px // 2)))
+            m3 = mask1.unsqueeze(-1)
+            pano_img = step1_canvas * (1.0 - m3) + gen1 * m3
+            step_previews.append(_chunked_cpu_resize(gen1, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
+        else:
+            pano_img = base_img
+            # Chạy bước 0 bình thường trên pano_img đã có chiều cao pano_h
+            if first_side == "right":
+                anchor_slice = pano_img[:, :, -anchor_w:, :]
+                c_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                c_img[:, :, :anchor_w, :] = anchor_slice
+                s_prompt = self._build_step_prompt("right", len(first_refs), prompt)
+                g_out = _run_qwen21_outpaint_pass(
+                    model, clip, vae, c_img, first_refs, s_prompt, negative_prompt,
+                    int(seed), steps, cfg, sampler_name, scheduler
+                )
+                pano_img = _stitch_horizontal_cosine(pano_img, g_out, anchor_w, blend_width_px)
+                step_previews.append(g_out)
+            else:
+                anchor_slice = pano_img[:, :, :anchor_w, :]
+                c_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                c_img[:, :, ext_w:, :] = anchor_slice
+                s_prompt = self._build_step_prompt("left", len(first_refs), prompt)
+                g_out = _run_qwen21_outpaint_pass(
+                    model, clip, vae, c_img, first_refs, s_prompt, negative_prompt,
+                    int(seed), steps, cfg, sampler_name, scheduler
+                )
+                pano_img = _stitch_horizontal_cosine(g_out, pano_img, anchor_w, blend_width_px)
+                step_previews.append(g_out)
+
+        # Các vòng lặp cuốn chiếu tiếp theo (Step 2 .. loop_steps)
+        for step_idx in range(1, len(sides_plan)):
+            side = sides_plan[step_idx]
+            step_refs = self._select_step_refs(step_idx, side, base_img, extra_refs, panorama_mode)
+            step_seed = int(seed) + step_idx * 101
+
+            if side == "right":
+                anchor_slice = pano_img[:, :, -anchor_w:, :]
+                canvas_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                canvas_img[:, :, :anchor_w, :] = anchor_slice
+                step_prompt = self._build_step_prompt("right", len(step_refs), prompt)
+                gen_win = _run_qwen21_outpaint_pass(
+                    model=model,
+                    clip=clip,
+                    vae=vae,
+                    canvas_img=canvas_img,
+                    ref_images_list=step_refs,
+                    prompt=step_prompt,
+                    negative_prompt=negative_prompt,
+                    seed=step_seed,
+                    steps=steps,
+                    cfg=cfg,
+                    sampler_name=sampler_name,
+                    scheduler=scheduler,
+                )
+                pano_img = _stitch_horizontal_cosine(pano_img, gen_win, anchor_w, blend_width_px)
+                step_previews.append(gen_win)
+            else:
+                anchor_slice = pano_img[:, :, :anchor_w, :]
+                canvas_img = torch.full((1, pano_h, win_w, 3), gray_val, dtype=torch.float32)
+                canvas_img[:, :, ext_w:, :] = anchor_slice
+                step_prompt = self._build_step_prompt("left", len(step_refs), prompt)
+                gen_win = _run_qwen21_outpaint_pass(
+                    model=model,
+                    clip=clip,
+                    vae=vae,
+                    canvas_img=canvas_img,
+                    ref_images_list=step_refs,
+                    prompt=step_prompt,
+                    negative_prompt=negative_prompt,
+                    seed=step_seed,
+                    steps=steps,
+                    cfg=cfg,
+                    sampler_name=sampler_name,
+                    scheduler=scheduler,
+                )
+                pano_img = _stitch_horizontal_cosine(gen_win, pano_img, anchor_w, blend_width_px)
+                step_previews.append(gen_win)
+
+        # Nhịp cuối (Tùy chọn): Khép kín vòng tròn 360° (nối mượt mép Phải cuối cùng vào mép Trái đầu tiên)
+        if close_360_loop:
+            half_anchor = max(64, int(round((anchor_w * 0.75) / 32.0)) * 32)
+            bridge_ext = max(64, int(round((ext_w * 0.75) / 32.0)) * 32)
+            bridge_w = half_anchor * 2 + bridge_ext
+
+            right_edge = pano_img[:, :, -half_anchor:, :]
+            left_edge = pano_img[:, :, :half_anchor, :]
+
+            bridge_canvas = torch.full((1, pano_h, bridge_w, 3), gray_val, dtype=torch.float32)
+            bridge_canvas[:, :, :half_anchor, :] = right_edge
+            bridge_canvas[:, :, half_anchor + bridge_ext :, :] = left_edge
+
+            bridge_refs = [right_edge, left_edge, base_img]
+            bridge_prompt = (
+                "Outpaint <image1> by replacing the central solid gray (#808080) bridge area "
+                "with a 100% seamless panoramic connection that joins the left scene and the right scene "
+                "into one continuous 360-degree horizon and environment. " + (prompt or "").strip()
+            )
+            gen_bridge = _run_qwen21_outpaint_pass(
+                model=model,
+                clip=clip,
+                vae=vae,
+                canvas_img=bridge_canvas,
+                ref_images_list=bridge_refs,
+                prompt=bridge_prompt,
+                negative_prompt=negative_prompt,
+                seed=int(seed) + 999,
+                steps=steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+            )
+            # Ghép phần cầu nối mới vẽ (half_anchor + bridge_ext) vào đuôi phải của Panorama
+            bridge_left_and_mid = gen_bridge[:, :, : half_anchor + bridge_ext, :]
+            pano_img = _stitch_horizontal_cosine(pano_img, bridge_left_and_mid, half_anchor, blend_width_px)
+
+            # Đồng thời hòa trộn phần neo bên phải của gen_bridge vào đầu bên trái của Panorama để khép kín 360° không vết gợn
+            wrap_bw = min(int(blend_width_px), half_anchor, int(pano_img.shape[2]) // 4)
+            if wrap_bw >= 4:
+                wrap_src = gen_bridge[:, :, half_anchor + bridge_ext : half_anchor + bridge_ext + wrap_bw, :]
+                wrap_dst = pano_img[:, :, :wrap_bw, :]
+                alpha_w = _cosine_alpha_1d(wrap_bw, pano_img.device, pano_img.dtype).view(1, 1, wrap_bw, 1)
+                pano_img[:, :, :wrap_bw, :] = wrap_src * (1.0 - alpha_w) + wrap_dst * alpha_w
+
+            step_previews.append(_chunked_cpu_resize(gen_bridge, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
+
+        preview_batch = torch.cat(step_previews, dim=0) if step_previews else pano_img
+        final_h, final_w = int(pano_img.shape[1]), int(pano_img.shape[2])
+        return (pano_img.clamp(0.0, 1.0), preview_batch.clamp(0.0, 1.0), final_w, final_h)
+
+
+class stoneV_Panorama_Stitch2:
+    """
+    Node ghép nối thủ công 2 tấm Panorama chồng lấp (Left + Right) bằng bộ hòa trộn Cosine mượt,
+    dành cho người dùng muốn tự nối từng bước trên sơ đồ node.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "left_panorama": ("IMAGE",),
+                "right_extended_window": ("IMAGE",),
+                "keep_anchor_ratio": ("FLOAT", {"default": 0.5, "min": 0.1, "max": 1.0, "step": 0.05}),
+                "step_extend_ratio": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 5.0, "step": 0.1}),
+                "blend_width_px": ("INT", {"default": 48, "min": 4, "max": 512, "step": 4}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT")
+    RETURN_NAMES = ("stitched_panorama", "width", "height")
+    FUNCTION = "stitch"
+    CATEGORY = "stoneV"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+
+    def stitch(
+        self,
+        left_panorama: torch.Tensor,
+        right_extended_window: torch.Tensor,
+        keep_anchor_ratio: float = 0.5,
+        step_extend_ratio: float = 1.0,
+        blend_width_px: int = 48,
+    ):
+        win_w = int(right_extended_window.shape[2])
+        overlap_ratio = float(keep_anchor_ratio) / max(0.05, float(keep_anchor_ratio) + float(step_extend_ratio))
+        overlap_w = int(round(win_w * overlap_ratio))
+        out = _stitch_horizontal_cosine(
+            left_panorama[:1, :, :, :3].to("cpu", dtype=torch.float32),
+            right_extended_window[:1, :, :, :3].to("cpu", dtype=torch.float32),
+            overlap_w=overlap_w,
+            blend_w=int(blend_width_px),
+        )
+        return (out, int(out.shape[2]), int(out.shape[1]))
+
+
 # Backward compatibility aliases
 VStone_Outpaint_Pad = stoneV_Outpaint_Pad
 VStone_ExtendLeft_1xWidth = stoneV_ExtendLeft_1xWidth
@@ -2907,6 +3454,8 @@ VStone_SeamlessRestore = stoneV_SeamlessRestore
 VStone_Video_Outpaint_Prepare = stoneV_Video_Outpaint_Prepare
 stoneV_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
 VStone_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
+VStone_Panorama360_AutoLoop = stoneV_Panorama360_AutoLoop
+VStone_Panorama_Stitch2 = stoneV_Panorama_Stitch2
 
 VSTONE_NODE_CLASS_MAPPINGS = {
     "RTXVideoSuperResolution": RTXVideoSuperResolution,
@@ -2923,6 +3472,8 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_SeamlessRestore": stoneV_SeamlessRestore,
     "stoneV_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
     "stoneV_ScreenX_Cut": stoneV_ScreenX_Cut,
+    "stoneV_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
+    "stoneV_Panorama_Stitch2": stoneV_Panorama_Stitch2,
     "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
     "VStone_ScreenX_Combine3": stoneV_ScreenX_Combine3,
@@ -2930,6 +3481,8 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_Outpaint_Pad": stoneV_Outpaint_Pad,
     "VStone_SeamlessRestore": stoneV_SeamlessRestore,
     "VStone_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
+    "VStone_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
+    "VStone_Panorama_Stitch2": stoneV_Panorama_Stitch2,
 }
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -2947,6 +3500,8 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "stoneV_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
     "stoneV_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
     "stoneV_ScreenX_Cut": "stoneV: ScreenX Cut (Cánh + Ảnh Giữa)",
+    "stoneV_Panorama360_AutoLoop": "stoneV Panorama 360: Multi-Ref Outpaint Loop (3-5 Refs)",
+    "stoneV_Panorama_Stitch2": "stoneV Panorama: Stitch & Feather 2 Plates",
     "VStone_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
     "VStone_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
     "VStone_ScreenX_Combine3": "stoneV 2: ScreenX Combine 3 Plates (Left + Center + Right)",
@@ -2954,6 +3509,8 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "VStone_Outpaint_Pad": "stoneV: Outpaint Pad (Custom Left / Right)",
     "VStone_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
     "VStone_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
+    "VStone_Panorama360_AutoLoop": "stoneV Panorama 360: Multi-Ref Outpaint Loop (3-5 Refs)",
+    "VStone_Panorama_Stitch2": "stoneV Panorama: Stitch & Feather 2 Plates",
 }
 
 for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
