@@ -5,11 +5,46 @@ Automatically installs bundled workflows & embeddings on startup and registers A
 
 import os
 import shutil
+import threading
 from .aio_nodes import NODE_CLASS_MAPPINGS as AIO_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS as AIO_DISPLAY
 from .vstone.node_helper_vstone import VSTONE_NODE_CLASS_MAPPINGS, VSTONE_NODE_DISPLAY_NAME_MAPPINGS
 
 NODE_CLASS_MAPPINGS = {**AIO_MAPPINGS, **VSTONE_NODE_CLASS_MAPPINGS}
 NODE_DISPLAY_NAME_MAPPINGS = {**AIO_DISPLAY, **VSTONE_NODE_DISPLAY_NAME_MAPPINGS}
+
+
+def _safe_atomic_copy(src_f: str, dst_f: str, min_bytes: int = 50) -> None:
+    if not os.path.isfile(src_f) or os.path.getsize(src_f) < min_bytes:
+        return
+    if os.path.realpath(src_f) == os.path.realpath(dst_f):
+        return
+    with open(src_f, "rb") as sf:
+        data = sf.read()
+    if len(data) < min_bytes:
+        return
+    if os.path.isfile(dst_f) and os.path.getsize(dst_f) == len(data):
+        try:
+            with open(dst_f, "rb") as df:
+                if df.read() == data:
+                    return
+        except Exception:
+            pass
+    os.makedirs(os.path.dirname(os.path.abspath(dst_f)), exist_ok=True)
+    tmp_f = f"{dst_f}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with open(tmp_f, "wb") as tf:
+            tf.write(data)
+            tf.flush()
+            os.fsync(tf.fileno())
+        if os.path.getsize(tmp_f) == len(data):
+            os.replace(tmp_f, dst_f)
+    finally:
+        if os.path.exists(tmp_f):
+            try:
+                os.remove(tmp_f)
+            except Exception:
+                pass
+
 
 def _bootstrap_bundled_assets():
     """Copy bundled official workflows and MiniMax-H3 embeddings into ComfyUI on first load."""
@@ -31,7 +66,7 @@ def _bootstrap_bundled_assets():
                     except Exception as e:
                         print(f"[AIO-H200] Warning copying embedding {fname}: {e}")
 
-    # 2. Copy official workflows into ComfyUI/user/default/workflows (always overwrite 0-byte or outdated files)
+    # 2. Copy official workflows into ComfyUI/user/default/workflows (atomic, never 0-byte)
     src_wf_dir = os.path.join(pkg_dir, "workflows")
     comfy_root = folder_paths.base_path
     dst_wf_dir = os.path.join(comfy_root, "user", "default", "workflows")
@@ -45,18 +80,17 @@ def _bootstrap_bundled_assets():
                 if f.endswith(".json"):
                     src_f = os.path.join(root, f)
                     dst_f = os.path.join(target_dir, f)
-                    if not os.path.exists(dst_f) or os.path.getsize(dst_f) == 0 or os.path.getsize(src_f) != os.path.getsize(dst_f):
-                        try:
-                            shutil.copy2(src_f, dst_f)
-                        except Exception as e:
-                            print(f"[AIO-H200] Warning copying workflow {f}: {e}")
+                    try:
+                        _safe_atomic_copy(src_f, dst_f, min_bytes=50)
+                    except Exception as e:
+                        print(f"[AIO-H200] Warning copying workflow {f}: {e}")
 
-    # 3. Ensure custom_nodes/vstone also has latest node_helper_vstone.py & workflows
-    src_vstone_helper = os.path.join(pkg_dir, "vstone", "node_helper_vstone.py")
-    if os.path.isfile(src_vstone_helper) and os.path.getsize(src_vstone_helper) > 1000:
+    # 3. Ensure custom_nodes/vstone also has non-empty __init__.py & node_helper_vstone.py
+    for vfile, min_sz in (("node_helper_vstone.py", 1000), ("__init__.py", 50)):
+        src_vf = os.path.join(pkg_dir, "vstone", vfile)
+        dst_vf = os.path.join(vstone_dir, vfile)
         try:
-            os.makedirs(vstone_dir, exist_ok=True)
-            shutil.copy2(src_vstone_helper, os.path.join(vstone_dir, "node_helper_vstone.py"))
+            _safe_atomic_copy(src_vf, dst_vf, min_bytes=min_sz)
         except Exception:
             pass
 

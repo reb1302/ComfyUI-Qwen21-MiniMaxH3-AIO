@@ -271,6 +271,36 @@ def _get_latest_commit_sha() -> str:
     return GITHUB_BRANCH
 
 
+def _atomic_write_bytes(dst: str, data: bytes, min_bytes: int = 50) -> bool:
+    """Ghi file an toàn tuyệt đối (không bao giờ tạo file 0KB hoặc đụng độ giữa nhiều luồng/symlink)."""
+    if not data or len(data) < min_bytes:
+        return False
+    try:
+        if os.path.isfile(dst) and os.path.getsize(dst) == len(data):
+            with open(dst, "rb") as rf:
+                if rf.read() == data:
+                    return False
+    except Exception:
+        pass
+    os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
+    tmp_dst = f"{dst}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with open(tmp_dst, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if os.path.getsize(tmp_dst) == len(data):
+            os.replace(tmp_dst, dst)
+            return True
+    finally:
+        if os.path.exists(tmp_dst):
+            try:
+                os.remove(tmp_dst)
+            except Exception:
+                pass
+    return False
+
+
 def sync_from_github_and_hot_reload(force: bool = False) -> str:
     """
     Đồng bộ tức thì (0 giây trễ Cache, 0 lỗi Rate Limit):
@@ -281,8 +311,18 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
     4. Nạp nóng (Hot-Reload) toàn bộ Node mới vào `nodes.NODE_CLASS_MAPPINGS` trong RAM ComfyUI.
     """
     global _LAST_SYNCED_HASH
+    import sys as _sys_mod
+    sync_lock = getattr(_sys_mod, "_vstone_global_sync_lock", None)
+    if sync_lock is None:
+        sync_lock = threading.Lock()
+        setattr(_sys_mod, "_vstone_global_sync_lock", sync_lock)
+
+    if not sync_lock.acquire(blocking=force):
+        return "[VStone Sync] Một luồng đồng bộ khác đang chạy, bỏ qua để tránh xung đột."
+
     comfy_root = _get_comfy_root()
     if not comfy_root:
+        sync_lock.release()
         return "[VStone Sync] Không tìm thấy thư mục gốc ComfyUI."
 
     logs: list[str] = []
@@ -297,7 +337,8 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             return "[VStone Sync] File tải về rỗng hoặc không hợp lệ (<1KB), bỏ qua để bảo vệ file."
         new_hash = commit_ref[:7] if commit_ref != GITHUB_BRANCH else hashlib.sha256(helper_bytes).hexdigest()[:7]
 
-        if not force and new_hash and new_hash == _LAST_SYNCED_HASH:
+        last_global_hash = getattr(_sys_mod, "_vstone_last_synced_hash", "") or _LAST_SYNCED_HASH
+        if not force and new_hash and new_hash == last_global_hash:
             return f"[VStone Sync] Đã ở bản mới nhất ({new_hash})."
 
         custom_nodes_dir = os.path.join(comfy_root, "custom_nodes")
@@ -312,11 +353,13 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         os.makedirs(workflows_dir, exist_ok=True)
         os.makedirs(vstone_wf_dir, exist_ok=True)
 
-        # 1. Ghi node_helper_vstone.py vào TẤT CẢ các thư mục custom_nodes để không bị bản cũ đè
+        # 1. Ghi node_helper_vstone.py vào TẤT CẢ các thư mục custom_nodes (loại bỏ trùng lặp symlink)
         target_helper_paths = [
             os.path.join(vstone_dir, "node_helper_vstone.py"),
-            os.path.join(custom_nodes_dir, "node_helper_vstone.py"),
         ]
+        loose_helper = os.path.join(custom_nodes_dir, "node_helper_vstone.py")
+        if os.path.exists(loose_helper):
+            target_helper_paths.append(loose_helper)
         extras_vstone = os.path.join(comfy_root, "comfy_extras", "nodes_vstone.py")
         if os.path.exists(extras_vstone):
             target_helper_paths.append(extras_vstone)
@@ -326,25 +369,33 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         if os.path.isdir(sibling_repo_vstone):
             target_helper_paths.append(os.path.join(sibling_repo_vstone, "node_helper_vstone.py"))
 
+        seen_realpaths: set[str] = set()
         for dst in target_helper_paths:
             try:
-                tmp_dst = dst + ".tmp"
-                with open(tmp_dst, "wb") as f:
-                    f.write(helper_bytes)
-                os.replace(tmp_dst, dst)
-                logs.append(f"Updated: {dst}")
+                rp = os.path.realpath(dst)
+                if rp in seen_realpaths:
+                    continue
+                seen_realpaths.add(rp)
+                if _atomic_write_bytes(dst, helper_bytes, min_bytes=1000):
+                    logs.append(f"Updated: {dst}")
             except Exception as e:
                 logs.append(f"Skip {dst}: {e}")
 
-        # 2. Ghi __init__.py
+        # 2. Ghi __init__.py an toàn bằng _atomic_write_bytes
         try:
             init_bytes = _http_get_bytes(f"{raw_ref_base}/vstone/__init__.py?_t={ts}", timeout=15)
             if init_bytes and len(init_bytes) > 50:
-                with open(os.path.join(vstone_dir, "__init__.py"), "wb") as f:
-                    f.write(init_bytes)
+                init_targets = [os.path.join(vstone_dir, "__init__.py")]
                 if os.path.isdir(aio_vstone_dir):
-                    with open(os.path.join(aio_vstone_dir, "__init__.py"), "wb") as f:
-                        f.write(init_bytes)
+                    init_targets.append(os.path.join(aio_vstone_dir, "__init__.py"))
+                if os.path.isdir(sibling_repo_vstone):
+                    init_targets.append(os.path.join(sibling_repo_vstone, "__init__.py"))
+                seen_init_rp: set[str] = set()
+                for init_dst in init_targets:
+                    irp = os.path.realpath(init_dst)
+                    if irp not in seen_init_rp:
+                        seen_init_rp.add(irp)
+                        _atomic_write_bytes(init_dst, init_bytes, min_bytes=50)
         except Exception:
             pass
 
@@ -375,13 +426,13 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 target_wf_dirs = [workflows_dir, vstone_wf_dir]
                 if os.path.isdir(aio_dir):
                     target_wf_dirs.append(os.path.join(aio_dir, "workflows"))
+                seen_wf_rp: set[str] = set()
                 for base_wf_d in target_wf_dirs:
                     dst_wf = os.path.join(base_wf_d, rel_wf)
-                    os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
-                    tmp_wf = dst_wf + ".tmp"
-                    with open(tmp_wf, "wb") as f:
-                        f.write(wf_bytes)
-                    os.replace(tmp_wf, dst_wf)
+                    wrp = os.path.realpath(dst_wf)
+                    if wrp not in seen_wf_rp:
+                        seen_wf_rp.add(wrp)
+                        _atomic_write_bytes(dst_wf, wf_bytes, min_bytes=50)
                 wf_count += 1
             except Exception:
                 pass
@@ -424,12 +475,18 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                     logs.append(f"LoRA sync skip {fname}: {e}")
 
         _LAST_SYNCED_HASH = new_hash
+        setattr(_sys_mod, "_vstone_last_synced_hash", new_hash)
         msg = f"[VStone Cloud Sync] Đồng bộ thành công commit {new_hash} ({wf_count} workflows)! Nhấn phím R hoặc F5 trên trình duyệt để làm mới."
         print(msg)
         return msg + "\n" + "\n".join(logs)
     except Exception as e:
         err_msg = f"[VStone Cloud Sync] Lỗi kết nối: {e}"
         return err_msg
+    finally:
+        try:
+            sync_lock.release()
+        except Exception:
+            pass
 
 
 def _get_target_node_classes(node_name: str, module_name: str | None = None) -> list[Any]:
