@@ -1,8 +1,8 @@
 {
-  "id": "7bd36afa-15e2-4ec0-88db-fa479a62144a",
+  "id": "72f3ce03-09b9-419f-800a-882a0bdd3c3c",
   "revision": 0,
-  "last_node_id": 162,
-  "last_link_id": 325,
+  "last_node_id": 152,
+  "last_link_id": 305,
   "nodes": [
     {
       "id": 119,
@@ -26,7 +26,7 @@
           "links": [
             251,
             273,
-            318
+            298
           ]
         }
       ],
@@ -262,6 +262,85 @@
       }
     },
     {
+      "id": 132,
+      "type": "PrimitiveFloat",
+      "pos": [
+        -1490,
+        6300
+      ],
+      "size": [
+        270,
+        70
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": [
+            261
+          ]
+        }
+      ],
+      "title": "Float (Duration)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "PrimitiveFloat"
+      },
+      "widgets_values": [
+        5
+      ],
+      "widgets_values_named": {
+        "value": 5
+      },
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 137,
+      "type": "LoadImage",
+      "pos": [
+        -1050,
+        5960
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            301
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "screenx_image.png",
+        "image"
+      ],
+      "title": "Ảnh ScreenX đầy đủ"
+    },
+    {
       "id": 138,
       "type": "PrimitiveStringMultiline",
       "pos": [
@@ -273,7 +352,7 @@
         390
       ],
       "flags": {},
-      "order": 6,
+      "order": 8,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -292,8 +371,11 @@
         "Node name for S&R": "PrimitiveStringMultiline"
       },
       "widgets_values": [
-        "<Picture 1> is the first frame of the shot. Wide view of the same location with the same lighting, color and camera movement. Beyond the edge of <Picture 1>, the location shows new objects and architecture that do not repeat <Picture 1>. One continuous shot, no cuts."
+        "The video starts exactly on <Picture 1> and keeps its framing, location, lighting and colors for the whole shot. <Picture 1> is the same scene as <Video 1>, extended to the side. Move the camera exactly like <Video 1>, with the same direction, speed and timing from the first frame to the last. Anything from <Video 1> that is visible in <Picture 1> moves exactly as in <Video 1>. One continuous shot, no cuts."
       ],
+      "widgets_values_named": {
+        "value": "The video starts exactly on <Picture 1> and keeps its framing, location, lighting and colors for the whole shot. <Picture 1> is the same scene as <Video 1>, extended to the side. Move the camera exactly like <Video 1>, with the same direction, speed and timing from the first frame to the last. Anything from <Video 1> that is visible in <Picture 1> moves exactly as in <Video 1>. One continuous shot, no cuts."
+      },
       "color": "#322",
       "bgcolor": "#533"
     },
@@ -309,7 +391,7 @@
         90
       ],
       "flags": {},
-      "order": 7,
+      "order": 9,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -348,7 +430,7 @@
         90
       ],
       "flags": {},
-      "order": 8,
+      "order": 10,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -387,7 +469,7 @@
         70
       ],
       "flags": {},
-      "order": 9,
+      "order": 11,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -427,7 +509,7 @@
         320
       ],
       "flags": {},
-      "order": 10,
+      "order": 12,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -439,7 +521,7 @@
           ]
         }
       ],
-      "title": "Video gốc",
+      "title": "Video gốc (<Video 1>)",
       "properties": {
         "Node name for S&R": "LoadVideo"
       },
@@ -460,14 +542,14 @@
         560
       ],
       "flags": {},
-      "order": 11,
+      "order": 13,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "title": "Cách dùng",
       "properties": {},
       "widgets_values": [
-        "## huy_minhmax_screenx\n\nH3 tự vẽ cánh, vùng video được ghim ở mọi frame bằng mask. Không cần ảnh vẽ trước.\n\n**Đầu vào**\nChỉ 1 video gốc, 24 fps. Nên cắt sẵn đúng 17k+5 frame (107, 124, 141... tối đa 362). Video lệch lưới sẽ mất tới 16 frame cuối. Quá 362 frame thì chỉ lấy 362 frame đầu.\n\n**Chỉnh trước khi chạy**\n- **Outpaint Pad:** cánh trái thì `add_left_widths` 1, `add_right_widths` 0. Cánh phải thì ngược lại.\n- **`keep_orig_ratio`:** phần video giữ trên canvas. 0.5 là nửa sát cánh, 1.0 là cả video.\n- **`outer_height_ratio`:** 1.3 cho cánh ScreenX, 1.0 nếu chỉ mở ngang.\n- **Prompt:** thay câu \"Beyond the edge...\" bằng cảnh thật nằm ngoài khung. Không viết \"continues\".\n- **`megapixels` ở node Cỡ canvas:** OOM thì giảm.\n\n**Sau khi gen**\nChỉ lấy phần cánh rồi ghép với video gốc.\n"
+        "## huy_minhmax_screenx\n\n**Đầu vào**\n1. **Ảnh:** ảnh ScreenX đầy đủ (cánh trái + giữa + cánh phải) đã vẽ xong từ workflow ảnh. Vùng giữa phải là frame đầu của video. Nên dùng ảnh chữ nhật, chưa cắt hình thang.\n2. **Video:** video gốc, 24 fps, đã cắt đúng đoạn cần gen (tối đa 15 s).\n\n**Chỉnh trước khi chạy**\n- Node cắt ảnh: `side` chọn bên, `mode` chọn phần ảnh giữa lấy kèm cánh. `width`, `height` tự tính từ ảnh cắt. OOM thì giảm `target_megapixels`.\n- `Float (Duration)`: bằng độ dài video, tính bằng giây.\n- `megapixels` trên node cỡ video tham chiếu: OOM thì giảm.\n\n**Sau khi gen**\nPhần video trong output do model vẽ lại nên bỏ đi, chỉ lấy phần cánh rồi ghép với video gốc.\n"
       ],
       "color": "#322",
       "bgcolor": "#533"
@@ -484,7 +566,7 @@
         90
       ],
       "flags": {},
-      "order": 12,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -524,6 +606,125 @@
       }
     },
     {
+      "id": 131,
+      "type": "ComfyMathExpression",
+      "pos": [
+        -1490,
+        6440
+      ],
+      "size": [
+        225,
+        0
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "label": "a",
+          "name": "values.a",
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": 261
+        },
+        {
+          "label": "b",
+          "name": "values.b",
+          "shape": 7,
+          "type": "FLOAT,INT,BOOLEAN",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "FLOAT",
+          "type": "FLOAT",
+          "links": []
+        },
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            275
+          ]
+        },
+        {
+          "name": "BOOL",
+          "type": "BOOLEAN",
+          "links": []
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "ComfyMathExpression"
+      },
+      "widgets_values": [
+        "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      ],
+      "widgets_values_named": {
+        "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+      }
+    },
+    {
+      "id": 152,
+      "type": "stoneV_ScreenX_Cut",
+      "pos": [
+        -700,
+        6130
+      ],
+      "size": [
+        340,
+        230
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 301
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            302,
+            303
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            304
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            305
+          ]
+        }
+      ],
+      "title": "Cắt ảnh: chọn bên và chế độ (<Picture 1>)",
+      "properties": {
+        "Node name for S&R": "stoneV_ScreenX_Cut"
+      },
+      "widgets_values": [
+        "left",
+        "cánh + 50% ảnh giữa",
+        12.0,
+        1.0,
+        0.98
+      ]
+    },
+    {
       "id": 142,
       "type": "ComfySwitchNode",
       "pos": [
@@ -535,7 +736,7 @@
         110
       ],
       "flags": {},
-      "order": 13,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
@@ -591,7 +792,7 @@
         130
       ],
       "flags": {},
-      "order": 14,
+      "order": 18,
       "mode": 0,
       "inputs": [
         {
@@ -605,9 +806,7 @@
           "name": "images",
           "type": "IMAGE",
           "links": [
-            306,
-            308,
-            310
+            294
           ]
         },
         {
@@ -647,7 +846,7 @@
         110
       ],
       "flags": {},
-      "order": 15,
+      "order": 19,
       "mode": 0,
       "inputs": [
         {
@@ -703,7 +902,7 @@
         130
       ],
       "flags": {},
-      "order": 16,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {
@@ -746,285 +945,25 @@
       }
     },
     {
-      "id": 153,
-      "type": "GetImageSize",
+      "id": 150,
+      "type": "ImageScaleToTotalPixels",
       "pos": [
         -700,
-        5900
+        6740
       ],
       "size": [
-        240,
-        120
-      ],
-      "flags": {},
-      "order": 17,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 306
-        }
-      ],
-      "outputs": [
-        {
-          "name": "width",
-          "type": "INT",
-          "links": []
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": []
-        },
-        {
-          "name": "batch_size",
-          "type": "INT",
-          "links": [
-            307
-          ]
-        }
-      ],
-      "title": "Đếm frame video",
-      "properties": {
-        "Node name for S&R": "GetImageSize"
-      }
-    },
-    {
-      "id": 155,
-      "type": "ImageFromBatch",
-      "pos": [
-        -700,
-        6410
-      ],
-      "size": [
-        270,
-        110
-      ],
-      "flags": {},
-      "order": 18,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 310
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            311
-          ]
-        }
-      ],
-      "title": "Frame đầu (<Picture 1>)",
-      "properties": {
-        "Node name for S&R": "ImageFromBatch"
-      },
-      "widgets_values": [
-        0,
-        1
-      ]
-    },
-    {
-      "id": 131,
-      "type": "ComfyMathExpression",
-      "pos": [
-        -700,
-        6060
-      ],
-      "size": [
-        320,
+        280,
         170
-      ],
-      "flags": {},
-      "order": 19,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "a",
-          "name": "values.a",
-          "type": "FLOAT,INT,BOOLEAN",
-          "link": 307
-        },
-        {
-          "label": "b",
-          "name": "values.b",
-          "shape": 7,
-          "type": "FLOAT,INT,BOOLEAN",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": []
-        },
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            275,
-            309
-          ]
-        },
-        {
-          "name": "BOOL",
-          "type": "BOOLEAN",
-          "links": []
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.33.0",
-        "Node name for S&R": "ComfyMathExpression"
-      },
-      "widgets_values": [
-        "max(5, min(a, 362) - (min(a, 362) - 5) % 17)"
-      ],
-      "title": "Số frame theo lưới 17k+5, tối đa 362"
-    },
-    {
-      "id": 154,
-      "type": "ImageFromBatch",
-      "pos": [
-        -700,
-        6260
-      ],
-      "size": [
-        270,
-        110
-      ],
-      "flags": {},
-      "order": 20,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 308
-        },
-        {
-          "name": "length",
-          "type": "INT",
-          "link": 309,
-          "widget": {
-            "name": "length"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            312
-          ]
-        }
-      ],
-      "title": "Video đúng số frame",
-      "properties": {
-        "Node name for S&R": "ImageFromBatch"
-      },
-      "widgets_values": [
-        0,
-        124
-      ]
-    },
-    {
-      "id": 156,
-      "type": "stoneV_Outpaint_Pad",
-      "pos": [
-        -340,
-        5900
-      ],
-      "size": [
-        340,
-        420
       ],
       "flags": {},
       "order": 21,
       "mode": 0,
+      "showAdvanced": true,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 312
-        },
-        {
-          "name": "base_image_for_width",
-          "type": "IMAGE",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            313
-          ]
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "links": [
-            320
-          ]
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "links": []
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": []
-        }
-      ],
-      "title": "Chọn cánh và phần video giữ lại",
-      "properties": {
-        "Node name for S&R": "stoneV_Outpaint_Pad"
-      },
-      "widgets_values": [
-        1.0,
-        0.0,
-        0.5,
-        1.3,
-        "gray (#808080 - Tô Xám chuẩn Outpaint LoRA)",
-        "#808080",
-        0,
-        0,
-        0,
-        0,
-        64
-      ]
-    },
-    {
-      "id": 157,
-      "type": "ImageScaleToTotalPixels",
-      "pos": [
-        -340,
-        6350
-      ],
-      "size": [
-        300,
-        170
-      ],
-      "flags": {},
-      "order": 22,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 313
+          "link": 294
         }
       ],
       "outputs": [
@@ -1032,111 +971,24 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            314,
-            317
+            295
           ]
         }
       ],
-      "title": "Cỡ canvas (OOM thì giảm megapixels)",
+      "title": "Cỡ video tham chiếu (OOM thì giảm megapixels)",
       "properties": {
+        "cnr_id": "comfy-core",
         "Node name for S&R": "ImageScaleToTotalPixels"
       },
       "widgets_values": [
         "area",
-        0.98,
+        0.5,
         32
       ],
-      "showAdvanced": true,
       "widgets_values_named": {
         "upscale_method": "area",
-        "megapixels": 0.98,
+        "megapixels": 0.5,
         "resolution_steps": 32
-      }
-    },
-    {
-      "id": 158,
-      "type": "GetImageSize",
-      "pos": [
-        -340,
-        6560
-      ],
-      "size": [
-        240,
-        120
-      ],
-      "flags": {},
-      "order": 23,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 314
-        }
-      ],
-      "outputs": [
-        {
-          "name": "width",
-          "type": "INT",
-          "links": [
-            315
-          ]
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": [
-            316
-          ]
-        },
-        {
-          "name": "batch_size",
-          "type": "INT",
-          "links": []
-        }
-      ],
-      "title": "Khung gen",
-      "properties": {
-        "Node name for S&R": "GetImageSize"
-      }
-    },
-    {
-      "id": 159,
-      "type": "VAEEncode",
-      "pos": [
-        40,
-        5900
-      ],
-      "size": [
-        220,
-        60
-      ],
-      "flags": {},
-      "order": 24,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pixels",
-          "type": "IMAGE",
-          "link": 317
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 318
-        }
-      ],
-      "outputs": [
-        {
-          "name": "LATENT",
-          "type": "LATENT",
-          "links": [
-            319
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEEncode"
       }
     },
     {
@@ -1151,7 +1003,7 @@
         380
       ],
       "flags": {},
-      "order": 25,
+      "order": 22,
       "mode": 0,
       "inputs": [
         {
@@ -1174,7 +1026,7 @@
           "name": "ref_images.ref_image_0",
           "shape": 7,
           "type": "IMAGE",
-          "link": 311
+          "link": 302
         },
         {
           "label": "ref_image_1",
@@ -1195,7 +1047,7 @@
           "name": "ref_videos.ref_video_0",
           "shape": 7,
           "type": "IMAGE",
-          "link": null
+          "link": 295
         },
         {
           "label": "ref_video_audio_0",
@@ -1225,7 +1077,7 @@
           "widget": {
             "name": "width"
           },
-          "link": 315
+          "link": 304
         },
         {
           "name": "height",
@@ -1233,7 +1085,7 @@
           "widget": {
             "name": "height"
           },
-          "link": 316
+          "link": 305
         },
         {
           "name": "length",
@@ -1249,14 +1101,15 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            325
+            296
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            321
+            271,
+            297
           ]
         }
       ],
@@ -1267,50 +1120,95 @@
       },
       "widgets_values": [
         "",
-        1440,
-        704,
+        1344,
+        672,
         124,
         "match"
-      ]
+      ],
+      "widgets_values_named": {
+        "prompt": "",
+        "width": 1344,
+        "height": 672,
+        "length": 124,
+        "ref_image_size": "match"
+      }
     },
     {
-      "id": 160,
-      "type": "SetLatentNoiseMask",
+      "id": 151,
+      "type": "MiniMaxH3AddGuide",
       "pos": [
-        40,
-        6010
+        -620,
+        5900
       ],
       "size": [
-        240,
-        60
+        310,
+        180
       ],
       "flags": {},
-      "order": 26,
+      "order": 23,
       "mode": 0,
       "inputs": [
         {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 319
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 296
         },
         {
-          "name": "mask",
-          "type": "MASK",
-          "link": 320
+          "name": "latent",
+          "type": "LATENT",
+          "link": 297
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": 298
+        },
+        {
+          "name": "audio_vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "name": "image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 303
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "frame_idx",
+          "type": "INT",
+          "widget": {
+            "name": "frame_idx"
+          },
+          "link": null
         }
       ],
       "outputs": [
         {
-          "name": "LATENT",
-          "type": "LATENT",
+          "name": "positive",
+          "type": "CONDITIONING",
           "links": [
-            322
+            300
           ]
         }
       ],
-      "title": "Mask: cánh = vẽ, video = giữ",
+      "title": "Ghim ảnh vào frame 0",
       "properties": {
-        "Node name for S&R": "SetLatentNoiseMask"
+        "Node name for S&R": "MiniMaxH3AddGuide"
+      },
+      "widgets_values": [
+        0
+      ],
+      "widgets_values_named": {
+        "frame_idx": 0
       }
     },
     {
@@ -1325,7 +1223,7 @@
         60
       ],
       "flags": {},
-      "order": 27,
+      "order": 24,
       "mode": 0,
       "inputs": [
         {
@@ -1336,7 +1234,7 @@
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 325
+          "link": 300
         }
       ],
       "outputs": [
@@ -1355,84 +1253,6 @@
       }
     },
     {
-      "id": 161,
-      "type": "LTXVSeparateAVLatent",
-      "pos": [
-        40,
-        6120
-      ],
-      "size": [
-        240,
-        60
-      ],
-      "flags": {},
-      "order": 28,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "av_latent",
-          "type": "LATENT",
-          "link": 321
-        }
-      ],
-      "outputs": [
-        {
-          "name": "video_latent",
-          "type": "LATENT",
-          "links": []
-        },
-        {
-          "name": "audio_latent",
-          "type": "LATENT",
-          "links": [
-            323
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LTXVSeparateAVLatent"
-      }
-    },
-    {
-      "id": 162,
-      "type": "LTXVConcatAVLatent",
-      "pos": [
-        40,
-        6230
-      ],
-      "size": [
-        240,
-        60
-      ],
-      "flags": {},
-      "order": 29,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "video_latent",
-          "type": "LATENT",
-          "link": 322
-        },
-        {
-          "name": "audio_latent",
-          "type": "LATENT",
-          "link": 323
-        }
-      ],
-      "outputs": [
-        {
-          "name": "latent",
-          "type": "LATENT",
-          "links": [
-            324
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LTXVConcatAVLatent"
-      }
-    },
-    {
       "id": 125,
       "type": "SamplerCustomAdvanced",
       "pos": [
@@ -1444,7 +1264,7 @@
         140
       ],
       "flags": {},
-      "order": 30,
+      "order": 25,
       "mode": 0,
       "inputs": [
         {
@@ -1470,7 +1290,7 @@
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 324
+          "link": 271
         }
       ],
       "outputs": [
@@ -1508,7 +1328,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 31,
+      "order": 26,
       "mode": 0,
       "inputs": [
         {
@@ -1551,7 +1371,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 32,
+      "order": 27,
       "mode": 0,
       "inputs": [
         {
@@ -1592,7 +1412,7 @@
         110
       ],
       "flags": {},
-      "order": 33,
+      "order": 28,
       "mode": 0,
       "inputs": [
         {
@@ -1640,7 +1460,7 @@
         970
       ],
       "flags": {},
-      "order": 34,
+      "order": 29,
       "mode": 0,
       "inputs": [
         {
@@ -1747,6 +1567,22 @@
       92,
       0,
       "VIDEO"
+    ],
+    [
+      261,
+      132,
+      0,
+      131,
+      0,
+      "FLOAT"
+    ],
+    [
+      271,
+      136,
+      1,
+      125,
+      4,
+      "LATENT"
     ],
     [
       272,
@@ -1885,164 +1721,92 @@
       "VIDEO"
     ],
     [
-      306,
+      294,
       148,
       0,
-      153,
+      150,
       0,
       "IMAGE"
     ],
     [
-      307,
-      153,
+      295,
+      150,
+      0,
+      136,
+      6,
+      "IMAGE"
+    ],
+    [
+      296,
+      136,
+      0,
+      151,
+      0,
+      "CONDITIONING"
+    ],
+    [
+      297,
+      136,
+      1,
+      151,
+      1,
+      "LATENT"
+    ],
+    [
+      298,
+      119,
+      0,
+      151,
       2,
-      131,
-      0,
-      "INT"
+      "VAE"
     ],
     [
-      308,
-      148,
+      300,
+      151,
       0,
-      154,
+      126,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      301,
+      137,
+      0,
+      152,
       0,
       "IMAGE"
     ],
     [
-      309,
-      131,
-      1,
-      154,
-      1,
-      "INT"
-    ],
-    [
-      310,
-      148,
-      0,
-      155,
-      0,
-      "IMAGE"
-    ],
-    [
-      311,
-      155,
+      302,
+      152,
       0,
       136,
       3,
       "IMAGE"
     ],
     [
-      312,
-      154,
+      303,
+      152,
       0,
-      156,
-      0,
+      151,
+      4,
       "IMAGE"
     ],
     [
-      313,
-      156,
-      0,
-      157,
-      0,
-      "IMAGE"
-    ],
-    [
-      314,
-      157,
-      0,
-      158,
-      0,
-      "IMAGE"
-    ],
-    [
-      315,
-      158,
-      0,
+      304,
+      152,
+      1,
       136,
       10,
       "INT"
     ],
     [
-      316,
-      158,
-      1,
+      305,
+      152,
+      2,
       136,
       11,
       "INT"
-    ],
-    [
-      317,
-      157,
-      0,
-      159,
-      0,
-      "IMAGE"
-    ],
-    [
-      318,
-      119,
-      0,
-      159,
-      1,
-      "VAE"
-    ],
-    [
-      319,
-      159,
-      0,
-      160,
-      0,
-      "LATENT"
-    ],
-    [
-      320,
-      156,
-      1,
-      160,
-      1,
-      "MASK"
-    ],
-    [
-      321,
-      136,
-      1,
-      161,
-      0,
-      "LATENT"
-    ],
-    [
-      322,
-      160,
-      0,
-      162,
-      0,
-      "LATENT"
-    ],
-    [
-      323,
-      161,
-      1,
-      162,
-      1,
-      "LATENT"
-    ],
-    [
-      324,
-      162,
-      0,
-      125,
-      4,
-      "LATENT"
-    ],
-    [
-      325,
-      136,
-      0,
-      126,
-      1,
-      "CONDITIONING"
     ]
   ],
   "groups": [
