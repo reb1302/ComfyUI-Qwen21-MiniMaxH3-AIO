@@ -2950,6 +2950,113 @@ def _match_color_stats(src: torch.Tensor, ref: torch.Tensor, strength: float = 0
     return (src * (1.0 - strength) + matched * strength).clamp(0.0, 1.0)
 
 
+def _find_best_horizontal_offset(
+    left_strip: torch.Tensor,
+    right_img: torch.Tensor,
+    base_start_r: int,
+    strip_w: int,
+    max_shift: int = 24,
+) -> int:
+    """
+    Tìm độ lệch ngang `delta_x` (trong khoảng `[-max_shift, +max_shift]`) giúp vùng chồng lấp của `right_img`
+    khớp vị trí pixel chính xác nhất (L1 error nhỏ nhất) với `left_strip` của ảnh gốc.
+    """
+    w_r = int(right_img.shape[2])
+    if strip_w < 16 or max_shift <= 0:
+        return 0
+    # Lấy dải giữa theo chiều dọc để so khớp nhanh và ổn định
+    h = int(left_strip.shape[1])
+    y0, y1 = int(h * 0.15), max(int(h * 0.15) + 16, int(h * 0.85))
+    target = left_strip[:, y0:y1, :, :]
+
+    best_dx = 0
+    best_err = float("inf")
+    for dx in range(-max_shift, max_shift + 1, 2):
+        r0 = base_start_r + dx
+        r1 = r0 + strip_w
+        if r0 < 0 or r1 > w_r:
+            continue
+        cand = right_img[:, y0:y1, r0:r1, :]
+        # Ưu tiên dx = 0 nếu sai số tương đương (regularization nhẹ)
+        err = float(torch.mean(torch.abs(target - cand)).item()) + 0.00015 * abs(dx)
+        if err < best_err:
+            best_err = err
+            best_dx = dx
+
+    # Tinh chỉnh từng pixel quanh best_dx
+    for dx in (best_dx - 1, best_dx + 1):
+        r0 = base_start_r + dx
+        r1 = r0 + strip_w
+        if 0 <= r0 and r1 <= w_r:
+            cand = right_img[:, y0:y1, r0:r1, :]
+            err = float(torch.mean(torch.abs(target - cand)).item()) + 0.00015 * abs(dx)
+            if err < best_err:
+                best_err = err
+                best_dx = dx
+    return best_dx
+
+
+def _blend_2band_dp_seam(left_seam: torch.Tensor, right_seam: torch.Tensor) -> torch.Tensor:
+    """
+    Hòa trộn 2 dải chồng lấp `left_seam` và `right_seam` [1, H, BW, 3] bằng kỹ thuật 2-Band (Tần số thấp + Tần số cao):
+    - Tần số thấp (ánh sáng, màu nền): trải mượt bằng Cosine toàn dải `BW`.
+    - Tần số cao (chi tiết sắc nét, cạnh kiến trúc): cắt theo đường Minimum-Error DP Seam 2D để không bị bóng ma/nhòe nét.
+    """
+    _, h, bw, _ = left_seam.shape
+    if bw < 8:
+        alpha = _cosine_alpha_1d(bw, left_seam.device, left_seam.dtype).view(1, 1, bw, 1)
+        return (left_seam * (1.0 - alpha) + right_seam * alpha).clamp(0.0, 1.0)
+
+    alpha_low = _cosine_alpha_1d(bw, left_seam.device, left_seam.dtype).view(1, 1, bw, 1)
+
+    # Tách tần số thấp bằng AvgPool2d (kernel ~15x15)
+    k_sz = min(15, max(3, (min(h, bw) // 4) | 1))
+    pad = k_sz // 2
+    l_nchw = left_seam.permute(0, 3, 1, 2)
+    r_nchw = right_seam.permute(0, 3, 1, 2)
+    l_low = F.avg_pool2d(F.pad(l_nchw, (pad, pad, pad, pad), mode="reflect"), kernel_size=k_sz, stride=1).permute(0, 2, 3, 1)
+    r_low = F.avg_pool2d(F.pad(r_nchw, (pad, pad, pad, pad), mode="reflect"), kernel_size=k_sz, stride=1).permute(0, 2, 3, 1)
+    l_high = left_seam - l_low
+    r_high = right_seam - r_low
+
+    # Tìm đường cắt tối ưu (Minimum-Error Seam) trên bản đồ sai số thu nhỏ chiều dọc (tối đa 128 hàng) để chạy cực nhanh trên CPU
+    diff_map = torch.mean(torch.abs(left_seam[0] - right_seam[0]), dim=-1)  # [H, BW]
+    ds_h = min(h, 128)
+    diff_small = F.interpolate(diff_map.unsqueeze(0).unsqueeze(0), size=(ds_h, bw), mode="bilinear", align_corners=False)[0, 0]
+    # Khuyến khích đường cắt nằm trong vùng trung tâm của dải BW
+    x_grid = torch.linspace(-1.0, 1.0, steps=bw, device=diff_small.device, dtype=diff_small.dtype)
+    border_penalty = (x_grid * x_grid) * 0.05
+    cost = diff_small + border_penalty.unsqueeze(0)
+
+    dp = cost.clone()
+    back = torch.zeros((ds_h, bw), dtype=torch.long, device=dp.device)
+    for y in range(1, ds_h):
+        prev = dp[y - 1]
+        p_left = torch.cat([prev[:1] + 1e4, prev[:-1]], dim=0)
+        p_right = torch.cat([prev[1:], prev[-1:] + 1e4], dim=0)
+        stacked = torch.stack([p_left, prev, p_right], dim=0)  # [3, BW]
+        min_vals, min_idx = torch.min(stacked, dim=0)
+        dp[y] = cost[y] + min_vals
+        back[y] = min_idx - 1  # -1, 0, +1
+
+    seam_x_small = torch.zeros((ds_h,), dtype=torch.float32, device=dp.device)
+    cur_x = int(torch.argmin(dp[-1]).item())
+    seam_x_small[-1] = float(cur_x)
+    for y in range(ds_h - 1, 0, -1):
+        cur_x = max(0, min(bw - 1, cur_x + int(back[y, cur_x].item())))
+        seam_x_small[y - 1] = float(cur_x)
+
+    seam_x = F.interpolate(seam_x_small.view(1, 1, ds_h), size=h, mode="linear", align_corners=False).view(1, h, 1, 1)
+    col_idx = torch.arange(bw, device=left_seam.device, dtype=left_seam.dtype).view(1, 1, bw, 1)
+    # Làm mềm cạnh đường cắt tần số cao trong khoảng ~6px để không gắt mà vẫn giữ nguyên chi tiết
+    feather_hi = max(3.0, min(8.0, float(bw) * 0.06))
+    alpha_high = torch.sigmoid((col_idx - seam_x) / (feather_hi * 0.35))
+
+    blended_low = l_low * (1.0 - alpha_low) + r_low * alpha_low
+    blended_high = l_high * (1.0 - alpha_high) + r_high * alpha_high
+    return (blended_low + blended_high).clamp(0.0, 1.0)
+
+
 def _stitch_horizontal_cosine(
     left_img: torch.Tensor,
     right_img: torch.Tensor,
@@ -2959,9 +3066,10 @@ def _stitch_horizontal_cosine(
 ) -> torch.Tensor:
     """
     Ghép ngang 2 ảnh `left_img` [1, H, W_L, 3] và `right_img` [1, H, W_R, 3]
-    trong đó phần đầu của `right_img` trùng với `overlap_w` cột cuối của `left_img`.
-    - Tự động cân bằng ánh sáng/màu sắc trên vùng chồng lấp (`overlap_w`) trước khi nối.
-    - Trải rộng vùng hòa trộn Cosine trên phần lớn vùng overlap (tránh sát đường cắt xám 16px) để xóa 100% vết ghép.
+    trong đó `overlap_w` cột đầu của `right_img` trùng không gian với `overlap_w` cột cuối của `left_img`:
+    - QUAN TRỌNG: Đặt vị trí nối ở PHÍA NGOÀI CỦA VÙNG MỒI NEO (nơi đã được khóa cứng `denoise_mask = 0.0`
+      và cách xa đường cắt xám `#808080`), giữ nguyên 100% vùng chuyển tiếp liền mạch mà model đã vẽ qua đường cắt xám!
+    - Tự động căn chỉnh vị trí khớp pixel (`_find_best_horizontal_offset`) + cân bằng màu + ghép 2-Band DP Seam.
     """
     h = int(left_img.shape[1])
     if int(right_img.shape[1]) != h:
@@ -2972,40 +3080,59 @@ def _stitch_horizontal_cosine(
     if overlap_w == 0:
         return torch.cat([left_img, right_img], dim=2)
 
-    # Cân bằng màu sắc/độ sáng của tấm mới theo vùng chồng lấp của tấm neo
-    left_ov = left_img[:, :, w_l - overlap_w : w_l, :]
-    right_ov = right_img[:, :, :overlap_w, :]
-    if anchor_side == "right":
-        left_img = _match_color_stats(left_img, right_ov, strength=0.65)
-    else:
-        right_img = _match_color_stats(right_img, left_ov, strength=0.65)
+    # Đặt dải hòa trộn ở NỬA NGOÀI CỦA MỒI NEO (cách xa đường biên xám nơi model vừa vẽ chuyển tiếp):
+    # - Khi anchor_side == "left" (mở rộng sang Phải): right_img là ảnh mới Gen, biên xám cũ nằm tại k = overlap_w.
+    #   Vùng mồi neo gốc chưa bị biến đổi nằm ở đầu trái của right_img (k gần 0).
+    # - Khi anchor_side == "right" (mở rộng sang Trái): left_img là ảnh mới Gen, biên xám cũ nằm tại k = 0 (w_l - overlap_w).
+    #   Vùng mồi neo gốc chưa bị biến đổi nằm ở đầu phải của left_img (k gần overlap_w).
+    guard = min(24, max(4, overlap_w // 16))
+    locked_zone_w = max(16, int(overlap_w * 0.42))
+    bw = max(min(int(blend_w) * 2, locked_zone_w - guard), int(locked_zone_w * 0.75))
+    bw = max(8, min(bw, overlap_w - guard * 2))
 
-    # Trải rộng dải hòa trộn Cosine trên 65% vùng chồng lấp và lùi 16px trước biên cắt xám để không bao giờ lộ đường ghép
-    guard = min(16, max(0, overlap_w // 8))
-    usable_ov = max(8, overlap_w - guard)
-    bw = max(min(int(blend_w), usable_ov), int(usable_ov * 0.65))
-    bw = max(4, min(bw, usable_ov))
+    if anchor_side == "left":
+        # Mở rộng sang Phải: nối tại vùng đầu mồi neo k in [guard, guard + bw] (cách xa biên xám k = overlap_w),
+        # giữ nguyên 100% phần chuyển tiếp của right_img (gen_win) đi qua k = overlap_w!
+        k_start = guard
+        k_end = k_start + bw
+        seam_start_l = (w_l - overlap_w) + k_start
+        seam_end_l = (w_l - overlap_w) + k_end
 
-    if anchor_side == "right":
-        # Khi mở rộng sang Trái: giữ nguyên right_img tối đa, hòa trộn ở phía trong vùng overlap
-        seam_start_l = (w_l - overlap_w) + guard
-        left_pure = left_img[:, :, :seam_start_l, :]
-        left_seam = left_img[:, :, seam_start_l : seam_start_l + bw, :]
-        right_seam = right_img[:, :, guard : guard + bw, :]
-        right_pure = right_img[:, :, guard + bw :, :]
-    else:
-        # Khi mở rộng sang Phải: giữ nguyên left_img tối đa, hòa trộn lùi 16px trước mép cắt xám
-        seam_end_l = w_l - guard
-        seam_start_l = seam_end_l - bw
-        right_seam_end = overlap_w - guard
-        right_seam_start = right_seam_end - bw
+        left_ov_locked = left_img[:, :, seam_start_l:seam_end_l, :]
+        right_ov_locked = right_img[:, :, k_start:k_end, :]
+        right_img = _match_color_stats(right_img, left_ov_locked, strength=0.65)
+
+        dx = _find_best_horizontal_offset(left_ov_locked, right_img, base_start_r=k_start, strip_w=bw, max_shift=min(24, guard))
+        r_start = max(0, min(w_r - bw, k_start + dx))
+        r_end = r_start + bw
+
         left_pure = left_img[:, :, :seam_start_l, :]
         left_seam = left_img[:, :, seam_start_l:seam_end_l, :]
-        right_seam = right_img[:, :, right_seam_start:right_seam_end, :]
-        right_pure = right_img[:, :, right_seam_end:, :]
+        right_seam = right_img[:, :, r_start:r_end, :]
+        right_pure = right_img[:, :, r_end:, :]
+    else:
+        # Mở rộng sang Trái: nối tại vùng cuối mồi neo k in [overlap_w - guard - bw, overlap_w - guard] (cách xa biên xám k = 0),
+        # giữ nguyên 100% phần chuyển tiếp của left_img (gen_win) đi qua biên xám w_l - overlap_w!
+        k_end = overlap_w - guard
+        k_start = k_end - bw
+        seam_start_l = (w_l - overlap_w) + k_start
+        seam_end_l = (w_l - overlap_w) + k_end
 
-    alpha = _cosine_alpha_1d(bw, left_img.device, left_img.dtype).view(1, 1, bw, 1)
-    blended_seam = left_seam * (1.0 - alpha) + right_seam * alpha
+        right_ov_locked = right_img[:, :, k_start:k_end, :]
+        left_img = _match_color_stats(left_img, right_ov_locked, strength=0.65)
+
+        dx = _find_best_horizontal_offset(
+            left_img[:, :, seam_start_l:seam_end_l, :], right_img, base_start_r=k_start, strip_w=bw, max_shift=min(24, guard)
+        )
+        r_start = max(0, min(w_r - bw, k_start + dx))
+        r_end = r_start + bw
+
+        left_pure = left_img[:, :, :seam_start_l, :]
+        left_seam = left_img[:, :, seam_start_l:seam_end_l, :]
+        right_seam = right_img[:, :, r_start:r_end, :]
+        right_pure = right_img[:, :, r_end:, :]
+
+    blended_seam = _blend_2band_dp_seam(left_seam, right_seam)
     return torch.cat([left_pure, blended_seam, right_pure], dim=2).clamp(0.0, 1.0)
 
 
@@ -3241,25 +3368,27 @@ def _run_qwen21_outpaint_pass(
     cur_pixels = float(orig_w * orig_h)
     if cur_pixels > target_pixels * 1.05:
         scale = math.sqrt(target_pixels / cur_pixels)
-        win_w = max(64, int(round((orig_w * scale) / 32.0)) * 32)
-        win_h = max(64, int(round((orig_h * scale) / 32.0)) * 32)
+        win_w = max(64, int(round((orig_w * scale) / 64.0)) * 64)
+        win_h = max(64, int(round((orig_h * scale) / 64.0)) * 64)
     else:
-        win_w = max(64, int(round(orig_w / 32.0)) * 32)
-        win_h = max(64, int(round(orig_h / 32.0)) * 32)
+        win_w = max(64, int(round(orig_w / 64.0)) * 64)
+        win_h = max(64, int(round(orig_h / 64.0)) * 64)
 
     # Dùng bilinear (không dùng lanczos trên biên xám để tránh quầng ringing đen/trắng tại mép ghép)
     work_canvas = _chunked_cpu_resize(canvas_img[:1, :, :, :3], win_w, win_h, "bilinear", "disabled", chunk_size=1)
 
-    # Căn chỉnh ranh giới vùng xám khít bội số 32px trên work_canvas để patch 32x32 của Qwen 2.1 không đè lên mép xám
+    # Giữ nguyên chính xác tỉ lệ vị trí ranh giới vùng xám trên work_canvas (không làm tròn lệch cột)
     orig_col_std = canvas_img[0].std(dim=(0, 2))
     orig_blank = orig_col_std < 1e-3
-    if bool(orig_blank.any()) and not bool(orig_blank.all()):
+    has_blank = bool(orig_blank.any()) and not bool(orig_blank.all())
+    b_s_win, b_e_win = 0, win_w
+    if has_blank:
         b_idx = torch.nonzero(orig_blank, as_tuple=False).squeeze(-1)
         b_s_orig = int(b_idx[0].item())
         b_e_orig = int(b_idx[-1].item()) + 1
         fill_rgb = canvas_img[0, orig_h // 2, b_s_orig, :3].view(1, 1, 1, 3)
-        b_s_win = max(0, min(win_w - 32, int(round((b_s_orig * win_w / float(orig_w)) / 32.0)) * 32))
-        b_e_win = max(b_s_win + 32, min(win_w, int(round((b_e_orig * win_w / float(orig_w)) / 32.0)) * 32))
+        b_s_win = max(0, min(win_w - 16, int(round(b_s_orig * win_w / float(orig_w)))))
+        b_e_win = max(b_s_win + 16, min(win_w, int(round(b_e_orig * win_w / float(orig_w)))))
         work_canvas[:, :, b_s_win:b_e_win, :] = fill_rgb
 
     images_dict: dict[str, torch.Tensor] = {"image_1": work_canvas}
@@ -3280,6 +3409,43 @@ def _run_qwen21_outpaint_pass(
     )
     enc_args = list(enc_out.args) if hasattr(enc_out, "args") else list(enc_out)
     positive, negative, latent_dict = enc_args[0], enc_args[1], enc_args[2]
+
+    # Khóa cứng 42% phía ngoài của vùng mồi neo trong không gian Latent (noise_mask = 0.0)
+    # để phần mồi neo trong ảnh Gen KHÔNG BAO GIỜ bị trượt/dịch chuyển vị trí so với ảnh gốc,
+    # đồng thời để 100% tự do (noise_mask = 1.0) tại 18% sát mép cắt xám + toàn bộ vùng xám để model tự nối liền mạch.
+    if has_blank:
+        try:
+            ref_lats = positive[0][1].get("reference_latents", None)
+            if ref_lats and len(ref_lats) > 0:
+                canvas_lat = ref_lats[0]
+                target_shape = latent_dict["samples"].shape
+                if canvas_lat.ndim == 5 and len(target_shape) == 4 and canvas_lat.shape[2] == 1:
+                    canvas_lat = canvas_lat.squeeze(2)
+                if tuple(canvas_lat.shape) == tuple(target_shape):
+                    latent_dict = latent_dict.copy()
+                    latent_dict["samples"] = canvas_lat.clone().to(
+                        device=latent_dict["samples"].device, dtype=latent_dict["samples"].dtype
+                    )
+                    mask_1d = torch.ones((win_w,), dtype=torch.float32)
+                    # Khóa nửa ngoài mồi neo bên Trái (nếu có)
+                    if b_s_win >= 64:
+                        anc_l = b_s_win
+                        lock_l = max(16, int(anc_l * 0.42))
+                        ramp_end_l = max(lock_l + 16, int(anc_l * 0.82))
+                        mask_1d[:lock_l] = 0.0
+                        rw_l = ramp_end_l - lock_l
+                        mask_1d[lock_l:ramp_end_l] = _cosine_alpha_1d(rw_l, mask_1d.device, mask_1d.dtype)
+                    # Khóa nửa ngoài mồi neo bên Phải (nếu có)
+                    if (win_w - b_e_win) >= 64:
+                        anc_r = win_w - b_e_win
+                        ramp_start_r = b_e_win + max(16, int(anc_r * 0.18))
+                        lock_r_start = max(ramp_start_r + 16, b_e_win + int(anc_r * 0.58))
+                        rw_r = lock_r_start - ramp_start_r
+                        mask_1d[ramp_start_r:lock_r_start] = 1.0 - _cosine_alpha_1d(rw_r, mask_1d.device, mask_1d.dtype)
+                        mask_1d[lock_r_start:] = 0.0
+                    latent_dict["noise_mask"] = mask_1d.view(1, 1, 1, win_w).expand(1, 1, win_h, win_w).contiguous()
+        except Exception:
+            pass
 
     outpaint_model = _boost_outpaint_lora_strength(model, target_strength=1.0)
 
@@ -3361,11 +3527,11 @@ class stoneV_Panorama360_AutoLoop:
                     "tooltip": "Hệ số chiều dài mỗi tấm Cánh so với chuẩn 2K 2048px (1.0 = mỗi tấm Cánh dài đúng 2048px; 1.2 = mỗi tấm Cánh dài 2464px)."
                 }),
                 "keep_anchor_ratio": ("FLOAT", {
-                    "default": 0.35,
-                    "min": 0.20,
+                    "default": 0.50,
+                    "min": 0.25,
                     "max": 0.85,
                     "step": 0.05,
-                    "tooltip": "Tỉ lệ phần mồi neo lấy từ tấm trước trong mỗi cửa sổ 2K (0.35 = lấy 704px mồi neo + 1344px vẽ nối tiếp mới = đủ 1 tấm 2048px)."
+                    "tooltip": "Tỉ lệ phần mồi neo lấy từ tấm trước trong mỗi cửa sổ 2K (0.50 = lấy đúng 1024px nửa tấm làm mồi neo + 1024px vẽ nối tiếp mới = đủ 1 tấm 2048px)."
                 }),
                 "close_360_loop": ("BOOLEAN", {
                     "default": False,
@@ -3531,10 +3697,10 @@ class stoneV_Panorama360_AutoLoop:
         pano_h = max(512, int(round((plate_w * eff_h_ratio) / 32.0)) * 32)
 
         # Mỗi tấm Cánh (Wing) cũng có chiều dài chuẩn 2K (2048px khi step_extend_ratio = 1.0)
-        eff_keep_ratio = 0.35 if float(keep_anchor_ratio) == 0.5 and raw_h_ratio > 1.0 else float(keep_anchor_ratio)
+        eff_keep_ratio = 0.50 if abs(float(keep_anchor_ratio) - 0.35) < 0.02 else float(keep_anchor_ratio)
         eff_ext_ratio = 1.0 if float(step_extend_ratio) == 1.2 and raw_h_ratio > 1.0 else float(step_extend_ratio)
-        win_w = max(1024, int(round((plate_w * eff_ext_ratio) / 32.0)) * 32)
-        anchor_w = max(256, min(win_w - 512, int(round((plate_w * eff_keep_ratio) / 32.0)) * 32))
+        win_w = max(1024, int(round((plate_w * eff_ext_ratio) / 64.0)) * 64)
+        anchor_w = max(512, min(win_w - 512, int(round((plate_w * eff_keep_ratio) / 64.0)) * 64))
         ext_w = max(512, win_w - anchor_w)
         is_green = str(fill_mode).startswith("Green")
 
