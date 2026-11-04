@@ -467,7 +467,7 @@
       "title": "Cách dùng",
       "properties": {},
       "widgets_values": [
-        "## huy_minhmax_screenx_mask\n\nH3 tự vẽ cánh, vùng video được ghim ở mọi frame bằng mask. Không cần ảnh vẽ trước.\n\n**Đầu vào**\nChỉ 1 video gốc, 24 fps. Nên cắt sẵn đúng 17k+5 frame (107, 124, 141... tối đa 362). Video lệch lưới sẽ mất tới 16 frame cuối. Quá 362 frame thì chỉ lấy 362 frame đầu.\n\n**Chỉnh trước khi chạy**\n- **Outpaint Pad:** cánh trái thì `add_left_widths` 1, `add_right_widths` 0. Cánh phải thì ngược lại.\n- **`keep_orig_ratio`:** phần video giữ trên canvas. 0.5 là nửa sát cánh, 1.0 là cả video.\n- **`outer_height_ratio`:** 1.3 cho cánh ScreenX, 1.0 nếu chỉ mở ngang.\n- **Prompt:** thay câu \"Beyond the edge...\" bằng cảnh thật nằm ngoài khung. Không viết \"continues\".\n- **`megapixels` ở node Cỡ canvas:** OOM thì giảm.\n\n**Sau khi gen**\nChỉ lấy phần cánh rồi ghép với video gốc.\n"
+        "## huy_minhmax_screenx_mask\n\nH3 tự vẽ cánh, vùng video được ghim ở mọi frame bằng mask. Không cần ảnh vẽ trước.\n\n**Đầu vào**\nChỉ 1 video gốc, 24 fps. Nên cắt sẵn đúng 17k+5 frame (107, 124, 141... tối đa 362). Video lệch lưới sẽ mất tới 16 frame cuối. Quá 362 frame thì chỉ lấy 362 frame đầu.\n\n**Chỉnh trước khi chạy**\n- **Outpaint Pad:** cánh trái thì `add_left_widths` 1, `add_right_widths` 0. Cánh phải thì ngược lại.\n- **`keep_orig_ratio`:** phần video model thấy trên canvas. 1.0 là cả video (mặc định). 0.5 là nửa sát cánh, cánh được nhiều pixel hơn nhưng ít ngữ cảnh hơn.\n- **`outer_height_ratio`:** 1.3 cho cánh ScreenX, 1.0 nếu chỉ mở ngang.\n- **Prompt:** thay câu \"Beyond the edge...\" bằng cảnh thật nằm ngoài khung. Không viết \"continues\".\n- **`megapixels` ở node Cỡ canvas:** OOM thì giảm.\n\n**Sau khi gen**\nChỉ lấy phần cánh rồi ghép với video gốc.\n"
       ],
       "color": "#322",
       "bgcolor": "#533"
@@ -995,7 +995,7 @@
       "widgets_values": [
         1.0,
         0.0,
-        0.5,
+        1.0,
         1.3,
         "gray (#808080 - Tô Xám chuẩn Outpaint LoRA)",
         "#808080",
@@ -1267,8 +1267,8 @@
       },
       "widgets_values": [
         "",
-        1440,
-        704,
+        1664,
+        608,
         124,
         "match"
       ]
