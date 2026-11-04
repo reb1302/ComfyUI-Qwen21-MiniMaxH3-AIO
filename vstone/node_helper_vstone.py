@@ -227,7 +227,6 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_outpaint.json",
-    "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_v4_bridge.json",
 ]
 
 
@@ -3870,431 +3869,6 @@ class stoneV_Panorama360_AutoLoop:
         return (pano_img.clamp(0.0, 1.0), preview_batch.clamp(0.0, 1.0), final_w, final_h)
 
 
-class stoneV_Panorama360_V4_KeyframeBridge:
-    """
-    Node V4 (Sơ đồ Đỏ - Xanh Lá - Xanh Dương):
-    1. Bước 1 (Các Ô Màu Đỏ - Keyframe Plates): Coi toàn bộ ảnh đưa vào (image_1 + ref_image_2..5) là ảnh Ref 2D,
-       tái tạo trước 2 hoặc 3 Tấm Ảnh Gốc chuẩn 2K (Đỏ 1, Đỏ 2, Đỏ 3) có cùng đường chân trời và bối cảnh.
-    2. Bước 2 (Các Ô Màu Xanh Lá - In-Between Bridge Plates): Lấy mép Phải của Ô Đỏ trước + vùng xám ở giữa + mép Trái của Ô Đỏ sau,
-       vẽ các Tấm Ảnh Nối (Xanh Lá 1, Xanh Lá 2) để nối liền mạch giữa các Ô Đỏ.
-    3. Bước 3 (2 Ngoặc Màu Xanh Dương - Outer Ends): Tùy chọn vẽ mở rộng thêm 2 đầu ngoài cùng bên Trái & Phải hoặc khép kín 360°.
-    """
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "model": ("MODEL",),
-                "clip": ("CLIP",),
-                "vae": ("VAE",),
-                "image_1": ("IMAGE",),
-                "num_keyframes": ("INT", {
-                    "default": 3,
-                    "min": 2,
-                    "max": 4,
-                    "step": 1,
-                    "tooltip": "Số lượng Tấm Ảnh Gốc (Ô Màu Đỏ) cần Gen trước từ bộ ảnh Ref (Mặc định 3 = Đỏ 1 Trái, Đỏ 2 Giữa, Đỏ 3 Phải)."
-                }),
-                "plate_width_px": ("INT", {
-                    "default": 2048,
-                    "min": 1024,
-                    "max": 3072,
-                    "step": 64,
-                    "tooltip": "Chiều dài chuẩn của 1 tấm ảnh gốc (Mặc định 2048px = Chuẩn 2K)."
-                }),
-                "height_ratio": ("FLOAT", {
-                    "default": 0.50,
-                    "min": 0.25,
-                    "max": 1.0,
-                    "step": 0.05,
-                    "tooltip": "Hệ số Chiều Cao nhân với Chiều Dài 2K (0.50 x 2048 = cao 1024px; 0.56 x 2048 = cao 1152px)."
-                }),
-                "bridge_gap_ratio": ("FLOAT", {
-                    "default": 0.50,
-                    "min": 0.25,
-                    "max": 1.0,
-                    "step": 0.05,
-                    "tooltip": "Độ rộng vùng trống cần vẽ nối ở giữa mỗi Ô Xanh Lá (0.50 x 2048 = 1024px vùng vẽ nối ở giữa 2 Ô Đỏ)."
-                }),
-                "bridge_anchor_ratio": ("FLOAT", {
-                    "default": 0.25,
-                    "min": 0.15,
-                    "max": 0.45,
-                    "step": 0.05,
-                    "tooltip": "Độ rộng mép Ô Đỏ gối vào mỗi bên của Ô Xanh Lá (0.25 x 2048 = 512px mép Đỏ Trái + 1024px nối giữa + 512px mép Đỏ Phải = 2048px)."
-                }),
-                "outer_wings_mode": ([
-                    "1. Extend Both Blue Outer Ends (Vẽ thêm 2 ngoặc Xanh Dương ở 2 đầu ngoài cùng Trái & Phải)",
-                    "2. Close 360 Loop (Nối 2 đầu Xanh Dương ngoài cùng khép kín vòng tròn 360°)",
-                    "3. None (Chỉ giữ [Đỏ 1 - Xanh Lá 1 - Đỏ 2 - Xanh Lá 2 - Đỏ 3])",
-                ], {
-                    "default": "1. Extend Both Blue Outer Ends (Vẽ thêm 2 ngoặc Xanh Dương ở 2 đầu ngoài cùng Trái & Phải)"
-                }),
-                "blend_width_px": ("INT", {
-                    "default": 48,
-                    "min": 8,
-                    "max": 256,
-                    "step": 4,
-                    "tooltip": "Độ rộng vùng hòa trộn Cosine tại các đường giáp mí Đỏ - Xanh Lá - Xanh Dương."
-                }),
-                "prompt": ("STRING", {
-                    "multiline": True,
-                    "default": (
-                        "Create a logical, coherent ultra-wide environment background plate. "
-                        "Use the fed-in reference images to understand the spatial context, reconstruct their exact environment, "
-                        "architecture, terrain, surface textures, and lighting, and draw a continuous, seamless panoramic extension "
-                        "with aligned perspective and horizon line."
-                    )
-                }),
-                "negative_prompt": ("STRING", {
-                    "multiline": True,
-                    "default": (
-                        "tiled images, split panels, collage, picture frames, borders, gray background, mismatched perspective, "
-                        "broken horizon, disconnected walls or floor, blurry, distorted geometry, watermark, text"
-                    )
-                }),
-                "seed": ("INT", {"default": 42, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
-                "steps": ("INT", {"default": 24, "min": 4, "max": 60, "step": 1}),
-                "cfg": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 10.0, "step": 0.1}),
-                "sampler_name": (["euler", "res_multistep", "dpmpp_2m", "uni_pc"], {"default": "euler"}),
-                "scheduler": (["simple", "beta", "normal", "sgm_uniform"], {"default": "simple"}),
-            },
-            "optional": {
-                "ref_image_2": ("IMAGE",),
-                "ref_image_3": ("IMAGE",),
-                "ref_image_4": ("IMAGE",),
-                "ref_image_5": ("IMAGE",),
-                "fill_mode": ([
-                    "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
-                    "Green #00FF00 (Dùng riêng cho 360 Panorama Outpaint LoRA v0.1 hệ cầu VR)",
-                ], {
-                    "default": "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)"
-                }),
-            },
-            "hidden": {
-                "unique_id": "UNIQUE_ID",
-            },
-        }
-
-    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "INT", "INT")
-    RETURN_NAMES = (
-        "panorama_image",
-        "red_keyframes_preview",
-        "green_blue_bridges_preview",
-        "panorama_width",
-        "panorama_height",
-    )
-    FUNCTION = "generate_v4_panorama"
-    CATEGORY = "stoneV"
-
-    @classmethod
-    def VALIDATE_INPUTS(cls, **kwargs):
-        return True
-
-    def _make_blank_canvas(self, h: int, w: int, is_green: bool) -> torch.Tensor:
-        if is_green:
-            c = torch.zeros((1, h, w, 3), dtype=torch.float32)
-            c[:, :, :, 1] = 1.0
-            return c
-        return torch.full((1, h, w, 3), 128.0 / 255.0, dtype=torch.float32)
-
-    def generate_v4_panorama(
-        self,
-        model,
-        clip,
-        vae,
-        image_1: torch.Tensor,
-        num_keyframes: int = 3,
-        plate_width_px: int = 2048,
-        height_ratio: float = 0.50,
-        bridge_gap_ratio: float = 0.50,
-        bridge_anchor_ratio: float = 0.25,
-        outer_wings_mode: str = "1. Extend Both Blue Outer Ends (Vẽ thêm 2 ngoặc Xanh Dương ở 2 đầu ngoài cùng Trái & Phải)",
-        blend_width_px: int = 48,
-        prompt: str = "",
-        negative_prompt: str = "",
-        seed: int = 42,
-        steps: int = 24,
-        cfg: float = 1.0,
-        sampler_name: str = "euler",
-        scheduler: str = "simple",
-        ref_image_2: torch.Tensor | None = None,
-        ref_image_3: torch.Tensor | None = None,
-        ref_image_4: torch.Tensor | None = None,
-        ref_image_5: torch.Tensor | None = None,
-        fill_mode: str = "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
-        **kwargs,
-    ):
-        uid = kwargs.get("unique_id", None)
-        plate_w = max(1024, int(round(float(plate_width_px) / 32.0)) * 32)
-        eff_h_ratio = (0.50 * (float(height_ratio) / 1.35)) if float(height_ratio) > 1.0 else max(0.25, float(height_ratio))
-        pano_h = max(512, int(round((plate_w * eff_h_ratio) / 32.0)) * 32)
-
-        gap_w = max(256, int(round((plate_w * float(bridge_gap_ratio)) / 32.0)) * 32)
-        anchor_w = max(256, int(round((plate_w * float(bridge_anchor_ratio)) / 32.0)) * 32)
-        bridge_win_w = anchor_w * 2 + gap_w
-        is_green = str(fill_mode).startswith("Green")
-        color_lbl = "green (#00FF00)" if is_green else "gray (#808080)"
-
-        all_refs: list[torch.Tensor] = []
-        for r in (image_1, ref_image_2, ref_image_3, ref_image_4, ref_image_5):
-            if r is not None and hasattr(r, "shape") and r.ndim == 4:
-                all_refs.append(r[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0))
-        if not all_refs:
-            raise ValueError("Cần ít nhất 1 tấm ảnh Reference đầu vào (image_1).")
-
-        k_count = max(2, min(4, int(num_keyframes)))
-        has_outer = str(outer_wings_mode).startswith("1.")
-        has_close360 = str(outer_wings_mode).startswith("2.")
-        total_passes = k_count + (k_count - 1) + (2 if has_outer else (1 if has_close360 else 0))
-        cur_pass = 0
-
-        # ======================================================================
-        # BƯỚC 1 & 2: CHUỖI GỐI ĐẦU 50% [Ô ĐỎ 1] -> [Ô XANH LÁ 1] -> [Ô ĐỎ 2] -> [Ô XANH LÁ 2] -> [Ô ĐỎ 3]
-        # Giải quyết triệt để lỗi "khi nối lại không hợp":
-        # - Thay vì Gen 3 Ô Đỏ rời rạc khác góc/khác phối cảnh rồi nhét vùng xám vào giữa (LoRA Outpaint v2 không hiểu vùng xám kẹp giữa 2 ảnh khác nhau),
-        #   ta Gen Ô Đỏ #1 chuẩn 2K, sau đó mỗi Ô Xanh Lá lấy đúng 50% (1024px) nửa phải của Ô Đỏ trước làm mồi neo + 50% vùng xám bên phải,
-        #   và Ô Đỏ kế tiếp lấy đúng 50% (1024px) nửa phải của Ô Xanh Lá làm mồi neo + 50% vùng xám bên phải để tái tạo Ref tiếp theo!
-        # - Mọi bước nối đều trùng khớp 100% tọa độ 2D RoPE `(hh, ww)` trên vùng mồi neo 1024px.
-        # ======================================================================
-        red_plates: list[torch.Tensor] = []
-        bridge_previews: list[torch.Tensor] = []
-        primary_refs_per_red: list[torch.Tensor] = [all_refs[k % len(all_refs)] for k in range(k_count)]
-
-        slide_anchor_w = max(512, int(round((plate_w * 0.50) / 32.0)) * 32)
-        slide_ext_w = max(512, plate_w - slide_anchor_w)
-        slide_win_w = slide_anchor_w + slide_ext_w
-
-        # Nhịp 1: Gen Ô ĐỎ #1 (Tấm Gốc Khởi Đầu 2K) từ toàn bộ bộ ảnh Ref 2D
-        cur_pass += 1
-        _vstone_ui_status(
-            uid,
-            f"🟥 [NODE V4 - Keyframe+Bridge] Nhịp {cur_pass}/{total_passes}: Đang Gen Ô ĐỎ #1/{k_count} ({plate_w}x{pano_h}) từ Ref #1...",
-        )
-        red_1 = _synthesize_master_wide_from_2d_refs(
-            model=model,
-            clip=clip,
-            vae=vae,
-            all_refs=all_refs,
-            target_w=plate_w,
-            target_h=pano_h,
-            user_prompt=prompt,
-            negative_prompt=negative_prompt,
-            seed=int(seed),
-            steps=steps,
-            cfg=cfg,
-            sampler_name=sampler_name,
-            scheduler=scheduler,
-        )
-        red_plates.append(red_1)
-        pano_img = red_1
-
-        # Lần lượt vẽ: [Ô XANH LÁ #b (Cầu nối)] ---> [Ô ĐỎ #(b+2) (Tái tạo Ref kế tiếp)]
-        for b_idx in range(k_count - 1):
-            ref_left = primary_refs_per_red[b_idx]
-            ref_right = primary_refs_per_red[b_idx + 1]
-
-            # Tạo ảnh Ref chuyển tiếp mượt giữa Ref(b) và Ref(b+1) cho Ô Xanh Lá
-            ref_l_rs = _chunked_cpu_resize(ref_left, plate_w // 2, pano_h, "lanczos", "disabled", chunk_size=1)
-            ref_r_rs = _chunked_cpu_resize(ref_right, plate_w // 2, pano_h, "lanczos", "disabled", chunk_size=1)
-            bridge_target_ref = _stitch_horizontal_cosine(ref_l_rs, ref_r_rs, overlap_w=128, blend_w=96, anchor_side="left")
-
-            # --- Vẽ Ô XANH LÁ #(b_idx + 1) ---
-            cur_pass += 1
-            _vstone_ui_status(
-                uid,
-                f"🟩 [NODE V4 - Keyframe+Bridge] Nhịp {cur_pass}/{total_passes}: Đang Vẽ Ô XANH LÁ #{b_idx + 1} nối từ [Ô Đỏ #{b_idx + 1}] sang [Ô Đỏ #{b_idx + 2}]...",
-            )
-            b_anchor = pano_img[:, :, -slide_anchor_w:, :]
-            b_canvas = self._make_blank_canvas(pano_h, slide_win_w, is_green)
-            b_canvas[:, :, :slide_anchor_w, :] = b_anchor
-            bridge_prompt = (
-                f"Outpaint <image1> by replacing all solid {color_lbl} areas on the right "
-                f"with a seamless continuation of the scene, using <image2> as the full scene reference to connect "
-                f"and reconstruct the environment, architecture, terrain, horizon line, and lighting continuously without seams. "
-                + (prompt or "").strip()
-            )
-            gen_bridge = _run_qwen21_outpaint_pass(
-                model=model,
-                clip=clip,
-                vae=vae,
-                canvas_img=b_canvas,
-                ref_images_list=[bridge_target_ref],
-                prompt=bridge_prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed) + 300 + b_idx * 131,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-            bridge_previews.append(_chunked_cpu_resize(gen_bridge, plate_w, pano_h, "bilinear", "disabled", chunk_size=1))
-            pano_img = _stitch_horizontal_cosine(
-                pano_img, gen_bridge, overlap_w=slide_anchor_w, blend_w=blend_width_px, anchor_side="left"
-            )
-
-            # --- Vẽ Ô ĐỎ #(b_idx + 2) (Tái tạo môi trường của Ref #(b_idx + 2) nối trực tiếp từ nửa phải của Ô Xanh Lá) ---
-            cur_pass += 1
-            _vstone_ui_status(
-                uid,
-                f"🟥 [NODE V4 - Keyframe+Bridge] Nhịp {cur_pass}/{total_passes}: Đang Gen Ô ĐỎ #{b_idx + 2}/{k_count} ({plate_w}x{pano_h}) khớp 100% với Ô Xanh Lá #{b_idx + 1}...",
-            )
-            r_anchor = pano_img[:, :, -slide_anchor_w:, :]
-            r_canvas = self._make_blank_canvas(pano_h, slide_win_w, is_green)
-            r_canvas[:, :, :slide_anchor_w, :] = r_anchor
-            red_next_prompt = (
-                f"Outpaint <image1> by replacing all solid {color_lbl} areas on the right "
-                f"with a seamless continuation of the scene, using <image2> as the full scene reference to faithfully reconstruct "
-                f"its exact environment, architecture, terrain, background structures, and lighting into one continuous panoramic background. "
-                + (prompt or "").strip()
-            )
-            gen_red_next = _run_qwen21_outpaint_pass(
-                model=model,
-                clip=clip,
-                vae=vae,
-                canvas_img=r_canvas,
-                ref_images_list=[ref_right],
-                prompt=red_next_prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed) + 600 + b_idx * 131,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-            red_plates.append(_chunked_cpu_resize(gen_red_next, plate_w, pano_h, "bilinear", "disabled", chunk_size=1))
-            pano_img = _stitch_horizontal_cosine(
-                pano_img, gen_red_next, overlap_w=slide_anchor_w, blend_w=blend_width_px, anchor_side="left"
-            )
-
-        # ======================================================================
-        # BƯỚC 3: 2 NGOẶC MÀU XANH DƯƠNG Ở 2 ĐẦU NGOÀI CÙNG (OUTER WINGS / 360)
-        # ======================================================================
-        if has_outer:
-            outer_win_w = slide_win_w
-
-            # Ngoặc Xanh Dương bên Trái ngoài cùng (Mở rộng tiếp về bên Trái của Ô Đỏ #1)
-            cur_pass += 1
-            _vstone_ui_status(
-                uid,
-                f"🟦 [NODE V4 - Keyframe+Bridge] Nhịp {cur_pass}/{total_passes}: Đang Vẽ Ngoặc XANH DƯƠNG Trái Ngoài Cùng ({outer_win_w}x{pano_h})...",
-            )
-            left_outer_anchor = pano_img[:, :, :slide_anchor_w, :]
-            left_outer_canvas = self._make_blank_canvas(pano_h, outer_win_w, is_green)
-            left_outer_canvas[:, :, slide_ext_w:, :] = left_outer_anchor
-            left_outer_prompt = (
-                f"Outpaint <image1> by replacing all solid {color_lbl} areas on the left "
-                f"with a seamless continuation of the scene, using <image2> as the full scene reference to reconstruct "
-                f"the environment into a logical, seamless wide-angle background plate. " + (prompt or "").strip()
-            )
-            gen_left_outer = _run_qwen21_outpaint_pass(
-                model=model,
-                clip=clip,
-                vae=vae,
-                canvas_img=left_outer_canvas,
-                ref_images_list=[all_refs[-1]],
-                prompt=left_outer_prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed) + 811,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-            pano_img = _stitch_horizontal_cosine(
-                gen_left_outer, pano_img, overlap_w=slide_anchor_w, blend_w=blend_width_px, anchor_side="right"
-            )
-            bridge_previews.append(_chunked_cpu_resize(gen_left_outer, plate_w, pano_h, "bilinear", "disabled", chunk_size=1))
-
-            # Ngoặc Xanh Dương bên Phải ngoài cùng (Mở rộng tiếp về bên Phải của Ô Đỏ cuối)
-            cur_pass += 1
-            _vstone_ui_status(
-                uid,
-                f"🟦 [NODE V4 - Keyframe+Bridge] Nhịp {cur_pass}/{total_passes}: Đang Vẽ Ngoặc XANH DƯƠNG Phải Ngoài Cùng ({outer_win_w}x{pano_h})...",
-            )
-            right_outer_anchor = pano_img[:, :, -slide_anchor_w:, :]
-            right_outer_canvas = self._make_blank_canvas(pano_h, outer_win_w, is_green)
-            right_outer_canvas[:, :, :slide_anchor_w, :] = right_outer_anchor
-            right_outer_prompt = (
-                f"Outpaint <image1> by replacing all solid {color_lbl} areas on the right "
-                f"with a seamless continuation of the scene, using <image2> as the full scene reference to reconstruct "
-                f"the environment into a logical, seamless wide-angle background plate. " + (prompt or "").strip()
-            )
-            gen_right_outer = _run_qwen21_outpaint_pass(
-                model=model,
-                clip=clip,
-                vae=vae,
-                canvas_img=right_outer_canvas,
-                ref_images_list=[primary_refs_per_red[-1]],
-                prompt=right_outer_prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed) + 911,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-            pano_img = _stitch_horizontal_cosine(
-                pano_img, gen_right_outer, overlap_w=slide_anchor_w, blend_w=blend_width_px, anchor_side="left"
-            )
-            bridge_previews.append(_chunked_cpu_resize(gen_right_outer, plate_w, pano_h, "bilinear", "disabled", chunk_size=1))
-
-        elif has_close360:
-            cur_pass += 1
-            _vstone_ui_status(
-                uid,
-                f"🟦 [NODE V4 - Keyframe+Bridge] Nhịp {cur_pass}/{total_passes}: Đang Khép Vòng 360° nối 2 đầu Xanh Dương ngoài cùng...",
-            )
-            right_edge = pano_img[:, :, -anchor_w:, :]
-            left_edge = pano_img[:, :, :anchor_w, :]
-            wrap_canvas = self._make_blank_canvas(pano_h, bridge_win_w, is_green)
-            wrap_canvas[:, :, :anchor_w, :] = right_edge
-            wrap_canvas[:, :, anchor_w + gap_w :, :] = left_edge
-            wrap_prompt = (
-                f"Outpaint <image1> by replacing the central solid {color_lbl} bridge area "
-                "with a 100% seamless panoramic connection that joins the left scene and the right scene "
-                "into one continuous 360-degree horizon and environment. " + (prompt or "").strip()
-            )
-            gen_wrap = _run_qwen21_outpaint_pass(
-                model=model,
-                clip=clip,
-                vae=vae,
-                canvas_img=wrap_canvas,
-                ref_images_list=[primary_refs_per_red[-1], primary_refs_per_red[0]],
-                prompt=wrap_prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed) + 999,
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-            wrap_left_mid = gen_wrap[:, :, : anchor_w + gap_w, :]
-            pano_img = _stitch_horizontal_cosine(pano_img, wrap_left_mid, anchor_w, blend_width_px, anchor_side="left")
-            wrap_bw = min(int(blend_width_px), anchor_w, int(pano_img.shape[2]) // 4)
-            if wrap_bw >= 4:
-                wrap_src = gen_wrap[:, :, anchor_w + gap_w : anchor_w + gap_w + wrap_bw, :]
-                wrap_dst = pano_img[:, :, :wrap_bw, :]
-                alpha_w = _cosine_alpha_1d(wrap_bw, pano_img.device, pano_img.dtype).view(1, 1, wrap_bw, 1)
-                pano_img[:, :, :wrap_bw, :] = wrap_src * (1.0 - alpha_w) + wrap_dst * alpha_w
-            bridge_previews.append(_chunked_cpu_resize(gen_wrap, plate_w, pano_h, "bilinear", "disabled", chunk_size=1))
-
-        red_batch = torch.cat(red_plates, dim=0) if red_plates else pano_img
-        green_blue_batch = torch.cat(bridge_previews, dim=0) if bridge_previews else red_batch
-        final_h, final_w = int(pano_img.shape[1]), int(pano_img.shape[2])
-        _vstone_ui_status(
-            uid,
-            f"✅ [NODE V4 - Keyframe+Bridge] Hoàn tất {k_count} Ô Đỏ + {k_count - 1} Ô Xanh Lá: {final_w}x{final_h}px",
-        )
-        return (
-            pano_img.clamp(0.0, 1.0),
-            red_batch.clamp(0.0, 1.0),
-            green_blue_batch.clamp(0.0, 1.0),
-            final_w,
-            final_h,
-        )
-
-
 class stoneV_Panorama_Stitch2:
     """
     Node ghép nối thủ công 2 tấm Panorama chồng lấp (Left + Right) bằng bộ hòa trộn Cosine mượt,
@@ -4353,7 +3927,6 @@ VStone_Video_Outpaint_Prepare = stoneV_Video_Outpaint_Prepare
 stoneV_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
 VStone_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
 VStone_Panorama360_AutoLoop = stoneV_Panorama360_AutoLoop
-VStone_Panorama360_V4_KeyframeBridge = stoneV_Panorama360_V4_KeyframeBridge
 VStone_Panorama_Stitch2 = stoneV_Panorama_Stitch2
 
 VSTONE_NODE_CLASS_MAPPINGS = {
@@ -4372,7 +3945,6 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
     "stoneV_ScreenX_Cut": stoneV_ScreenX_Cut,
     "stoneV_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
-    "stoneV_Panorama360_V4_KeyframeBridge": stoneV_Panorama360_V4_KeyframeBridge,
     "stoneV_Panorama_Stitch2": stoneV_Panorama_Stitch2,
     "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
     "VStone_ExtendRight_1xWidth": stoneV_ExtendRight_1xWidth,
@@ -4382,7 +3954,6 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_SeamlessRestore": stoneV_SeamlessRestore,
     "VStone_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
     "VStone_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
-    "VStone_Panorama360_V4_KeyframeBridge": stoneV_Panorama360_V4_KeyframeBridge,
     "VStone_Panorama_Stitch2": stoneV_Panorama_Stitch2,
 }
 
@@ -4401,8 +3972,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "stoneV_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
     "stoneV_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
     "stoneV_ScreenX_Cut": "stoneV: ScreenX Cut (Cánh + Ảnh Giữa)",
-    "stoneV_Panorama360_AutoLoop": "stoneV Panorama 360 V3: 1 Master + 2 Wings (3-5 Refs)",
-    "stoneV_Panorama360_V4_KeyframeBridge": "stoneV Panorama 360 V4: Keyframes Đỏ + Bridges Xanh Lá (3-5 Refs)",
+    "stoneV_Panorama360_AutoLoop": "stoneV Panorama 360: Auto-Loop Multi-Ref & Height Expand",
     "stoneV_Panorama_Stitch2": "stoneV Panorama: Stitch & Feather 2 Plates",
     "VStone_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
     "VStone_ExtendRight_1xWidth": "stoneV 1B: Extend Right (Half-Crop + 1.3x Pad)",
@@ -4411,8 +3981,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "VStone_Outpaint_Pad": "stoneV: Outpaint Pad (Custom Left / Right)",
     "VStone_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
     "VStone_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
-    "VStone_Panorama360_AutoLoop": "stoneV Panorama 360 V3: 1 Master + 2 Wings (3-5 Refs)",
-    "VStone_Panorama360_V4_KeyframeBridge": "stoneV Panorama 360 V4: Keyframes Đỏ + Bridges Xanh Lá (3-5 Refs)",
+    "VStone_Panorama360_AutoLoop": "stoneV Panorama 360: Auto-Loop Multi-Ref & Height Expand",
     "VStone_Panorama_Stitch2": "stoneV Panorama: Stitch & Feather 2 Plates",
 }
 

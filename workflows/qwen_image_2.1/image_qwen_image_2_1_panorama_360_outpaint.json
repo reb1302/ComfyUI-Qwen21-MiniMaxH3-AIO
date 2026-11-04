@@ -174,7 +174,7 @@
         2,
         0.5,
         1.0,
-        0.35,
+        0.5,
         false,
         48,
         "Create a logical, coherent ultra-wide environment background plate. Use the fed-in reference images to understand the spatial context, reconstruct their exact environment, architecture, terrain, surface textures, and lighting, and draw a continuous, seamless panoramic extension with aligned perspective and horizon line.",
