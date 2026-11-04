@@ -31,10 +31,11 @@ def _bootstrap_bundled_assets():
                     except Exception as e:
                         print(f"[AIO-H200] Warning copying embedding {fname}: {e}")
 
-    # 2. Copy official workflows into ComfyUI/user/default/workflows
+    # 2. Copy official workflows into ComfyUI/user/default/workflows (always overwrite 0-byte or outdated files)
     src_wf_dir = os.path.join(pkg_dir, "workflows")
     comfy_root = folder_paths.base_path
     dst_wf_dir = os.path.join(comfy_root, "user", "default", "workflows")
+    vstone_dir = os.path.join(comfy_root, "custom_nodes", "vstone")
     if os.path.isdir(src_wf_dir):
         for root, _, files in os.walk(src_wf_dir):
             rel = os.path.relpath(root, src_wf_dir)
@@ -42,12 +43,22 @@ def _bootstrap_bundled_assets():
             os.makedirs(target_dir, exist_ok=True)
             for f in files:
                 if f.endswith(".json"):
+                    src_f = os.path.join(root, f)
                     dst_f = os.path.join(target_dir, f)
-                    if not os.path.exists(dst_f):
+                    if not os.path.exists(dst_f) or os.path.getsize(dst_f) == 0 or os.path.getsize(src_f) != os.path.getsize(dst_f):
                         try:
-                            shutil.copy2(os.path.join(root, f), dst_f)
+                            shutil.copy2(src_f, dst_f)
                         except Exception as e:
                             print(f"[AIO-H200] Warning copying workflow {f}: {e}")
+
+    # 3. Ensure custom_nodes/vstone also has latest node_helper_vstone.py & workflows
+    src_vstone_helper = os.path.join(pkg_dir, "vstone", "node_helper_vstone.py")
+    if os.path.isfile(src_vstone_helper) and os.path.getsize(src_vstone_helper) > 1000:
+        try:
+            os.makedirs(vstone_dir, exist_ok=True)
+            shutil.copy2(src_vstone_helper, os.path.join(vstone_dir, "node_helper_vstone.py"))
+        except Exception:
+            pass
 
 try:
     _bootstrap_bundled_assets()
