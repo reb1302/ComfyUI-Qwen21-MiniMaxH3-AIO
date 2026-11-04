@@ -1,8 +1,8 @@
 {
-  "id": "27dd8b5c-5faf-4bc0-9a33-9956ca7616f7",
+  "id": "b29dda52-d293-4620-a3c1-b7af5363845e",
   "revision": 0,
-  "last_node_id": 166,
-  "last_link_id": 338,
+  "last_node_id": 152,
+  "last_link_id": 302,
   "nodes": [
     {
       "id": 119,
@@ -25,8 +25,7 @@
           "type": "VAE",
           "links": [
             251,
-            318,
-            332
+            273
           ]
         }
       ],
@@ -69,7 +68,8 @@
           "name": "VAE",
           "type": "VAE",
           "links": [
-            250
+            250,
+            274
           ]
         }
       ],
@@ -149,7 +149,8 @@
           "type": "MODEL",
           "links": [
             252,
-            328
+            285,
+            287
           ]
         }
       ],
@@ -166,9 +167,13 @@
         ]
       },
       "widgets_values": [
-        "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
         "default"
-      ]
+      ],
+      "widgets_values_named": {
+        "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      }
     },
     {
       "id": 128,
@@ -190,7 +195,7 @@
           "name": "CLIP",
           "type": "CLIP",
           "links": [
-            331
+            272
           ]
         }
       ],
@@ -256,6 +261,46 @@
       }
     },
     {
+      "id": 137,
+      "type": "LoadImage",
+      "pos": [
+        -1050,
+        5960
+      ],
+      "size": [
+        290,
+        330
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            294
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "screenx_image.png",
+        "image"
+      ],
+      "title": "Ảnh ScreenX đầy đủ"
+    },
+    {
       "id": 138,
       "type": "PrimitiveStringMultiline",
       "pos": [
@@ -267,7 +312,7 @@
         390
       ],
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -275,7 +320,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            333
+            279
           ]
         }
       ],
@@ -286,8 +331,126 @@
         "Node name for S&R": "PrimitiveStringMultiline"
       },
       "widgets_values": [
-        "The shot begins from <Picture 1>. One wide cinematic shot of one location, filmed by one camera in one unbroken take. The frame stays a single continuous image from edge to edge. The camera movement is consistent across the entire frame, and everything moves together with correct parallax.\nNegative: no split screen / no side by side panels / no duplicated image / no repeated subject / no border / no cuts"
+        "Extend the content of <Picture 1> outward, based on the content of <Video 1>. The motion of the image content follows <Video 1> and stays continuous."
       ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 143,
+      "type": "PrimitiveInt",
+      "pos": [
+        -730,
+        5090
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            284
+          ]
+        }
+      ],
+      "title": "Int (Full)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        20,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "value": 20,
+        "fixed": "fixed"
+      }
+    },
+    {
+      "id": 144,
+      "type": "PrimitiveInt",
+      "pos": [
+        -730,
+        5220
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "INT",
+          "type": "INT",
+          "links": [
+            283
+          ]
+        }
+      ],
+      "title": "Int (Lightning LoRA)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "PrimitiveInt"
+      },
+      "widgets_values": [
+        4,
+        "fixed"
+      ],
+      "widgets_values_named": {
+        "value": 4,
+        "fixed": "fixed"
+      }
+    },
+    {
+      "id": 146,
+      "type": "PrimitiveBoolean",
+      "pos": [
+        -1490,
+        5940
+      ],
+      "size": [
+        270,
+        70
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "BOOLEAN",
+          "type": "BOOLEAN",
+          "links": [
+            290,
+            291
+          ]
+        }
+      ],
+      "title": "Boolean (Enable Lightning LoRA)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "PrimitiveBoolean"
+      },
+      "widgets_values": [
+        false
+      ],
+      "widgets_values_named": {
+        "value": false
+      },
       "color": "#322",
       "bgcolor": "#533"
     },
@@ -303,7 +466,7 @@
         320
       ],
       "flags": {},
-      "order": 7,
+      "order": 11,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -315,7 +478,7 @@
           ]
         }
       ],
-      "title": "Video gốc",
+      "title": "Video gốc (<Video 1>)",
       "properties": {
         "Node name for S&R": "LoadVideo"
       },
@@ -325,7 +488,6 @@
       ]
     },
     {
-      "id": 149,
       "type": "MarkdownNote",
       "pos": [
         -1980,
@@ -333,107 +495,184 @@
       ],
       "size": [
         430,
-        560
+        400
       ],
       "flags": {},
-      "order": 8,
+      "order": 12,
       "mode": 0,
       "inputs": [],
       "outputs": [],
       "title": "Cách dùng",
       "properties": {},
       "widgets_values": [
-        "## huy_minhmax_outpaint_qwen\n\nQwen vẽ phần mở rộng ở frame đầu. H3 chỉ tạo chuyển động cho cánh, vùng video được ghim ở mọi frame bằng mask.\n\n**Đầu vào**\n1. **Ảnh ScreenX đầy đủ** (cánh trái + giữa + cánh phải) do Qwen vẽ từ **frame đầu của chính video này**. Nên lưu ảnh chữ nhật: tắt `apply_trapezoid_clip` ở node Combine của workflow Qwen, vì góc đen sẽ bị ghim vào frame 0.\n2. **Video gốc**, 24 fps. Nên cắt sẵn đúng 17k+5 frame (107, 124, 141... tối đa 362). Video lệch lưới sẽ mất tới 16 frame cuối.\n\n**Chỉnh trước khi chạy: phải khớp cả hai node**\n- **Cánh trái:** node Cắt ảnh `side` = left, node Outpaint Pad `add_left_widths` 1, `add_right_widths` 0.\n- **Cánh phải:** node Cắt ảnh `side` = right, node Outpaint Pad `add_left_widths` 0, `add_right_widths` 1.\n- **`outer_height_ratio`** ở Outpaint Pad phải bằng giá trị đã dùng khi vẽ Qwen (mặc định 1.3).\n- **`megapixels` ở node Cỡ canvas:** OOM thì giảm.\n\n**Sau khi gen**\nChỉ lấy phần cánh rồi ghép với video gốc.\n"
+        "## huy_minhmax_screenx_final\n\nTemplate Reference to Video chính thức: 1 ảnh và 1 video làm tham chiếu.\n\n**Đầu vào**\n1. **Ảnh ScreenX đầy đủ** (cánh trái + giữa + cánh phải).\n2. **Video gốc**, 24 fps, tối đa 15 giây.\n\n**Chỉnh trước khi chạy**\n- **Node Cắt ảnh:** `side` chọn cánh, `mode` chọn phần ảnh giữa lấy kèm. `width`, `height` tự tính theo ảnh cắt. OOM thì giảm `target_megapixels`.\n\nSố frame tự lấy từ video, làm tròn lên lưới 17k+5 khi gen rồi crop lại đúng độ dài video.\n"
       ],
       "color": "#322",
-      "bgcolor": "#533"
+      "bgcolor": "#533",
+      "id": 149
     },
     {
-      "type": "LoadImage",
+      "id": 145,
+      "type": "LoraLoaderModelOnly",
       "pos": [
-        -1050,
-        5960
+        -1490,
+        5140
       ],
       "size": [
-        290,
-        330
+        640,
+        90
       ],
       "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            329
-          ]
-        },
-        {
-          "name": "MASK",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "title": "Ảnh ScreenX đầy đủ (Qwen vẽ từ frame đầu)",
-      "properties": {
-        "Node name for S&R": "LoadImage"
-      },
-      "widgets_values": [
-        "screenx_image.png",
-        "image"
-      ],
-      "id": 164
-    },
-    {
-      "id": 124,
-      "type": "BasicScheduler",
-      "pos": [
-        0,
-        5320
-      ],
-      "size": [
-        370,
-        130
-      ],
-      "flags": {},
-      "order": 10,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
           "name": "model",
           "type": "MODEL",
-          "link": 252
-        },
-        {
-          "name": "steps",
-          "type": "INT",
-          "widget": {
-            "name": "steps"
-          },
-          "link": null
+          "link": 285
         }
       ],
       "outputs": [
         {
-          "name": "SIGMAS",
-          "type": "SIGMAS",
+          "name": "MODEL",
+          "type": "MODEL",
           "links": [
-            256
+            286
           ]
         }
       ],
       "properties": {
         "cnr_id": "comfy-core",
         "ver": "0.33.0",
-        "Node name for S&R": "BasicScheduler"
+        "Node name for S&R": "LoraLoaderModelOnly",
+        "models": [
+          {
+            "name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+            "directory": "loras"
+          }
+        ]
       },
       "widgets_values": [
-        "simple",
-        20,
+        "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
         1
-      ]
+      ],
+      "widgets_values_named": {
+        "lora_name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+        "strength_model": 1
+      }
+    },
+    {
+      "type": "stoneV_ScreenX_Cut",
+      "pos": [
+        -700,
+        6130
+      ],
+      "size": [
+        340,
+        230
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 294
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            295
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            296
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            297
+          ]
+        }
+      ],
+      "title": "Cắt ảnh (<Picture 1>)",
+      "properties": {
+        "Node name for S&R": "stoneV_ScreenX_Cut"
+      },
+      "widgets_values": [
+        "left",
+        "cánh + 100% ảnh giữa",
+        12.0,
+        1.0,
+        0.98
+      ],
+      "id": 150
+    },
+    {
+      "id": 142,
+      "type": "ComfySwitchNode",
+      "pos": [
+        -390,
+        5110
+      ],
+      "size": [
+        270,
+        110
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "on_false",
+          "type": "INT",
+          "link": 284
+        },
+        {
+          "name": "on_true",
+          "type": "INT",
+          "link": 283
+        },
+        {
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": 291
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "INT",
+          "links": [
+            289
+          ]
+        }
+      ],
+      "title": "If/Else Switch (Steps)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "ComfySwitchNode"
+      },
+      "widgets_values": [
+        false
+      ],
+      "widgets_values_named": {
+        "switch": false
+      }
     },
     {
       "id": 148,
@@ -447,7 +686,7 @@
         130
       ],
       "flags": {},
-      "order": 11,
+      "order": 16,
       "mode": 0,
       "inputs": [
         {
@@ -461,8 +700,8 @@
           "name": "images",
           "type": "IMAGE",
           "links": [
-            306,
-            308
+            292,
+            298
           ]
         },
         {
@@ -491,59 +730,111 @@
       }
     },
     {
-      "type": "stoneV_ScreenX_Cut",
+      "id": 141,
+      "type": "ComfySwitchNode",
       "pos": [
-        -700,
-        6400
+        -730,
+        4940
       ],
       "size": [
-        340,
-        230
+        270,
+        110
       ],
       "flags": {},
-      "order": 12,
+      "order": 17,
       "mode": 0,
       "inputs": [
         {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 329
+          "name": "on_false",
+          "type": "MODEL",
+          "link": 287
+        },
+        {
+          "name": "on_true",
+          "type": "MODEL",
+          "link": 286
+        },
+        {
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": 290
         }
       ],
       "outputs": [
         {
-          "name": "image",
-          "type": "IMAGE",
+          "name": "output",
+          "type": "MODEL",
           "links": [
-            330
+            288
           ]
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "links": null
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": null
         }
       ],
-      "title": "Cắt ảnh: side phải khớp Outpaint Pad",
+      "title": "If/Else Switch (model)",
       "properties": {
-        "Node name for S&R": "stoneV_ScreenX_Cut"
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "ComfySwitchNode"
       },
       "widgets_values": [
-        "left",
-        "cánh + 100% ảnh giữa",
-        12.0,
-        1.0,
-        0.98
+        false
       ],
-      "id": 165
+      "widgets_values_named": {
+        "switch": false
+      }
     },
     {
-      "id": 153,
+      "id": 124,
+      "type": "BasicScheduler",
+      "pos": [
+        0,
+        5320
+      ],
+      "size": [
+        370,
+        130
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 252
+        },
+        {
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": 289
+        }
+      ],
+      "outputs": [
+        {
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            256
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.0",
+        "Node name for S&R": "BasicScheduler"
+      },
+      "widgets_values": [
+        "beta",
+        20,
+        1
+      ]
+    },
+    {
       "type": "GetImageSize",
       "pos": [
         -700,
@@ -554,59 +845,61 @@
         120
       ],
       "flags": {},
-      "order": 13,
+      "order": 19,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 306
+          "link": 298
         }
       ],
       "outputs": [
         {
           "name": "width",
           "type": "INT",
-          "links": []
+          "links": null
         },
         {
           "name": "height",
           "type": "INT",
-          "links": []
+          "links": null
         },
         {
           "name": "batch_size",
           "type": "INT",
           "links": [
-            307
+            299,
+            301
           ]
         }
       ],
-      "title": "Đếm frame video",
+      "title": "Số frame của video",
       "properties": {
         "Node name for S&R": "GetImageSize"
-      }
+      },
+      "id": 151
     },
     {
       "id": 131,
       "type": "ComfyMathExpression",
       "pos": [
         -700,
-        6060
+        6400
       ],
       "size": [
         320,
         170
       ],
       "flags": {},
-      "order": 14,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {
           "label": "a",
           "name": "values.a",
           "type": "FLOAT,INT,BOOLEAN",
-          "link": 307
+          "link": 299
         },
         {
           "label": "b",
@@ -626,8 +919,7 @@
           "name": "INT",
           "type": "INT",
           "links": [
-            309,
-            336
+            275
           ]
         },
         {
@@ -642,263 +934,13 @@
         "Node name for S&R": "ComfyMathExpression"
       },
       "widgets_values": [
-        "max(5, min(a, 362) - (min(a, 362) - 5) % 17)"
+        "min(a + (5 - a % 17) % 17, 362)"
       ],
-      "title": "Số frame theo lưới 17k+5, tối đa 362"
+      "title": "Làm tròn lên lưới 17k+5"
     },
     {
-      "id": 154,
-      "type": "ImageFromBatch",
-      "pos": [
-        -700,
-        6260
-      ],
-      "size": [
-        270,
-        110
-      ],
-      "flags": {},
-      "order": 15,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 308
-        },
-        {
-          "name": "length",
-          "type": "INT",
-          "link": 309,
-          "widget": {
-            "name": "length"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            312
-          ]
-        }
-      ],
-      "title": "Video đúng số frame",
-      "properties": {
-        "Node name for S&R": "ImageFromBatch"
-      },
-      "widgets_values": [
-        0,
-        124
-      ]
-    },
-    {
-      "id": 156,
-      "type": "stoneV_Outpaint_Pad",
-      "pos": [
-        -340,
-        5900
-      ],
-      "size": [
-        340,
-        420
-      ],
-      "flags": {},
-      "order": 16,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 312
-        },
-        {
-          "name": "base_image_for_width",
-          "type": "IMAGE",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            313
-          ]
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "links": [
-            320
-          ]
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "links": []
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": []
-        }
-      ],
-      "title": "Chọn cánh và phần video giữ lại",
-      "properties": {
-        "Node name for S&R": "stoneV_Outpaint_Pad"
-      },
-      "widgets_values": [
-        1.0,
-        0.0,
-        1.0,
-        1.3,
-        "gray (#808080 - Tô Xám chuẩn Outpaint LoRA)",
-        "#808080",
-        0,
-        0,
-        0,
-        0,
-        64
-      ]
-    },
-    {
-      "id": 157,
-      "type": "ImageScaleToTotalPixels",
-      "pos": [
-        -340,
-        6350
-      ],
-      "size": [
-        300,
-        170
-      ],
-      "flags": {},
-      "order": 17,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 313
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            314,
-            317
-          ]
-        }
-      ],
-      "title": "Cỡ canvas (OOM thì giảm megapixels)",
-      "properties": {
-        "Node name for S&R": "ImageScaleToTotalPixels"
-      },
-      "widgets_values": [
-        "area",
-        0.98,
-        32
-      ],
-      "showAdvanced": true,
-      "widgets_values_named": {
-        "upscale_method": "area",
-        "megapixels": 0.98,
-        "resolution_steps": 32
-      }
-    },
-    {
-      "id": 158,
-      "type": "GetImageSize",
-      "pos": [
-        -340,
-        6560
-      ],
-      "size": [
-        240,
-        120
-      ],
-      "flags": {},
-      "order": 18,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 314
-        }
-      ],
-      "outputs": [
-        {
-          "name": "width",
-          "type": "INT",
-          "links": [
-            334
-          ]
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": [
-            335
-          ]
-        },
-        {
-          "name": "batch_size",
-          "type": "INT",
-          "links": []
-        }
-      ],
-      "title": "Khung gen",
-      "properties": {
-        "Node name for S&R": "GetImageSize"
-      }
-    },
-    {
-      "id": 159,
-      "type": "VAEEncode",
-      "pos": [
-        40,
-        5900
-      ],
-      "size": [
-        220,
-        60
-      ],
-      "flags": {},
-      "order": 19,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pixels",
-          "type": "IMAGE",
-          "link": 317
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 318
-        }
-      ],
-      "outputs": [
-        {
-          "name": "LATENT",
-          "type": "LATENT",
-          "links": [
-            319
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VAEEncode"
-      }
-    },
-    {
-      "type": "MiniMaxH3ImageToVideo",
+      "id": 136,
+      "type": "MiniMaxH3ReferenceToVideo",
       "pos": [
         -620,
         5420
@@ -908,29 +950,64 @@
         380
       ],
       "flags": {},
-      "order": 20,
+      "order": 21,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
           "type": "CLIP",
-          "link": 331
+          "link": 272
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 332
+          "link": 273
         },
         {
-          "name": "first_frame",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 330
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 274
         },
         {
-          "name": "last_frame",
+          "label": "ref_image_0",
+          "name": "ref_images.ref_image_0",
           "shape": 7,
           "type": "IMAGE",
+          "link": 295
+        },
+        {
+          "label": "ref_image_1",
+          "name": "ref_images.ref_image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "ref_image_2",
+          "name": "ref_images.ref_image_2",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "ref_video_0",
+          "name": "ref_videos.ref_video_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 292
+        },
+        {
+          "label": "ref_video_audio_0",
+          "name": "ref_video_audios.ref_video_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "label": "ref_audio_0",
+          "name": "ref_audios.ref_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
           "link": null
         },
         {
@@ -939,7 +1016,7 @@
           "widget": {
             "name": "prompt"
           },
-          "link": 333
+          "link": 279
         },
         {
           "name": "width",
@@ -947,7 +1024,7 @@
           "widget": {
             "name": "width"
           },
-          "link": 334
+          "link": 296
         },
         {
           "name": "height",
@@ -955,7 +1032,7 @@
           "widget": {
             "name": "height"
           },
-          "link": 335
+          "link": 297
         },
         {
           "name": "length",
@@ -963,7 +1040,7 @@
           "widget": {
             "name": "length"
           },
-          "link": 336
+          "link": 275
         }
       ],
       "outputs": [
@@ -971,68 +1048,29 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            338
+            270
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            337
+            271
           ]
         }
       ],
       "properties": {
         "cnr_id": "comfy-core",
-        "Node name for S&R": "MiniMaxH3ImageToVideo"
+        "ver": "0.33.0",
+        "Node name for S&R": "MiniMaxH3ReferenceToVideo"
       },
       "widgets_values": [
         "",
         1664,
         608,
-        124
-      ],
-      "id": 166
-    },
-    {
-      "id": 160,
-      "type": "SetLatentNoiseMask",
-      "pos": [
-        40,
-        6010
-      ],
-      "size": [
-        240,
-        60
-      ],
-      "flags": {},
-      "order": 21,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 319
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "link": 320
-        }
-      ],
-      "outputs": [
-        {
-          "name": "LATENT",
-          "type": "LATENT",
-          "links": [
-            322
-          ]
-        }
-      ],
-      "title": "Mask: cánh = vẽ, video = giữ",
-      "properties": {
-        "Node name for S&R": "SetLatentNoiseMask"
-      }
+        124,
+        "match"
+      ]
     },
     {
       "id": 126,
@@ -1052,12 +1090,12 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 328
+          "link": 288
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 338
+          "link": 270
         }
       ],
       "outputs": [
@@ -1076,84 +1114,6 @@
       }
     },
     {
-      "id": 161,
-      "type": "LTXVSeparateAVLatent",
-      "pos": [
-        40,
-        6120
-      ],
-      "size": [
-        240,
-        60
-      ],
-      "flags": {},
-      "order": 23,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "av_latent",
-          "type": "LATENT",
-          "link": 337
-        }
-      ],
-      "outputs": [
-        {
-          "name": "video_latent",
-          "type": "LATENT",
-          "links": []
-        },
-        {
-          "name": "audio_latent",
-          "type": "LATENT",
-          "links": [
-            323
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LTXVSeparateAVLatent"
-      }
-    },
-    {
-      "id": 162,
-      "type": "LTXVConcatAVLatent",
-      "pos": [
-        40,
-        6230
-      ],
-      "size": [
-        240,
-        60
-      ],
-      "flags": {},
-      "order": 24,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "video_latent",
-          "type": "LATENT",
-          "link": 322
-        },
-        {
-          "name": "audio_latent",
-          "type": "LATENT",
-          "link": 323
-        }
-      ],
-      "outputs": [
-        {
-          "name": "latent",
-          "type": "LATENT",
-          "links": [
-            324
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LTXVConcatAVLatent"
-      }
-    },
-    {
       "id": 125,
       "type": "SamplerCustomAdvanced",
       "pos": [
@@ -1165,7 +1125,7 @@
         140
       ],
       "flags": {},
-      "order": 25,
+      "order": 23,
       "mode": 0,
       "inputs": [
         {
@@ -1191,7 +1151,7 @@
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 324
+          "link": 271
         }
       ],
       "outputs": [
@@ -1229,7 +1189,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 26,
+      "order": 24,
       "mode": 0,
       "inputs": [
         {
@@ -1272,7 +1232,7 @@
       "flags": {
         "collapsed": false
       },
-      "order": 27,
+      "order": 25,
       "mode": 0,
       "inputs": [
         {
@@ -1291,7 +1251,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            258
+            300
           ]
         }
       ],
@@ -1300,6 +1260,53 @@
         "ver": "0.33.0",
         "Node name for S&R": "VAEDecode"
       }
+    },
+    {
+      "type": "ImageFromBatch",
+      "pos": [
+        410,
+        5300
+      ],
+      "size": [
+        230,
+        110
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 300
+        },
+        {
+          "name": "length",
+          "type": "INT",
+          "widget": {
+            "name": "length"
+          },
+          "link": 301
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            302
+          ]
+        }
+      ],
+      "title": "Crop về đúng số frame video",
+      "properties": {
+        "Node name for S&R": "ImageFromBatch"
+      },
+      "widgets_values": [
+        0,
+        124
+      ],
+      "id": 152
     },
     {
       "id": 130,
@@ -1313,13 +1320,13 @@
         110
       ],
       "flags": {},
-      "order": 28,
+      "order": 27,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 258
+          "link": 302
         },
         {
           "name": "audio",
@@ -1344,10 +1351,7 @@
       },
       "widgets_values": [
         24.0
-      ],
-      "widgets_values_named": {
-        "fps": 24.0
-      }
+      ]
     },
     {
       "id": 92,
@@ -1361,7 +1365,7 @@
         970
       ],
       "flags": {},
-      "order": 29,
+      "order": 28,
       "mode": 0,
       "inputs": [
         {
@@ -1382,7 +1386,7 @@
         "ver": "0.33.0"
       },
       "widgets_values": [
-        "video/huy_minhmax_outpaint_qwen",
+        "video/huy_minhmax_screenx_final",
         "auto",
         "auto"
       ]
@@ -1446,14 +1450,6 @@
       "SIGMAS"
     ],
     [
-      258,
-      122,
-      0,
-      130,
-      0,
-      "IMAGE"
-    ],
-    [
       259,
       121,
       0,
@@ -1468,6 +1464,62 @@
       92,
       0,
       "VIDEO"
+    ],
+    [
+      270,
+      136,
+      0,
+      126,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      271,
+      136,
+      1,
+      125,
+      4,
+      "LATENT"
+    ],
+    [
+      272,
+      128,
+      0,
+      136,
+      0,
+      "CLIP"
+    ],
+    [
+      273,
+      119,
+      0,
+      136,
+      1,
+      "VAE"
+    ],
+    [
+      274,
+      120,
+      0,
+      136,
+      2,
+      "VAE"
+    ],
+    [
+      275,
+      131,
+      1,
+      136,
+      12,
+      "INT"
+    ],
+    [
+      279,
+      138,
+      0,
+      136,
+      9,
+      "STRING"
     ],
     [
       280,
@@ -1486,6 +1538,78 @@
       "LATENT"
     ],
     [
+      283,
+      144,
+      0,
+      142,
+      1,
+      "INT"
+    ],
+    [
+      284,
+      143,
+      0,
+      142,
+      0,
+      "INT"
+    ],
+    [
+      285,
+      127,
+      0,
+      145,
+      0,
+      "MODEL"
+    ],
+    [
+      286,
+      145,
+      0,
+      141,
+      1,
+      "MODEL"
+    ],
+    [
+      287,
+      127,
+      0,
+      141,
+      0,
+      "MODEL"
+    ],
+    [
+      288,
+      141,
+      0,
+      126,
+      0,
+      "MODEL"
+    ],
+    [
+      289,
+      142,
+      0,
+      124,
+      1,
+      "INT"
+    ],
+    [
+      290,
+      146,
+      0,
+      141,
+      2,
+      "BOOLEAN"
+    ],
+    [
+      291,
+      146,
+      0,
+      142,
+      2,
+      "BOOLEAN"
+    ],
+    [
       293,
       147,
       0,
@@ -1494,204 +1618,84 @@
       "VIDEO"
     ],
     [
-      306,
+      292,
       148,
       0,
-      153,
-      0,
-      "IMAGE"
-    ],
-    [
-      307,
-      153,
-      2,
-      131,
-      0,
-      "INT"
-    ],
-    [
-      308,
-      148,
-      0,
-      154,
-      0,
-      "IMAGE"
-    ],
-    [
-      309,
-      131,
-      1,
-      154,
-      1,
-      "INT"
-    ],
-    [
-      312,
-      154,
-      0,
-      156,
-      0,
-      "IMAGE"
-    ],
-    [
-      313,
-      156,
-      0,
-      157,
-      0,
-      "IMAGE"
-    ],
-    [
-      314,
-      157,
-      0,
-      158,
-      0,
-      "IMAGE"
-    ],
-    [
-      317,
-      157,
-      0,
-      159,
-      0,
-      "IMAGE"
-    ],
-    [
-      318,
-      119,
-      0,
-      159,
-      1,
-      "VAE"
-    ],
-    [
-      319,
-      159,
-      0,
-      160,
-      0,
-      "LATENT"
-    ],
-    [
-      320,
-      156,
-      1,
-      160,
-      1,
-      "MASK"
-    ],
-    [
-      322,
-      160,
-      0,
-      162,
-      0,
-      "LATENT"
-    ],
-    [
-      323,
-      161,
-      1,
-      162,
-      1,
-      "LATENT"
-    ],
-    [
-      324,
-      162,
-      0,
-      125,
-      4,
-      "LATENT"
-    ],
-    [
-      328,
-      127,
-      0,
-      126,
-      0,
-      "MODEL"
-    ],
-    [
-      329,
-      164,
-      0,
-      165,
-      0,
-      "IMAGE"
-    ],
-    [
-      330,
-      165,
-      0,
-      166,
-      2,
-      "IMAGE"
-    ],
-    [
-      331,
-      128,
-      0,
-      166,
-      0,
-      "CLIP"
-    ],
-    [
-      332,
-      119,
-      0,
-      166,
-      1,
-      "VAE"
-    ],
-    [
-      333,
-      138,
-      0,
-      166,
-      4,
-      "STRING"
-    ],
-    [
-      334,
-      158,
-      0,
-      166,
-      5,
-      "INT"
-    ],
-    [
-      335,
-      158,
-      1,
-      166,
+      136,
       6,
+      "IMAGE"
+    ],
+    [
+      294,
+      137,
+      0,
+      150,
+      0,
+      "IMAGE"
+    ],
+    [
+      295,
+      150,
+      0,
+      136,
+      3,
+      "IMAGE"
+    ],
+    [
+      296,
+      150,
+      1,
+      136,
+      10,
       "INT"
     ],
     [
-      336,
+      297,
+      150,
+      2,
+      136,
+      11,
+      "INT"
+    ],
+    [
+      298,
+      148,
+      0,
+      151,
+      0,
+      "IMAGE"
+    ],
+    [
+      299,
+      151,
+      2,
       131,
-      1,
-      166,
-      7,
+      0,
       "INT"
     ],
     [
-      337,
-      166,
-      1,
-      161,
+      300,
+      122,
       0,
-      "LATENT"
+      152,
+      0,
+      "IMAGE"
     ],
     [
-      338,
-      166,
-      0,
-      126,
+      301,
+      151,
+      2,
+      152,
       1,
-      "CONDITIONING"
+      "INT"
+    ],
+    [
+      302,
+      152,
+      0,
+      130,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -1715,6 +1719,18 @@
         4840,
         690,
         700
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Switch Model and Settings",
+      "bounding": [
+        -790,
+        4840,
+        730,
+        490
       ],
       "color": "#3f789e",
       "flags": {}
