@@ -85,6 +85,7 @@
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_image_edit.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
-    "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json"
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_outpaint.json"
   ]
 }

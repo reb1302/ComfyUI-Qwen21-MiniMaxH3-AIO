@@ -226,6 +226,7 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_outpaint.json",
 ]
 
 
@@ -2921,27 +2922,42 @@ def _feather_mask(mask: torch.Tensor, radius: int) -> torch.Tensor:
     return torch.maximum(mask, blurred).clamp(0.0, 1.0)
 
 
-def _stitch_horizontal_cosine(left_img: torch.Tensor, right_img: torch.Tensor, overlap_w: int, blend_w: int) -> torch.Tensor:
+def _stitch_horizontal_cosine(
+    left_img: torch.Tensor,
+    right_img: torch.Tensor,
+    overlap_w: int,
+    blend_w: int,
+    anchor_side: str = "left",
+) -> torch.Tensor:
     """
     Ghép ngang 2 ảnh `left_img` [1, H, W_L, 3] và `right_img` [1, H, W_R, 3]
     trong đó phần đầu của `right_img` trùng với `overlap_w` cột cuối của `left_img`.
-    Hòa trộn mượt bằng hàm Cosine trên dải `blend_w` ngay sát biên nối.
+    - `anchor_side="left"` (khi mở rộng sang Phải): giữ nguyên `left_img` tối đa, hòa trộn ở biên phải của vùng overlap.
+    - `anchor_side="right"` (khi mở rộng sang Trái): giữ nguyên `right_img` tối đa, hòa trộn ở biên trái của vùng overlap.
     """
     h = int(left_img.shape[1])
     if int(right_img.shape[1]) != h:
         right_img = _chunked_cpu_resize(right_img, int(right_img.shape[2]), h, "lanczos", "disabled", chunk_size=1)
-    overlap_w = max(0, min(int(overlap_w), int(left_img.shape[2]), int(right_img.shape[2])))
+    w_l = int(left_img.shape[2])
+    w_r = int(right_img.shape[2])
+    overlap_w = max(0, min(int(overlap_w), w_l, w_r))
     if overlap_w == 0:
         return torch.cat([left_img, right_img], dim=2)
 
     bw = max(4, min(int(blend_w), overlap_w))
-    keep_left_end = int(left_img.shape[2]) - bw
-    right_blend_start = overlap_w - bw
-
-    left_pure = left_img[:, :, :keep_left_end, :]
-    left_seam = left_img[:, :, keep_left_end : int(left_img.shape[2]), :]
-    right_seam = right_img[:, :, right_blend_start:overlap_w, :]
-    right_pure = right_img[:, :, overlap_w:, :]
+    if anchor_side == "right":
+        new_left_w = w_l - overlap_w
+        left_pure = left_img[:, :, :new_left_w, :]
+        left_seam = left_img[:, :, new_left_w : new_left_w + bw, :]
+        right_seam = right_img[:, :, :bw, :]
+        right_pure = right_img[:, :, bw:, :]
+    else:
+        keep_left_end = w_l - bw
+        right_blend_start = overlap_w - bw
+        left_pure = left_img[:, :, :keep_left_end, :]
+        left_seam = left_img[:, :, keep_left_end:w_l, :]
+        right_seam = right_img[:, :, right_blend_start:overlap_w, :]
+        right_pure = right_img[:, :, overlap_w:, :]
 
     alpha = _cosine_alpha_1d(bw, left_img.device, left_img.dtype).view(1, 1, bw, 1)
     blended_seam = left_seam * (1.0 - alpha) + right_seam * alpha
@@ -3103,12 +3119,6 @@ class stoneV_Panorama360_AutoLoop:
                     "step": 4,
                     "tooltip": "Độ rộng vùng hòa trộn Cosine giữa các bước lặp để xóa sạch vết ghép."
                 }),
-                "fill_mode": ([
-                    "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
-                    "Green #00FF00 (Dùng riêng cho 360 Panorama Outpaint LoRA v0.1 hệ cầu VR)",
-                ], {
-                    "default": "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)"
-                }),
                 "prompt": ("STRING", {
                     "multiline": True,
                     "default": "Seamless ultra-wide 360 panoramic continuation of the environment, consistent horizon line, natural lighting, high detail architectural and landscape continuity."
@@ -3128,6 +3138,12 @@ class stoneV_Panorama360_AutoLoop:
                 "ref_image_3": ("IMAGE",),
                 "ref_image_4": ("IMAGE",),
                 "ref_image_5": ("IMAGE",),
+                "fill_mode": ([
+                    "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)",
+                    "Green #00FF00 (Dùng riêng cho 360 Panorama Outpaint LoRA v0.1 hệ cầu VR)",
+                ], {
+                    "default": "Gray #808080 (Dùng cho Outpaint v1/v2 LoRA hoặc Multi-Ref phẳng/ScreenX)"
+                }),
             }
         }
 
@@ -3221,6 +3237,30 @@ class stoneV_Panorama360_AutoLoop:
     ):
         base_img = image_1[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
         raw_h, raw_w = int(base_img.shape[1]), int(base_img.shape[2])
+
+        # Tự động khôi phục nếu trình duyệt lưu cache thứ tự widget cũ
+        if isinstance(prompt, str) and (prompt.startswith("Gray #808080") or prompt.startswith("Green #00FF00")):
+            fill_mode = prompt
+            prompt = (
+                "Seamless ultra-wide 360 panoramic continuation of the environment, "
+                "consistent horizon line, natural lighting, high detail architectural and landscape continuity."
+            )
+        try:
+            seed = int(seed)
+        except Exception:
+            seed = 42
+        try:
+            steps = max(4, int(steps))
+        except Exception:
+            steps = 24
+        try:
+            cfg = max(1.0, float(cfg))
+        except Exception:
+            cfg = 1.0
+        if sampler_name not in ("euler", "res_multistep", "dpmpp_2m", "uni_pc"):
+            sampler_name = "euler"
+        if scheduler not in ("simple", "beta", "normal", "sgm_uniform"):
+            scheduler = "simple"
 
         # Chuẩn hóa kích thước cơ sở bội số 32 (giữ độ nét cao và vừa vặn cửa sổ Qwen 2.1)
         max_base_dim = 1088
@@ -3323,7 +3363,7 @@ class stoneV_Panorama360_AutoLoop:
                     model, clip, vae, c_img, first_refs, s_prompt, negative_prompt,
                     int(seed), steps, cfg, sampler_name, scheduler
                 )
-                pano_img = _stitch_horizontal_cosine(g_out, pano_img, anchor_w, blend_width_px)
+                pano_img = _stitch_horizontal_cosine(g_out, pano_img, anchor_w, blend_width_px, anchor_side="right")
                 step_previews.append(g_out)
 
         # Các vòng lặp cuốn chiếu tiếp theo (Step 2 .. loop_steps)
@@ -3351,7 +3391,7 @@ class stoneV_Panorama360_AutoLoop:
                     sampler_name=sampler_name,
                     scheduler=scheduler,
                 )
-                pano_img = _stitch_horizontal_cosine(pano_img, gen_win, anchor_w, blend_width_px)
+                pano_img = _stitch_horizontal_cosine(pano_img, gen_win, anchor_w, blend_width_px, anchor_side="left")
                 step_previews.append(gen_win)
             else:
                 anchor_slice = pano_img[:, :, :anchor_w, :]
@@ -3372,7 +3412,7 @@ class stoneV_Panorama360_AutoLoop:
                     sampler_name=sampler_name,
                     scheduler=scheduler,
                 )
-                pano_img = _stitch_horizontal_cosine(gen_win, pano_img, anchor_w, blend_width_px)
+                pano_img = _stitch_horizontal_cosine(gen_win, pano_img, anchor_w, blend_width_px, anchor_side="right")
                 step_previews.append(gen_win)
 
         # Nhịp cuối (Tùy chọn): Khép kín vòng tròn 360° (nối mượt mép Phải cuối cùng vào mép Trái đầu tiên)
