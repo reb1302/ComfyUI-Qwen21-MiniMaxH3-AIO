@@ -10,14 +10,18 @@ Tích hợp 2 chức năng cốt lõi:
 """
 from __future__ import annotations
 
+import io
 import json
 import math
 import os
 import shutil
 import subprocess
+import sys
+import tempfile
 import threading
 import time
 import urllib.request
+import zipfile
 from typing import Any
 
 try:
@@ -51,9 +55,9 @@ LTX25_OUTPAINT_SUITE_MODELS: list[dict[str, str]] = [
         "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
     },
     {
-        "folder": "loras",
-        "filename": "ltx-2.3-22b-ic-lora-outpaint.safetensors",
-        "url": "https://huggingface.co/oumoumad/LTX-2.3-22b-IC-LoRA-Outpaint/resolve/main/ltx-2.3-22b-ic-lora-outpaint.safetensors",
+        "folder": "text_encoders",
+        "filename": "gemma4_e2b_it_bf16.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_bf16.safetensors",
     },
     {
         "folder": "diffusion_models",
@@ -281,9 +285,9 @@ import hashlib
 _LAST_SYNCED_HASH: str = ""
 
 DEFAULT_SYNC_WORKFLOWS = [
-    "workflows/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/ltx_2.5/LTX25_Cai_Dat_1_Click.json",
+    "workflows/ltx_2.5/LTX25_Outpaint_Official.json",
     "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
-    "workflows/ltx_2.5/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
     "workflows/ltx_2.5/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
@@ -606,7 +610,7 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                         print(f"[VStone Downloader] Skip {fname}: {e}")
 
         if lora_list:
-            threading.Thread(target=_bg_download_models, args=(list(lora_list),), daemon=True).start()
+            threading.Thread(target=_bg_download_models, args=(list(lora_list),), name="_bg_download_models", daemon=True).start()
             logs.append(f"Started background check/download for {len(lora_list)} models/LoRAs.")
 
         _LAST_SYNCED_HASH = new_hash
@@ -652,7 +656,8 @@ VSTONE_RUNTIME_PATCH_VER = 5
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
-_DOWNLOAD_LOCK = threading.Lock()
+# Lưu trên sys để mọi lần hot-reload dùng chung 1 lock, không tải 2 lần vào cùng file .part
+_DOWNLOAD_LOCK = sys.__dict__.setdefault("_vstone_download_lock", threading.Lock())
 
 
 def _vstone_free_vram(unload_models: bool = False) -> None:
@@ -983,10 +988,7 @@ def apply_comfy_runtime_fixes() -> str:
             _ltx_virtual_files = {
                 "diffusion_models": ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
                 "unet": ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
-                "loras": [
-                    "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
-                    "ltx-2.3-22b-ic-lora-outpaint.safetensors",
-                ],
+                "loras": ["ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors"],
                 "text_encoders": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
                 "clip": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
                 "vae": [
@@ -1102,6 +1104,168 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
             os.replace(tmp_path, target_path)
         _clear_comfy_model_cache()
         return f"[VStone Downloader] Downloaded: {target_path}"
+
+
+# ------------------------------------------------------------------------------
+# Cài LTX-2.5 bằng 1 lần Queue trên stoneV_CloudSyncHub (H200 không gõ lệnh được)
+# ------------------------------------------------------------------------------
+LTX25_CUSTOM_NODE_PACKS: list[dict[str, Any]] = [
+    {
+        "dir": "ComfyUI-LTXVideo",
+        "repo": "Lightricks/ComfyUI-LTXVideo",
+        "branch": "master",
+        "node_ids": [
+            "GemmaAPITextEncode",
+            "LTXAddVideoICLoRAGuideAdvanced",
+            "LTXICLoRALoaderModelOnly",
+            "LTXVImgToVideoConditionOnly",
+            "LTXVInpaintPreprocess",
+            "LTXVLaplacianPyramidBlend",
+            "LTXVSetAudioRefTokens",
+        ],
+    },
+    {
+        "dir": "ComfyUI-KJNodes",
+        "repo": "kijai/ComfyUI-KJNodes",
+        "branch": "main",
+        "node_ids": ["ImagePadForOutpaintTargetSize"],
+    },
+]
+LTX25_RESTARTED_ENV = "VSTONE_LTX25_RESTARTED"
+
+
+def _missing_node_ids(node_ids: list[str]) -> list[str]:
+    import nodes
+    return [node_id for node_id in node_ids if node_id not in nodes.NODE_CLASS_MAPPINGS]
+
+
+def _run_install_cmd(cmd: list[str], timeout: int) -> tuple[bool, str]:
+    """Chạy lệnh cài đặt, trả về (thành công, phần cuối của log) thay vì ném lỗi."""
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, str(e)
+    return res.returncode == 0, (res.stderr or res.stdout or "").strip()[-300:]
+
+
+def _fetch_node_pack(pack: dict[str, Any], pack_dir: str) -> tuple[bool, str]:
+    """Clone hoặc pull pack. Máy không có git, hoặc thư mục không phải repo git, thì tải zip từ GitHub."""
+    git_bin = shutil.which("git")
+    if git_bin and os.path.isdir(os.path.join(pack_dir, ".git")):
+        return _run_install_cmd([git_bin, "-C", pack_dir, "pull", "--ff-only"], 300)
+    if git_bin and not os.path.exists(pack_dir):
+        clone_url = f"https://github.com/{pack['repo']}.git"
+        return _run_install_cmd([git_bin, "clone", "--depth", "1", clone_url, pack_dir], 900)
+    zip_url = f"https://github.com/{pack['repo']}/archive/refs/heads/{pack['branch']}.zip"
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            with zipfile.ZipFile(io.BytesIO(_http_get_bytes(zip_url, timeout=600))) as archive:
+                archive.extractall(tmp)
+            shutil.copytree(os.path.join(tmp, os.listdir(tmp)[0]), pack_dir, dirs_exist_ok=True)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+def _pip_install_requirements(pack_dir: str) -> list[str]:
+    """Cài requirements.txt. Một gói lỗi làm hỏng cả file, nên khi lỗi thì cài lại từng gói và trả về các gói hỏng."""
+    req_path = os.path.join(pack_dir, "requirements.txt")
+    if not os.path.isfile(req_path):
+        return []
+    pip_install = [sys.executable, "-m", "pip", "install"]
+    if _run_install_cmd(pip_install + ["-r", req_path], 1800)[0]:
+        return []
+    failed: list[str] = []
+    with open(req_path, encoding="utf-8") as req_file:
+        for line in req_file:
+            spec = line.split("#")[0].strip()
+            if spec and not spec.startswith("-"):
+                ok, tail = _run_install_cmd(pip_install + [spec], 900)
+                if not ok:
+                    failed.append(f"{spec}: {tail}")
+    return failed
+
+
+def _restart_comfyui_after(delay_sec: float) -> None:
+    """Khởi động lại ComfyUI với đúng tham số đang chạy (giữ nguyên port), cùng cách ComfyUI-Manager dùng."""
+    def _restart() -> None:
+        time.sleep(delay_sec)
+        print("[VStone] Khởi động lại ComfyUI để nạp pack LTX-2.5...", flush=True)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    threading.Thread(target=_restart, name="VStoneRestart", daemon=True).start()
+
+
+def _wait_for_background_downloads(unique_id: Any) -> None:
+    """Luồng tải nền của Cloud Sync có thể đang chạy code cũ với lock riêng, tải song song sẽ hỏng file .part nên phải chờ."""
+    announced = False
+    while any("_bg_download_models" in thread.name for thread in threading.enumerate()):
+        if not announced:
+            _vstone_ui_status(unique_id, "Bước 2/2: Cloud Sync đang tải model nền, chờ xong rồi kiểm tra tiếp...")
+            announced = True
+        time.sleep(15)
+
+
+def install_ltx25_one_click(unique_id: Any = None) -> str:
+    """Cài pack và model LTX-2.5 còn thiếu, khởi động lại nếu cần. Dòng đầu của báo cáo là kết luận."""
+    root = _get_comfy_root()
+    if not root:
+        return "❌ Không tìm thấy thư mục ComfyUI."
+
+    details: list[str] = []
+    custom_nodes = os.path.join(root, "custom_nodes")
+    os.makedirs(custom_nodes, exist_ok=True)
+    installed_dirs = {name.lower(): name for name in os.listdir(custom_nodes)}
+
+    fetch_failed = False
+    for pack in LTX25_CUSTOM_NODE_PACKS:
+        if not _missing_node_ids(pack["node_ids"]):
+            details.append(f"Pack {pack['dir']}: đã nạp đủ node.")
+            continue
+        _vstone_ui_status(unique_id, f"Bước 1/2: cài pack {pack['dir']}...")
+        pack_dir = os.path.join(custom_nodes, installed_dirs.get(pack["dir"].lower(), pack["dir"]))
+        ok, tail = _fetch_node_pack(pack, pack_dir)
+        details.append(f"Pack {pack['dir']}: " + ("đã tải về." if ok else f"LỖI khi tải: {tail}"))
+        fetch_failed = fetch_failed or not os.path.isdir(pack_dir)
+        for failure in _pip_install_requirements(pack_dir):
+            details.append(f"Pack {pack['dir']}: LỖI pip {failure}")
+
+    _wait_for_background_downloads(unique_id)
+
+    models_missing: list[str] = []
+    total = len(LTX25_OUTPAINT_SUITE_MODELS)
+    for index, item in enumerate(LTX25_OUTPAINT_SUITE_MODELS, start=1):
+        filename = item["filename"]
+        _vstone_ui_status(
+            unique_id,
+            f"Bước 2/2: model {index}/{total}: {filename}\nFile lớn có thể mất hàng chục phút, node vẫn đang chạy.",
+        )
+        try:
+            download_file_to_comfy_models(item["folder"], filename, item["url"])
+        except Exception as e:
+            details.append(f"Model {filename}: LỖI {e}")
+        path = os.path.join(root, "models", item["folder"], filename)
+        if not os.path.isfile(path) or os.path.getsize(path) <= 1024 * 1024:
+            models_missing.append(filename)
+            if os.path.isfile(path):
+                os.remove(path)  # trang lỗi HTML bị lưu thành .safetensors, không phải model
+
+    if models_missing:
+        details.append("Model chưa có: " + ", ".join(models_missing) + ". Bấm Queue lần nữa để tải tiếp.")
+
+    missing_ids = _missing_node_ids([node_id for pack in LTX25_CUSTOM_NODE_PACKS for node_id in pack["node_ids"]])
+    if missing_ids and not fetch_failed and os.environ.get(LTX25_RESTARTED_ENV) != "1":
+        os.environ[LTX25_RESTARTED_ENV] = "1"
+        _restart_comfyui_after(5.0)
+        summary = "🔄 ComfyUI đang khởi động lại để nạp pack. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để xem kết quả."
+    elif missing_ids:
+        details.append("Thiếu node: " + ", ".join(missing_ids) + ". Xem log khởi động, dòng IMPORT FAILED.")
+        summary = "❌ Chưa cài xong pack LTX-2.5."
+    elif models_missing:
+        summary = "❌ Pack đã đủ, còn thiếu model."
+    else:
+        summary = "✅ LTX-2.5 đã đủ pack và model. Mở workflow ltx_2.5/LTX25_Outpaint_Official."
+    return "\n".join([summary] + details)
 
 
 def _start_background_sync_daemon(interval_sec: int = 30):
@@ -1970,6 +2134,7 @@ class stoneV_CloudSyncHub:
         return {
             "required": {
                 "action": ([
+                    "0. Cài LTX-2.5 đầy đủ (Pack + Model, tự khởi động lại)",
                     "3. Pull Code + Download Model (Cập nhật tất cả)",
                     "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)",
                     "2. Download Selected Model / LoRA (Tải Model/LoRA đã chọn bên dưới)",
@@ -2024,6 +2189,11 @@ class stoneV_CloudSyncHub:
         custom_target_folder: str = "loras",
         unique_id: Any = None,
     ):
+        if action.startswith("0."):
+            report = install_ltx25_one_click(unique_id)
+            _vstone_ui_status(unique_id, report)
+            return {"ui": {"text": [report]}, "result": (report,)}
+
         reports: list[str] = []
 
         if action.startswith("1.") or action.startswith("3."):

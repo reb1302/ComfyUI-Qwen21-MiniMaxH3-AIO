@@ -87,17 +87,20 @@
       "folder": "text_encoders"
     },
     {
+      "filename": "gemma4_e2b_it_bf16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/gemma-4/resolve/main/text_encoders/gemma4_e2b_it_bf16.safetensors",
+      "folder": "text_encoders"
+    },
+    {
       "filename": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
       "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
       "folder": "diffusion_models"
     }
   ],
   "workflows": [
-    "workflows/ltx_2.5/stoneV_LTX25_Outpaint_TwoStage_Pro_H200.json",
-    "workflows/stoneV_LTX25_Outpaint_TwoStage_Pro_H200.json",
-    "workflows/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/ltx_2.5/LTX25_Cai_Dat_1_Click.json",
+    "workflows/ltx_2.5/LTX25_Outpaint_Official.json",
     "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
-    "workflows/ltx_2.5/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
     "workflows/ltx_2.5/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/minimax_h3/huy_minhmax_paintout_fun.json",
     "workflows/minimax_h3/video_minimax_h3_i2v_latent_upscaler.json",
