@@ -206,14 +206,18 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
     "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
+    "workflows/minimax_h3/huy_minhmax_screenx.json",
     "workflows/minimax_h3/image_minimax_h3_t2i.json",
     "workflows/minimax_h3/video_minimax_h3_1pass_v2v_upscale_ref.json",
     "workflows/minimax_h3/video_minimax_h3_stoneV_outpaint_ref.json",
     "workflows/minimax_h3/video_minimax_h3_fun_controlnet_union.json",
     "workflows/minimax_h3/video_minimax_h3_i2v.json",
     "workflows/minimax_h3/video_minimax_h3_i2v_continuation.json",
+    "workflows/minimax_h3/video_minimax_h3_i2v_latent_upscaler.json",
     "workflows/minimax_h3/video_minimax_h3_multiframe_reference.json",
     "workflows/minimax_h3/video_minimax_h3_r2v.json",
+    "workflows/minimax_h3/video_minimax_h3_r2v_image_video.json",
+    "workflows/minimax_h3/video_minimax_h3_r2v_latent_upscaler.json",
     "workflows/minimax_h3/video_minimax_h3_t2v.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_background_removal.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit.json",
@@ -222,7 +226,6 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
-    "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_screenx_plates.json",
 ]
 
 
@@ -290,6 +293,8 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
 
         helper_url = f"{raw_ref_base}/vstone/node_helper_vstone.py?_t={ts}"
         helper_bytes = _http_get_bytes(helper_url, timeout=20)
+        if not helper_bytes or len(helper_bytes) < 1000:
+            return "[VStone Sync] File tải về rỗng hoặc không hợp lệ (<1KB), bỏ qua để bảo vệ file."
         new_hash = commit_ref[:7] if commit_ref != GITHUB_BRANCH else hashlib.sha256(helper_bytes).hexdigest()[:7]
 
         if not force and new_hash and new_hash == _LAST_SYNCED_HASH:
@@ -297,12 +302,15 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
 
         custom_nodes_dir = os.path.join(comfy_root, "custom_nodes")
         vstone_dir = os.path.join(custom_nodes_dir, "vstone")
-        aio_vstone_dir = os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO", "vstone")
+        aio_dir = os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO")
+        aio_vstone_dir = os.path.join(aio_dir, "vstone")
         sibling_repo_vstone = os.path.join(os.path.dirname(comfy_root), "ComfyUI-Qwen21-MiniMaxH3-AIO", "vstone")
         workflows_dir = os.path.join(comfy_root, "user", "default", "workflows")
+        vstone_wf_dir = os.path.join(vstone_dir, "workflows")
 
         os.makedirs(vstone_dir, exist_ok=True)
         os.makedirs(workflows_dir, exist_ok=True)
+        os.makedirs(vstone_wf_dir, exist_ok=True)
 
         # 1. Ghi node_helper_vstone.py vào TẤT CẢ các thư mục custom_nodes để không bị bản cũ đè
         target_helper_paths = [
@@ -312,7 +320,7 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         extras_vstone = os.path.join(comfy_root, "comfy_extras", "nodes_vstone.py")
         if os.path.exists(extras_vstone):
             target_helper_paths.append(extras_vstone)
-        if os.path.isdir(os.path.join(custom_nodes_dir, "ComfyUI_Qwen21_MiniMaxH3_AIO")):
+        if os.path.isdir(aio_dir):
             os.makedirs(aio_vstone_dir, exist_ok=True)
             target_helper_paths.append(os.path.join(aio_vstone_dir, "node_helper_vstone.py"))
         if os.path.isdir(sibling_repo_vstone):
@@ -320,8 +328,10 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
 
         for dst in target_helper_paths:
             try:
-                with open(dst, "wb") as f:
+                tmp_dst = dst + ".tmp"
+                with open(tmp_dst, "wb") as f:
                     f.write(helper_bytes)
+                os.replace(tmp_dst, dst)
                 logs.append(f"Updated: {dst}")
             except Exception as e:
                 logs.append(f"Skip {dst}: {e}")
@@ -329,11 +339,12 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         # 2. Ghi __init__.py
         try:
             init_bytes = _http_get_bytes(f"{raw_ref_base}/vstone/__init__.py?_t={ts}", timeout=15)
-            with open(os.path.join(vstone_dir, "__init__.py"), "wb") as f:
-                f.write(init_bytes)
-            if os.path.isdir(aio_vstone_dir):
-                with open(os.path.join(aio_vstone_dir, "__init__.py"), "wb") as f:
+            if init_bytes and len(init_bytes) > 50:
+                with open(os.path.join(vstone_dir, "__init__.py"), "wb") as f:
                     f.write(init_bytes)
+                if os.path.isdir(aio_vstone_dir):
+                    with open(os.path.join(aio_vstone_dir, "__init__.py"), "wb") as f:
+                        f.write(init_bytes)
         except Exception:
             pass
 
@@ -344,7 +355,9 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             manifest_bytes = _http_get_bytes(f"{raw_ref_base}/sync_manifest.json?_t={ts}", timeout=10)
             manifest_data = json.loads(manifest_bytes.decode("utf-8"))
             if isinstance(manifest_data.get("workflows"), list):
-                wf_list = manifest_data["workflows"]
+                for _w in manifest_data["workflows"]:
+                    if _w not in wf_list:
+                        wf_list.append(_w)
             if isinstance(manifest_data.get("loras"), list):
                 lora_list = manifest_data["loras"]
         except Exception:
@@ -355,12 +368,20 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             if not (path.startswith("workflows/") and path.endswith(".json")):
                 continue
             rel_wf = path[len("workflows/"):]
-            dst_wf = os.path.join(workflows_dir, rel_wf)
             try:
-                os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
                 wf_bytes = _http_get_bytes(f"{raw_ref_base}/{path}?_t={ts}", timeout=15)
-                with open(dst_wf, "wb") as f:
-                    f.write(wf_bytes)
+                if not wf_bytes or len(wf_bytes) < 50:
+                    continue
+                target_wf_dirs = [workflows_dir, vstone_wf_dir]
+                if os.path.isdir(aio_dir):
+                    target_wf_dirs.append(os.path.join(aio_dir, "workflows"))
+                for base_wf_d in target_wf_dirs:
+                    dst_wf = os.path.join(base_wf_d, rel_wf)
+                    os.makedirs(os.path.dirname(dst_wf), exist_ok=True)
+                    tmp_wf = dst_wf + ".tmp"
+                    with open(tmp_wf, "wb") as f:
+                        f.write(wf_bytes)
+                    os.replace(tmp_wf, dst_wf)
                 wf_count += 1
             except Exception:
                 pass

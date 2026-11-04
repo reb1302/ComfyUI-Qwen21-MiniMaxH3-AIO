@@ -1,0 +1,451 @@
+{
+  "last_node_id": 20,
+  "last_link_id": 24,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadVideo",
+      "pos": [60, 120],
+      "size": [320, 320],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "VIDEO", "type": "VIDEO", "links": [1], "slot_index": 0}
+      ],
+      "title": "1. Video Đầu Vào Cần Upscale (LoadVideo)",
+      "properties": {"Node name for S&R": "LoadVideo"},
+      "widgets_values": ["input_video.mp4", "image"]
+    },
+    {
+      "id": 2,
+      "type": "GetVideoComponents",
+      "pos": [420, 120],
+      "size": [240, 90],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "video", "type": "VIDEO", "link": 1}
+      ],
+      "outputs": [
+        {"name": "images", "type": "IMAGE", "links": [2, 3], "slot_index": 0},
+        {"name": "audio", "type": "AUDIO", "links": null, "slot_index": 1},
+        {"name": "fps", "type": "FLOAT", "links": [22], "slot_index": 2}
+      ],
+      "title": "Tách Khung Hình & FPS (Bỏ Qua Audio)",
+      "properties": {"Node name for S&R": "GetVideoComponents"}
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [60, 500],
+      "size": [380, 60],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "VAE", "type": "VAE", "links": [5, 6, 20], "slot_index": 0}
+      ],
+      "title": "Video VAE (Không Cần Audio VAE)",
+      "properties": {"Node name for S&R": "VAELoader"},
+      "widgets_values": ["minimax_h3_video_vae_int8_convrot.safetensors"]
+    },
+    {
+      "id": 4,
+      "type": "CLIPLoader",
+      "pos": [60, 610],
+      "size": [380, 106],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "CLIP", "type": "CLIP", "links": [7], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPLoader"},
+      "widgets_values": ["qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "minimax", "default"]
+    },
+    {
+      "id": 5,
+      "type": "UNETLoader",
+      "pos": [60, 760],
+      "size": [380, 82],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [8], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "UNETLoader"},
+      "widgets_values": ["minimax_h3_ref2va_pruned_int8_convrot.safetensors", "default"]
+    },
+    {
+      "id": 6,
+      "type": "LoraLoaderModelOnly",
+      "pos": [480, 760],
+      "size": [440, 82],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 8}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [9], "slot_index": 0}
+      ],
+      "title": "Kijai DMAD 4-Step Full LoRA",
+      "properties": {"Node name for S&R": "LoraLoaderModelOnly"},
+      "widgets_values": ["minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors", 1.0]
+    },
+    {
+      "id": 7,
+      "type": "MiniMaxH3SigmaShift",
+      "pos": [960, 760],
+      "size": [280, 82],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 9}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [10, 11], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "MiniMaxH3SigmaShift"},
+      "widgets_values": [12.0, 3.0]
+    },
+    {
+      "id": 8,
+      "type": "ImageScaleToTotalPixels",
+      "pos": [700, 100],
+      "size": [280, 130],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 2}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [4], "slot_index": 0}
+      ],
+      "title": "2A. Chuẩn Hóa Khung Hình Chia Hết Cho 32 (0.5 MP)",
+      "properties": {"Node name for S&R": "ImageScaleToTotalPixels"},
+      "widgets_values": ["lanczos", 0.5, 32]
+    },
+    {
+      "id": 9,
+      "type": "VAEEncode",
+      "pos": [1020, 100],
+      "size": [210, 60],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "pixels", "type": "IMAGE", "link": 4},
+        {"name": "vae", "type": "VAE", "link": 5}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [12], "slot_index": 0}
+      ],
+      "title": "2B. Mã Hóa Video Thành Latent",
+      "properties": {"Node name for S&R": "VAEEncode"}
+    },
+    {
+      "id": 10,
+      "type": "MinimaxH3LatentUpscaler3D",
+      "pos": [1270, 80],
+      "size": [440, 230],
+      "flags": {"collapsed": false},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "latent", "type": "LATENT", "link": 12}
+      ],
+      "outputs": [
+        {"name": "latent", "type": "LATENT", "links": [13], "slot_index": 0}
+      ],
+      "title": "3. Asirus BF16-MAXQUALITY v5 Latent Upscaler -> 2.0 MP",
+      "properties": {"Node name for S&R": "MinimaxH3LatentUpscaler3D"},
+      "widgets_values": [
+        "minimax_h3_bf16_CONSERVATIVE_v5.safetensors",
+        "megapixels",
+        2.0,
+        32,
+        true,
+        false,
+        "cuda",
+        "bf16"
+      ],
+      "color": "#332922",
+      "bgcolor": "#593930"
+    },
+    {
+      "id": 11,
+      "type": "ImageFromBatch",
+      "pos": [700, 340],
+      "size": [260, 82],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {"name": "image", "type": "IMAGE", "link": 3}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [14], "slot_index": 0}
+      ],
+      "title": "Lấy Frame Đầu Làm Ảnh Tham Chiếu (<Picture 1>)",
+      "properties": {"Node name for S&R": "ImageFromBatch"},
+      "widgets_values": [0, 1]
+    },
+    {
+      "id": 12,
+      "type": "MiniMaxH3ReferenceToVideo",
+      "pos": [1000, 340],
+      "size": [520, 340],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 7},
+        {"name": "vae", "type": "VAE", "link": 6},
+        {"name": "audio_vae", "type": "VAE", "link": null},
+        {
+          "label": "ref_image_0",
+          "name": "ref_images.ref_image_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 14
+        },
+        {
+          "label": "ref_image_1",
+          "name": "ref_images.ref_image_1",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "ref_video_0",
+          "name": "ref_videos.ref_video_0",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "label": "ref_video_audio_0",
+          "name": "ref_video_audios.ref_video_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "label": "ref_audio_0",
+          "name": "ref_audios.ref_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {"name": "positive", "type": "CONDITIONING", "links": [15], "slot_index": 0},
+        {"name": "LATENT", "type": "LATENT", "links": null, "slot_index": 1}
+      ],
+      "title": "Conditioning Giữ Mặt & Chi Tiết (<Picture 1> - Không Audio)",
+      "properties": {"Node name for S&R": "MiniMaxH3ReferenceToVideo"},
+      "widgets_values": [
+        "<Picture 1> High-resolution ultra-detailed video refinement, preserving exact character identity, facial features, natural skin texture, crisp hair strands, and clean lighting.",
+        1344,
+        768,
+        73,
+        "match"
+      ]
+    },
+    {
+      "id": 13,
+      "type": "RandomNoise",
+      "pos": [1580, 340],
+      "size": [240, 82],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "NOISE", "type": "NOISE", "links": [16], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "RandomNoise"},
+      "widgets_values": [444, "fixed"]
+    },
+    {
+      "id": 14,
+      "type": "BasicGuider",
+      "pos": [1580, 460],
+      "size": [240, 60],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 10},
+        {"name": "conditioning", "type": "CONDITIONING", "link": 15}
+      ],
+      "outputs": [
+        {"name": "GUIDER", "type": "GUIDER", "links": [17], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "BasicGuider"}
+    },
+    {
+      "id": 15,
+      "type": "KSamplerSelect",
+      "pos": [1580, 560],
+      "size": [240, 60],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "SAMPLER", "type": "SAMPLER", "links": [18], "slot_index": 0}
+      ],
+      "title": "Sampler (er_sde)",
+      "properties": {"Node name for S&R": "KSamplerSelect"},
+      "widgets_values": ["er_sde"]
+    },
+    {
+      "id": 16,
+      "type": "BasicScheduler",
+      "pos": [1580, 660],
+      "size": [260, 106],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 11}
+      ],
+      "outputs": [
+        {"name": "SIGMAS", "type": "SIGMAS", "links": [19], "slot_index": 0}
+      ],
+      "title": "Scheduler (linear_quadratic, 6 steps, denoise 0.45)",
+      "properties": {"Node name for S&R": "BasicScheduler"},
+      "widgets_values": ["linear_quadratic", 6, 0.45]
+    },
+    {
+      "id": 17,
+      "type": "SamplerCustomAdvanced",
+      "pos": [1880, 120],
+      "size": [280, 220],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {"name": "noise", "type": "NOISE", "link": 16},
+        {"name": "guider", "type": "GUIDER", "link": 17},
+        {"name": "sampler", "type": "SAMPLER", "link": 18},
+        {"name": "sigmas", "type": "SIGMAS", "link": 19},
+        {"name": "latent_image", "type": "LATENT", "link": 13}
+      ],
+      "outputs": [
+        {"name": "output", "type": "LATENT", "links": [21], "slot_index": 0},
+        {"name": "denoised_output", "type": "LATENT", "links": null, "slot_index": 1}
+      ],
+      "title": "4. High-Res Latent Refinement (Denoise 0.45)",
+      "properties": {"Node name for S&R": "SamplerCustomAdvanced"}
+    },
+    {
+      "id": 18,
+      "type": "VAEDecode",
+      "pos": [2200, 120],
+      "size": [210, 60],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 21},
+        {"name": "vae", "type": "VAE", "link": 20}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [23], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAEDecode"}
+    },
+    {
+      "id": 19,
+      "type": "CreateVideo",
+      "pos": [2450, 120],
+      "size": [240, 100],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 23},
+        {"name": "audio", "type": "AUDIO", "link": null},
+        {"name": "fps", "type": "FLOAT", "widget": {"name": "fps"}, "link": 22}
+      ],
+      "outputs": [
+        {"name": "VIDEO", "type": "VIDEO", "links": [24], "slot_index": 0}
+      ],
+      "title": "Ghép Video (Không Audio)",
+      "properties": {"Node name for S&R": "CreateVideo"},
+      "widgets_values": [24.0]
+    },
+    {
+      "id": 20,
+      "type": "SaveVideo",
+      "pos": [2730, 120],
+      "size": [520, 460],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {"name": "video", "type": "VIDEO", "link": 24}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "SaveVideo"},
+      "widgets_values": ["video/MiniMax_H3_V2V_LatentUpscale", "auto", "auto"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "VIDEO"],
+    [2, 2, 0, 8, 0, "IMAGE"],
+    [3, 2, 0, 11, 0, "IMAGE"],
+    [4, 8, 0, 9, 0, "IMAGE"],
+    [5, 3, 0, 9, 1, "VAE"],
+    [6, 3, 0, 12, 1, "VAE"],
+    [7, 4, 0, 12, 0, "CLIP"],
+    [8, 5, 0, 6, 0, "MODEL"],
+    [9, 6, 0, 7, 0, "MODEL"],
+    [10, 7, 0, 14, 0, "MODEL"],
+    [11, 7, 0, 16, 0, "MODEL"],
+    [12, 9, 0, 10, 0, "LATENT"],
+    [13, 10, 0, 17, 4, "LATENT"],
+    [14, 11, 0, 12, 3, "IMAGE"],
+    [15, 12, 0, 14, 1, "CONDITIONING"],
+    [16, 13, 0, 17, 0, "NOISE"],
+    [17, 14, 0, 17, 1, "GUIDER"],
+    [18, 15, 0, 17, 2, "SAMPLER"],
+    [19, 16, 0, 17, 3, "SIGMAS"],
+    [20, 3, 0, 18, 1, "VAE"],
+    [21, 17, 0, 18, 0, "LATENT"],
+    [22, 2, 2, 19, 2, "FLOAT"],
+    [23, 18, 0, 19, 0, "IMAGE"],
+    [24, 19, 0, 20, 0, "VIDEO"]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "MiniMax-H3 1-Pass V2V Latent Upscaler (Asirus BF16-MAXQUALITY v5 - Không Audio)",
+      "bounding": [40, 20, 3240, 860],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.75,
+      "offset": [40, 40]
+    }
+  },
+  "version": 0.4
+}

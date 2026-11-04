@@ -65,6 +65,8 @@
   "workflows": [
     "workflows/minimax_h3/huy_minhmax_screenx.json",
     "workflows/minimax_h3/video_minimax_h3_r2v_image_video.json",
+    "workflows/minimax_h3/video_minimax_h3_i2v_latent_upscaler.json",
+    "workflows/minimax_h3/video_minimax_h3_r2v_latent_upscaler.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
     "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
