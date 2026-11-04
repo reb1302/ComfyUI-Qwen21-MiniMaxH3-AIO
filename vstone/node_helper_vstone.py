@@ -2974,6 +2974,108 @@ def _prepare_ref_for_qwen21(img: torch.Tensor, target_res: int = 768) -> torch.T
     return _chunked_cpu_resize(rgb, tw, th, "lanczos", "disabled", chunk_size=1)
 
 
+def _synthesize_master_wide_from_2d_refs(
+    model,
+    clip,
+    vae,
+    all_refs: list[torch.Tensor],
+    target_w: int,
+    target_h: int,
+    user_prompt: str,
+    negative_prompt: str,
+    seed: int,
+    steps: int,
+    cfg: float,
+    sampler_name: str,
+    scheduler: str,
+    max_window_mp: float = 1.4,
+) -> torch.Tensor:
+    """
+    Giai đoạn 1: Đưa toàn bộ 3-5 tấm ảnh Reference qua VAE 2D (`reference_latents` 2D đầy đủ)
+    để Qwen-Image-2.1 hiểu đúng 100% môi trường 2D của các tấm Ref và tổng hợp thành
+    1 Tấm Background Dài Thống Nhất (`Master Center Long`, tỉ lệ ~2:1) trước khi mở rộng 2 cánh dài.
+    Tự động dùng Base Model (tạm bỏ qua Outpaint LoRA ở bước tổng hợp không có nền xám) để ảnh không bị vỡ.
+    """
+    import uuid
+    import nodes
+    import comfy.model_management as mm
+
+    target_pixels = max(0.5, float(max_window_mp)) * 1_000_000.0
+    cur_pixels = float(target_w * target_h)
+    if cur_pixels > target_pixels * 1.05:
+        scale = math.sqrt(target_pixels / cur_pixels)
+        gen_w = max(64, int(round((target_w * scale) / 32.0)) * 32)
+        gen_h = max(64, int(round((target_h * scale) / 32.0)) * 32)
+    else:
+        gen_w = max(64, int(round(target_w / 32.0)) * 32)
+        gen_h = max(64, int(round(target_h / 32.0)) * 32)
+
+    images_dict: dict[str, torch.Tensor] = {}
+    for idx, r_img in enumerate(all_refs[:5], start=1):
+        if r_img is not None:
+            images_dict[f"image_{idx}"] = _prepare_ref_for_qwen21(r_img, target_res=768)
+
+    ref_tags = ", ".join(f"<image{i}>" for i in range(1, len(images_dict) + 1))
+    synth_prompt = (
+        f"Synthesize one single, seamless ultra-wide panoramic environment combining the exact scene, "
+        f"architecture, terrain, lighting, textures, and atmosphere from {ref_tags} into one unified wide-angle background. "
+        f"Maintain a single continuous horizon line and natural spatial transition across the entire wide frame without split screens or borders. "
+        + (user_prompt or "").strip()
+    ).strip()
+
+    qwen_enc_classes = _get_target_node_classes("TextEncodeQwenImage21", "comfy_extras.nodes_qwen")
+    if not qwen_enc_classes:
+        raise RuntimeError("Không tìm thấy node TextEncodeQwenImage21 trong ComfyUI.")
+
+    enc_out = qwen_enc_classes[0].execute(
+        clip=clip,
+        prompt=synth_prompt,
+        negative_prompt=negative_prompt or "",
+        vae=vae,
+        resolution=0,
+        images=images_dict,
+    )
+    enc_args = list(enc_out.args) if hasattr(enc_out, "args") else list(enc_out)
+    positive, negative = enc_args[0], enc_args[1]
+
+    # Tạo khung Latent dài (Wide 2:1) cho Tấm Giữa Dài
+    wide_latent = torch.zeros([1, 64, gen_h // 16, gen_w // 16], device=mm.intermediate_device())
+    latent_dict = {"samples": wide_latent}
+
+    # Tự động dùng Base Model sạch (không áp Outpaint LoRA khi tổng hợp 3-5 ảnh Ref không có vùng xám)
+    synth_model = model
+    try:
+        if hasattr(model, "clone") and getattr(model, "patches", None):
+            synth_model = model.clone()
+            synth_model.patches = {}
+            synth_model.patches_uuid = uuid.uuid4()
+    except Exception:
+        synth_model = model
+
+    _vstone_free_vram(unload_models=False)
+    sampled = nodes.common_ksampler(
+        model=synth_model,
+        seed=int(seed),
+        steps=int(steps),
+        cfg=float(cfg),
+        sampler_name=sampler_name,
+        scheduler=scheduler,
+        positive=positive,
+        negative=negative,
+        latent=latent_dict,
+        denoise=1.0,
+    )[0]
+
+    decoded = vae.decode(sampled["samples"])
+    if decoded.ndim == 5:
+        decoded = decoded[0]
+    decoded = decoded[:1, :, :, :3].to("cpu", dtype=torch.float32).clamp(0.0, 1.0)
+    if int(decoded.shape[2]) != target_w or int(decoded.shape[1]) != target_h:
+        decoded = _chunked_cpu_resize(decoded, target_w, target_h, "lanczos", "disabled", chunk_size=1)
+    _vstone_free_vram(unload_models=False)
+    return decoded
+
+
 def _run_qwen21_outpaint_pass(
     model,
     clip,
@@ -2988,17 +3090,12 @@ def _run_qwen21_outpaint_pass(
     sampler_name: str,
     scheduler: str,
     max_window_mp: float = 1.4,
-    semantic_refs_only: bool = True,
 ) -> torch.Tensor:
     """
-    Chạy 1 bước Qwen-Image-2.1 Outpaint trên khung `canvas_img` với danh sách `ref_images_list`:
-    - `semantic_refs_only=True` (Chống Tiling 100%): Chỉ đưa `canvas_img` (`<image1>`) vào `reference_latents` 2D của VAE
-      để neo đúng tọa độ không gian, còn các ảnh `ref_images_list` (`<image2>..<image5>`) chỉ đi qua Qwen3-VL Vision Tower
-      dưới dạng ngữ cảnh thị giác 1D (`c_crossattn`) -> AI hiểu chung 1 background mà KHÔNG BAO GIỜ dán đè/lặp hình (Tiling).
+    Chạy 1 bước Qwen-Image-2.1 Outpaint trên khung `canvas_img` với đầy đủ ngữ cảnh 2D (`reference_latents` qua VAE)
+    của `canvas_img` (`<image1>`) và `ref_images_list` (`<image2>..`).
     """
     import nodes
-    import node_helpers
-    import comfy.model_management as mm
 
     orig_h, orig_w = int(canvas_img.shape[1]), int(canvas_img.shape[2])
     target_pixels = max(0.4, float(max_window_mp)) * 1_000_000.0
@@ -3012,56 +3109,24 @@ def _run_qwen21_outpaint_pass(
         win_h = max(64, int(round(orig_h / 32.0)) * 32)
 
     work_canvas = _chunked_cpu_resize(canvas_img[:1, :, :, :3], win_w, win_h, "lanczos", "disabled", chunk_size=1)
-    images_vl: list[torch.Tensor] = [work_canvas[:, :, :, :3]]
-    for r_img in ref_images_list[:4]:
+    images_dict: dict[str, torch.Tensor] = {"image_1": work_canvas}
+    for idx, r_img in enumerate(ref_images_list[:4], start=2):
         if r_img is not None:
-            images_vl.append(_prepare_ref_for_qwen21(r_img, target_res=640)[:, :, :, :3])
+            images_dict[f"image_{idx}"] = _prepare_ref_for_qwen21(r_img, target_res=768)
 
-    canvas_latent = vae.encode(work_canvas[:, :, :, :3])
-    ref_latents = [canvas_latent]
-
-    if semantic_refs_only and len(images_vl) > 1:
-        te_model = getattr(clip, "cond_stage_model", None)
-        clip_sub = getattr(te_model, getattr(te_model, "clip", ""), None) if te_model is not None else None
-        orig_proc = getattr(clip_sub, "process_tokens", None) if clip_sub is not None else None
-
-        def _proc_first_span_only(tokens, device):
-            embeds, attention_mask, num_tokens, embeds_info = orig_proc(tokens, device)
-            clip_sub.image_spans = [(e["index"], e["size"]) for e in embeds_info if e["type"] == "image"][:1]
-            return embeds, attention_mask, num_tokens, embeds_info
-
-        try:
-            if clip_sub is not None and callable(orig_proc):
-                clip_sub.process_tokens = _proc_first_span_only
-            pos_tokens = clip.tokenize(prompt, images=images_vl, keep_vision=False, prevent_empty_text=True)
-            positive = clip.encode_from_tokens_scheduled(pos_tokens)
-            neg_tokens = clip.tokenize(negative_prompt or "", images=images_vl, keep_vision=False, prevent_empty_text=True)
-            negative = clip.encode_from_tokens_scheduled(neg_tokens)
-        finally:
-            if clip_sub is not None and callable(orig_proc):
-                clip_sub.process_tokens = orig_proc
-
-        positive = node_helpers.conditioning_set_values(positive, {"reference_latents": ref_latents}, append=True)
-        negative = node_helpers.conditioning_set_values(negative, {"reference_latents": ref_latents}, append=True)
-        empty_latent = torch.zeros([1, 64, win_h // 16, win_w // 16], device=mm.intermediate_device())
-        latent_dict = {"samples": empty_latent}
-    else:
-        images_dict: dict[str, torch.Tensor] = {"image_1": work_canvas}
-        for idx, r_img in enumerate(images_vl[1:], start=2):
-            images_dict[f"image_{idx}"] = r_img
-        qwen_enc_classes = _get_target_node_classes("TextEncodeQwenImage21", "comfy_extras.nodes_qwen")
-        if not qwen_enc_classes:
-            raise RuntimeError("Không tìm thấy node TextEncodeQwenImage21 trong ComfyUI.")
-        enc_out = qwen_enc_classes[0].execute(
-            clip=clip,
-            prompt=prompt,
-            negative_prompt=negative_prompt or "",
-            vae=vae,
-            resolution=0,
-            images=images_dict,
-        )
-        enc_args = list(enc_out.args) if hasattr(enc_out, "args") else list(enc_out)
-        positive, negative, latent_dict = enc_args[0], enc_args[1], enc_args[2]
+    qwen_enc_classes = _get_target_node_classes("TextEncodeQwenImage21", "comfy_extras.nodes_qwen")
+    if not qwen_enc_classes:
+        raise RuntimeError("Không tìm thấy node TextEncodeQwenImage21 trong ComfyUI.")
+    enc_out = qwen_enc_classes[0].execute(
+        clip=clip,
+        prompt=prompt,
+        negative_prompt=negative_prompt or "",
+        vae=vae,
+        resolution=0,
+        images=images_dict,
+    )
+    enc_args = list(enc_out.args) if hasattr(enc_out, "args") else list(enc_out)
+    positive, negative, latent_dict = enc_args[0], enc_args[1], enc_args[2]
 
     _vstone_free_vram(unload_models=False)
     sampled = nodes.common_ksampler(
@@ -3334,9 +3399,28 @@ class stoneV_Panorama360_AutoLoop:
 
         step_previews: list[torch.Tensor] = []
 
-        # Nhịp 1 (Tấm Giữa Rộng & Cao - Center Wide Plate):
-        # Mở rộng chiều cao Trên/Dưới + mở nhẹ 2 bên Trái/Phải cân đối cho tấm gốc `base_img`
-        if pad_top > 0 or pad_bottom > 0:
+        # Giai đoạn 1: Tạo 1 Ảnh Background Dài Thống Nhất (Tấm Giữa Dài - Master Center Long)
+        # từ toàn bộ bộ ảnh Ref 2D (`reference_latents` qua VAE) để hiểu đúng 100% môi trường Ref mà không bị Tiling
+        if extra_refs and not panorama_mode.startswith("3."):
+            center_w = max(base_w, int(round((base_w * 1.6) / 32.0)) * 32)
+            all_2d_refs = [base_img] + extra_refs
+            pano_img = _synthesize_master_wide_from_2d_refs(
+                model=model,
+                clip=clip,
+                vae=vae,
+                all_refs=all_2d_refs,
+                target_w=center_w,
+                target_h=pano_h,
+                user_prompt=prompt,
+                negative_prompt=negative_prompt,
+                seed=int(seed),
+                steps=steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+            )
+            step_previews.append(_chunked_cpu_resize(pano_img, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
+        elif pad_top > 0 or pad_bottom > 0:
             center_pad_x = max(64, int(round((base_w * 0.25) / 32.0)) * 32)
             center_w = base_w + 2 * center_pad_x
             step1_canvas = self._make_blank_canvas(pano_h, center_w, is_green)
@@ -3359,7 +3443,6 @@ class stoneV_Panorama360_AutoLoop:
                 scheduler=scheduler,
             )
 
-            # Khôi phục vùng trung tâm của base_img với feather 4 cạnh mượt
             mask1 = torch.ones((1, pano_h, center_w), dtype=torch.float32)
             mask1[:, pad_top : pad_top + base_h, center_pad_x : center_pad_x + base_w] = 0.0
             mask1 = _feather_mask(mask1, max(16, int(blend_width_px // 2)))
@@ -3369,9 +3452,18 @@ class stoneV_Panorama360_AutoLoop:
         else:
             pano_img = base_img
 
-        # Nhịp 2 & 3 (Vẽ 2 Cánh Dài Trái & Phải từ ngữ cảnh chung chống Tiling):
+        master_center_ref = pano_img
+
+        # Giai đoạn 2: Từ Tấm Giữa Dài, mở rộng 2 Cánh Dài (Cánh Phải Dài & Cánh Trái Dài) có đầy đủ 2D Ref Latents
+        # và ghép nối 3 Cánh Dài [Cánh Trái Dài | Tấm Giữa Dài | Cánh Phải Dài]
         for step_idx, side in enumerate(sides_plan):
-            step_refs = self._select_step_refs(step_idx, side, base_img, extra_refs, panorama_mode)
+            if panorama_mode.startswith("3."):
+                step_refs = self._select_step_refs(step_idx, side, base_img, extra_refs, panorama_mode)
+            elif extra_refs:
+                dir_ref = extra_refs[step_idx % len(extra_refs)] if side == "right" else extra_refs[-(1 + (step_idx % len(extra_refs)))]
+                step_refs = [master_center_ref, dir_ref]
+            else:
+                step_refs = [master_center_ref]
             step_seed = int(seed) + (step_idx + 1) * 101
 
             if side == "right":
