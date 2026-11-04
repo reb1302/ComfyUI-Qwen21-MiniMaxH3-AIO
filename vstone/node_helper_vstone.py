@@ -593,17 +593,21 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         except Exception as e:
             logs.append(f"Hot-reload warning: {e}")
 
-        # 4. Tự động tải các LoRA / Upscaler về ComfyUI/models/ nếu chưa có
-        for l_item in lora_list:
-            folder = l_item.get("folder", "loras")
-            fname = l_item.get("filename", "")
-            url = l_item.get("url", "")
-            if folder and fname and url:
-                try:
-                    dl_res = download_file_to_comfy_models(folder, fname, url)
-                    logs.append(dl_res)
-                except Exception as e:
-                    logs.append(f"LoRA sync skip {fname}: {e}")
+        # 4. Tự động tải ngầm các LoRA / Model về ComfyUI/models/ (không khóa luồng Sync)
+        def _bg_download_models(items_to_dl):
+            for l_item in items_to_dl:
+                folder = l_item.get("folder", "loras")
+                fname = l_item.get("filename", "")
+                url = l_item.get("url", "")
+                if folder and fname and url:
+                    try:
+                        download_file_to_comfy_models(folder, fname, url)
+                    except Exception as e:
+                        print(f"[VStone Downloader] Skip {fname}: {e}")
+
+        if lora_list:
+            threading.Thread(target=_bg_download_models, args=(list(lora_list),), daemon=True).start()
+            logs.append(f"Started background check/download for {len(lora_list)} models/LoRAs.")
 
         _LAST_SYNCED_HASH = new_hash
         setattr(_sys_mod, "_vstone_last_synced_hash", new_hash)
@@ -969,7 +973,62 @@ def apply_comfy_runtime_fixes() -> str:
         except Exception:
             pass
 
-    # 3. Check and recover ComfyUI prompt_worker & queue
+    # 3. Hook folder_paths so native UNETLoader/CLIPLoader/VAELoader/LoraLoaderModelOnly recognize & auto-download LTX-2.5 models
+    try:
+        import folder_paths
+        if not getattr(folder_paths, "_vstone_ltx25_hooked", False):
+            orig_get_filename_list = folder_paths.get_filename_list
+            orig_get_full_path = folder_paths.get_full_path
+
+            _ltx_virtual_files = {
+                "diffusion_models": ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
+                "unet": ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
+                "loras": [
+                    "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+                    "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+                ],
+                "text_encoders": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
+                "clip": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
+                "vae": [
+                    "ltx-2.5-video-vae-bf16.safetensors",
+                    "ltx-2.5-audio-vae-bf16.safetensors",
+                ],
+                "latent_upscale_models": ["ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"],
+            }
+
+            def _vstone_get_filename_list(folder_name: str):
+                res = list(orig_get_filename_list(folder_name))
+                for vf in _ltx_virtual_files.get(folder_name, []):
+                    if vf not in res:
+                        res.append(vf)
+                return res
+
+            def _vstone_get_full_path(folder_name: str, filename: str):
+                p = orig_get_full_path(folder_name, filename)
+                if p is not None and os.path.exists(p):
+                    return p
+                clean_name = os.path.basename(filename) if filename else ""
+                if clean_name in LTX25_URL_BY_FILENAME:
+                    target_folder, url = LTX25_URL_BY_FILENAME[clean_name]
+                    print(f"[VStone Auto-Downloader] Missing {clean_name}, downloading from ungated mirror...")
+                    download_file_to_comfy_models(target_folder, clean_name, url)
+                    p = orig_get_full_path(folder_name, filename)
+                    if p is not None and os.path.exists(p):
+                        return p
+                    comfy_root = _get_comfy_root()
+                    if comfy_root:
+                        fallback_p = os.path.join(comfy_root, "models", target_folder, clean_name)
+                        if os.path.exists(fallback_p):
+                            return fallback_p
+                return p
+
+            folder_paths.get_filename_list = _vstone_get_filename_list
+            folder_paths.get_full_path = _vstone_get_full_path
+            setattr(folder_paths, "_vstone_ltx25_hooked", True)
+    except Exception:
+        pass
+
+    # 4. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()
     all_notes = []
     if restored:
