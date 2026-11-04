@@ -3214,25 +3214,25 @@ class stoneV_Panorama360_AutoLoop:
                     "tooltip": "Số cánh dài mở rộng sang 2 bên (Mặc định 2 = 1 Cánh Phải Dài + 1 Cánh Trái Dài ghép với Tấm Giữa = 3 Cánh Dài chống Tiling)."
                 }),
                 "height_expand_ratio": ("FLOAT", {
-                    "default": 1.35,
-                    "min": 1.0,
+                    "default": 0.50,
+                    "min": 0.25,
                     "max": 2.5,
                     "step": 0.05,
-                    "tooltip": "Tỉ số mở rộng chiều cao Trên/Dưới cao hơn ảnh gốc (1.35 = cao gấp 1.35 lần ảnh gốc)."
+                    "tooltip": "Hệ số Chiều Cao nhân với Chiều Dài chuẩn 2K (2048px) của 1 tấm (0.50 = cao 1024px -> 2048x1024; 0.56 = cao 1152px; 0.60 = cao 1216px)."
                 }),
                 "step_extend_ratio": ("FLOAT", {
-                    "default": 1.2,
-                    "min": 0.4,
+                    "default": 1.0,
+                    "min": 0.5,
                     "max": 1.6,
-                    "step": 0.1,
-                    "tooltip": "Độ dài mỗi cánh mở thêm (1.2 = mỗi cánh dài bằng 1.2x chiều rộng ảnh gốc; 3 cánh gộp lại rộng ~4.0x)."
+                    "step": 0.05,
+                    "tooltip": "Hệ số chiều dài mỗi tấm Cánh so với chuẩn 2K 2048px (1.0 = mỗi tấm Cánh dài đúng 2048px; 1.2 = mỗi tấm Cánh dài 2464px)."
                 }),
                 "keep_anchor_ratio": ("FLOAT", {
-                    "default": 0.5,
-                    "min": 0.35,
+                    "default": 0.35,
+                    "min": 0.20,
                     "max": 0.85,
                     "step": 0.05,
-                    "tooltip": "Chỉ lấy 0.5 (nửa tấm ngoài cùng) làm mồi neo sát vùng xám để Qwen-Image-2.1 vẽ nét căng."
+                    "tooltip": "Tỉ lệ phần mồi neo lấy từ tấm trước trong mỗi cửa sổ 2K (0.35 = lấy 704px mồi neo + 1344px vẽ nối tiếp mới = đủ 1 tấm 2048px)."
                 }),
                 "close_360_loop": ("BOOLEAN", {
                     "default": False,
@@ -3411,26 +3411,20 @@ class stoneV_Panorama360_AutoLoop:
         if scheduler not in ("simple", "beta", "normal", "sgm_uniform"):
             scheduler = "simple"
 
-        # Chuẩn hóa kích thước cơ sở bội số 32 (giữ độ nét cao và vừa vặn cửa sổ Qwen 2.1)
-        max_base_dim = 1088
-        if max(raw_w, raw_h) > max_base_dim:
-            s_factor = float(max_base_dim) / float(max(raw_w, raw_h))
-            base_w = max(128, int(round((raw_w * s_factor) / 32.0)) * 32)
-            base_h = max(128, int(round((raw_h * s_factor) / 32.0)) * 32)
-            base_img = _chunked_cpu_resize(base_img, base_w, base_h, "lanczos", "disabled", chunk_size=1)
-        else:
-            base_w = max(128, int(round(raw_w / 32.0)) * 32)
-            base_h = max(128, int(round(raw_h / 32.0)) * 32)
-            if base_w != raw_w or base_h != raw_h:
-                base_img = _chunked_cpu_resize(base_img, base_w, base_h, "lanczos", "disabled", chunk_size=1)
+        # Tất cả ảnh đầu vào (image_1 + ref_image_2..5) CHỈ được coi là Ảnh Tham Chiếu (Reference)
+        # Chiều dài chuẩn 1 tấm được khóa cố định ở mức 2K (2048px), bất kể kích thước ảnh đầu vào lộn xộn thế nào.
+        plate_w = 2048
+        raw_h_ratio = float(height_expand_ratio)
+        # Tương thích ngược nếu trình duyệt cũ chưa F5 vẫn gửi giá trị > 1.0 (như 1.35 cũ)
+        eff_h_ratio = (0.50 * (raw_h_ratio / 1.35)) if raw_h_ratio > 1.0 else max(0.25, raw_h_ratio)
+        pano_h = max(512, int(round((plate_w * eff_h_ratio) / 32.0)) * 32)
 
-        pano_h = max(base_h, int(round((base_h * float(height_expand_ratio)) / 32.0)) * 32)
-        pad_top = (pano_h - base_h) // 2
-        pad_bottom = pano_h - base_h - pad_top
-
-        anchor_w = max(64, min(base_w, int(round((base_w * float(keep_anchor_ratio)) / 32.0)) * 32))
-        ext_w = max(64, int(round((base_w * float(step_extend_ratio)) / 32.0)) * 32)
-        win_w = anchor_w + ext_w
+        # Mỗi tấm Cánh (Wing) cũng có chiều dài chuẩn 2K (2048px khi step_extend_ratio = 1.0)
+        eff_keep_ratio = 0.35 if float(keep_anchor_ratio) == 0.5 and raw_h_ratio > 1.0 else float(keep_anchor_ratio)
+        eff_ext_ratio = 1.0 if float(step_extend_ratio) == 1.2 and raw_h_ratio > 1.0 else float(step_extend_ratio)
+        win_w = max(1024, int(round((plate_w * eff_ext_ratio) / 32.0)) * 32)
+        anchor_w = max(256, min(win_w - 512, int(round((plate_w * eff_keep_ratio) / 32.0)) * 32))
+        ext_w = max(512, win_w - anchor_w)
         is_green = str(fill_mode).startswith("Green")
 
         extra_refs: list[torch.Tensor] = []
@@ -3452,66 +3446,29 @@ class stoneV_Panorama360_AutoLoop:
         uid = kwargs.get("unique_id", None)
         total_passes = 1 + len(sides_plan) + (1 if close_360_loop else 0)
 
-        # Giai đoạn 1: Tạo 1 Ảnh Background Dài Thống Nhất (Tấm Giữa Dài - Master Center Long)
-        # từ toàn bộ bộ ảnh Ref 2D (`reference_latents` qua VAE) để hiểu đúng 100% môi trường Ref mà không bị Tiling
-        if extra_refs and not panorama_mode.startswith("3."):
-            center_w = max(base_w, int(round((base_w * 1.6) / 32.0)) * 32)
-            all_2d_refs = [base_img] + extra_refs
-            _vstone_ui_status(
-                uid,
-                f"🚀 [NODE MỚI v3.0 - 2D Master] Nhịp 1/{total_passes}: Đang tổng hợp 1 Tấm Giữa Dài ({center_w}x{pano_h}) từ {len(all_2d_refs)} ảnh Ref 2D...",
-            )
-            pano_img = _synthesize_master_wide_from_2d_refs(
-                model=model,
-                clip=clip,
-                vae=vae,
-                all_refs=all_2d_refs,
-                target_w=center_w,
-                target_h=pano_h,
-                user_prompt=prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed),
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-            step_previews.append(_chunked_cpu_resize(pano_img, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
-        elif pad_top > 0 or pad_bottom > 0:
-            center_pad_x = max(64, int(round((base_w * 0.25) / 32.0)) * 32)
-            center_w = base_w + 2 * center_pad_x
-            _vstone_ui_status(
-                uid,
-                f"🚀 [NODE MỚI v3.0 - 2D Master] Nhịp 1/{total_passes}: Mở rộng Tấm Giữa ({center_w}x{pano_h})...",
-            )
-            step1_canvas = self._make_blank_canvas(pano_h, center_w, is_green)
-            step1_canvas[:, pad_top : pad_top + base_h, center_pad_x : center_pad_x + base_w, :] = base_img
-
-            center_refs = self._select_step_refs(0, "center", base_img, extra_refs, panorama_mode)
-            step1_prompt = self._build_step_prompt("left, right, top, and bottom borders", len(center_refs), prompt, is_green=is_green)
-            gen1 = _run_qwen21_outpaint_pass(
-                model=model,
-                clip=clip,
-                vae=vae,
-                canvas_img=step1_canvas,
-                ref_images_list=center_refs,
-                prompt=step1_prompt,
-                negative_prompt=negative_prompt,
-                seed=int(seed),
-                steps=steps,
-                cfg=cfg,
-                sampler_name=sampler_name,
-                scheduler=scheduler,
-            )
-
-            mask1 = torch.ones((1, pano_h, center_w), dtype=torch.float32)
-            mask1[:, pad_top : pad_top + base_h, center_pad_x : center_pad_x + base_w] = 0.0
-            mask1 = _feather_mask(mask1, max(16, int(blend_width_px // 2)))
-            m3 = mask1.unsqueeze(-1)
-            pano_img = step1_canvas * (1.0 - m3) + gen1 * m3
-            step_previews.append(_chunked_cpu_resize(pano_img, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
-        else:
-            pano_img = base_img
+        # Giai đoạn 1: Coi toàn bộ image_1 + ref_image_2..5 là ảnh Ref 2D để tái tạo 1 Tấm Giữa Chuẩn 2K (2048 x pano_h)
+        center_w = plate_w
+        all_2d_refs = [base_img] + extra_refs
+        _vstone_ui_status(
+            uid,
+            f"🚀 [NODE MỚI v3.0 - 2K Plate] Nhịp 1/{total_passes}: Tái tạo Tấm Giữa 2K ({center_w}x{pano_h}) từ {len(all_2d_refs)} ảnh Ref 2D...",
+        )
+        pano_img = _synthesize_master_wide_from_2d_refs(
+            model=model,
+            clip=clip,
+            vae=vae,
+            all_refs=all_2d_refs,
+            target_w=center_w,
+            target_h=pano_h,
+            user_prompt=prompt,
+            negative_prompt=negative_prompt,
+            seed=int(seed),
+            steps=steps,
+            cfg=cfg,
+            sampler_name=sampler_name,
+            scheduler=scheduler,
+        )
+        step_previews.append(_chunked_cpu_resize(pano_img, win_w, pano_h, "bilinear", "disabled", chunk_size=1))
 
         master_center_ref = pano_img
 
