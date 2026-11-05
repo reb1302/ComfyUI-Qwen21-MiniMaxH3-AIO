@@ -3233,7 +3233,7 @@ svg{display:block}
 .tiles{display:grid;gap:10px;padding:5px}
 .tiles:empty{display:none}
 .tile{position:relative;width:48px;height:48px;padding:4px;border:0;border-radius:6px;background:var(--c);color:var(--on);cursor:pointer;display:grid;place-items:center}
-.tile img{width:100%;height:100%;object-fit:cover;display:block;border-radius:3px}
+.tile img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);max-width:none;object-fit:cover;display:block;border-radius:3px}
 .tile[data-painted="false"]{opacity:.55}
 .tile[data-active="true"]{opacity:1;box-shadow:0 0 0 2px var(--bench),0 0 0 4px var(--paper)}
 .bang{position:absolute;right:-5px;top:-5px;width:17px;height:17px;border-radius:50%;background:var(--warn);color:#111;font:600 11px/17px var(--font-ui);text-align:center}
