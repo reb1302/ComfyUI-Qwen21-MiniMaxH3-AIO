@@ -32,6 +32,11 @@
       "folder": "loras"
     },
     {
+      "filename": "qwen-image-2.1-qma-camera-angles.safetensors",
+      "url": "https://huggingface.co/gribbliest/qwen-image-2.1-qma-camera-angles/resolve/main/qwen-image-2.1-qma-camera-angles.safetensors",
+      "folder": "loras"
+    },
+    {
       "filename": "QI2.1_AnyAngle.safetensors",
       "url": "https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors",
       "folder": "loras"
@@ -199,6 +204,7 @@
   ],
   "workflows": [
     "workflows/anyangle_studio/AnyAngle-Studio-Qwen21.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_xoay_dummy.app.json",
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit_light.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_image_edit_light.json",
