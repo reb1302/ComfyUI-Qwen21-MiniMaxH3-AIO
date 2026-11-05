@@ -86,11 +86,81 @@ LTX25_OUTPAINT_SUITE_MODELS: list[dict[str, str]] = [
     },
 ]
 
+WAN21_VACE_OUTPAINT_MODELS: list[dict[str, str]] = [
+    {
+        "folder": "text_encoders",
+        "filename": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    },
+    {
+        "folder": "vae",
+        "filename": "wan_2.1_vae.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+    },
+    {
+        "folder": "diffusion_models",
+        "filename": "wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+        "url": "https://huggingface.co/Kamikaze-88/Wan2.1-VACE-14B-fp8/resolve/main/wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+    },
+    {
+        "folder": "diffusion_models",
+        "filename": "wan2.1_vace_14B_fp16.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/diffusion_models/wan2.1_vace_14B_fp16.safetensors",
+    },
+    {
+        "folder": "text_encoders",
+        "filename": "umt5_xxl_fp16.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp16.safetensors",
+    },
+    {
+        "folder": "diffusion_models",
+        "filename": "wan2.1_vace_1.3B_fp16.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/diffusion_models/wan2.1_vace_1.3B_fp16.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+        "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+    },
+]
+
 LTX25_URL_BY_FILENAME: dict[str, tuple[str, str]] = {
-    item["filename"]: (item["folder"], item["url"]) for item in LTX25_OUTPAINT_SUITE_MODELS
+    item["filename"]: (item["folder"], item["url"])
+    for item in (LTX25_OUTPAINT_SUITE_MODELS + WAN21_VACE_OUTPAINT_MODELS)
 }
 
 PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
+    "ALL Wan 2.1 VACE Outpaint Suite (Tải trọn bộ Wan 2.1 VACE 14B + UMT5 + VAE + CausVid LoRA)": ("__ALL_WAN21_VACE__", "", ""),
+    "Wan 2.1 UMT5-XXL FP8 Scaled Text Encoder (umt5_xxl_fp8_e4m3fn_scaled.safetensors - 6.7GB)": (
+        "text_encoders",
+        "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    ),
+    "Wan 2.1 VACE 14B Full Merged FP8 (wan2.1_vace_14B_fp8_e4m3fn.safetensors - 16.1GB)": (
+        "diffusion_models",
+        "wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+        "https://huggingface.co/Kamikaze-88/Wan2.1-VACE-14B-fp8/resolve/main/wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+    ),
+    "Wan 2.1 VACE 14B Full Merged FP16 Official (wan2.1_vace_14B_fp16.safetensors - 32.3GB)": (
+        "diffusion_models",
+        "wan2.1_vace_14B_fp16.safetensors",
+        "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/diffusion_models/wan2.1_vace_14B_fp16.safetensors",
+    ),
+    "Wan 2.1 VAE Official (wan_2.1_vae.safetensors - 254MB)": (
+        "vae",
+        "wan_2.1_vae.safetensors",
+        "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+    ),
+    "Wan 2.1 CausVid 14B T2V LoRA Rank32 (Wan21_CausVid_14B_T2V_lora_rank32.safetensors - 291MB)": (
+        "loras",
+        "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+        "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+    ),
     "ALL Laptop LoRAs + Upscalers (Tự tải trọn bộ LoRA + 4x-UltraSharp + DMAD + 3D Upscaler)": ("__ALL_LAPTOP_LORAS__", "", ""),
     "ALL Laptop LoRAs (Tự tải High quality + Outpaint v2 + 360)": ("__ALL_LAPTOP_LORAS__", "", ""),
     "ALL LTX-2.5 Outpaint/Inpaint Suite (Tải trọn bộ Model LTX-2.5 Outpaint Ungated - Không cần API Key)": ("__ALL_LTX25_OUTPAINT__", "", ""),
@@ -285,6 +355,8 @@ import hashlib
 _LAST_SYNCED_HASH: str = ""
 
 DEFAULT_SYNC_WORKFLOWS = [
+    "workflows/video_wan_vace_outpainting.json",
+    "workflows/wan_vace/video_wan_vace_outpainting.json",
     "workflows/ltx_2.5/LTX25_Cai_Dat_1_Click.json",
     "workflows/ltx_2.5/LTX25_Outpaint_Official.json",
     "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
@@ -652,12 +724,55 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-VSTONE_RUNTIME_PATCH_VER = 5
+VSTONE_RUNTIME_PATCH_VER = 6
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
 # Lưu trên sys để mọi lần hot-reload dùng chung 1 lock, không tải 2 lần vào cùng file .part
 _DOWNLOAD_LOCK = sys.__dict__.setdefault("_vstone_download_lock", threading.Lock())
+
+
+def _read_safetensors_header(path: str) -> tuple[dict[str, Any] | None, int, int]:
+    """Read the JSON header of a .safetensors file in <1ms and compute (header, expected_file_size, actual_file_size)."""
+    import struct
+    try:
+        if not path or not os.path.isfile(path):
+            return None, 0, 0
+        actual_size = os.path.getsize(path)
+        if actual_size < 16:
+            return None, 0, actual_size
+        with open(path, "rb") as f:
+            raw_len = f.read(8)
+            if len(raw_len) < 8:
+                return None, 0, actual_size
+            header_len = struct.unpack("<Q", raw_len)[0]
+            if header_len <= 0 or header_len > 100 * 1024 * 1024 or actual_size < 8 + header_len:
+                return None, 8 + int(header_len), actual_size
+            hdr = json.loads(f.read(header_len).decode("utf-8"))
+        if not isinstance(hdr, dict):
+            return None, 0, actual_size
+        max_end = 0
+        for k, v in hdr.items():
+            if k != "__metadata__" and isinstance(v, dict):
+                offsets = v.get("data_offsets")
+                if isinstance(offsets, list) and len(offsets) == 2:
+                    end_off = int(offsets[1])
+                    if end_off > max_end:
+                        max_end = end_off
+        expected_size = 8 + int(header_len) + max_end
+        return hdr, expected_size, actual_size
+    except Exception:
+        return None, 0, 0
+
+
+def _is_valid_safetensors_file(path: str) -> bool:
+    """Verify that a .safetensors file has a valid JSON header and its size on disk matches 8 + header_len + max_offset."""
+    if not path or not os.path.isfile(path):
+        return False
+    if not path.lower().endswith(".safetensors"):
+        return os.path.getsize(path) > 1024 * 1024
+    hdr, expected_size, actual_size = _read_safetensors_header(path)
+    return hdr is not None and expected_size > 8 and actual_size == expected_size
 
 
 def _vstone_free_vram(unload_models: bool = False) -> None:
@@ -978,20 +1093,46 @@ def apply_comfy_runtime_fixes() -> str:
         except Exception:
             pass
 
-    # 3. Hook folder_paths so native UNETLoader/CLIPLoader/VAELoader/LoraLoaderModelOnly recognize & auto-download LTX-2.5 models
+    # 3. Hook folder_paths & comfy.sd so native UNETLoader/CLIPLoader/VAELoader/LoraLoaderModelOnly
+    #    recognize, validate, auto-download, and merge LTX-2.5 & Wan 2.1 VACE models seamlessly.
     try:
         import folder_paths
-        if not getattr(folder_paths, "_vstone_ltx25_hooked", False):
-            orig_get_filename_list = folder_paths.get_filename_list
-            orig_get_full_path = folder_paths.get_full_path
+        orig_get_filename_list = getattr(folder_paths, "_vstone_orig_get_filename_list", None) or folder_paths.get_filename_list
+        orig_get_full_path = getattr(folder_paths, "_vstone_orig_get_full_path", None) or folder_paths.get_full_path
+        setattr(folder_paths, "_vstone_orig_get_filename_list", orig_get_filename_list)
+        setattr(folder_paths, "_vstone_orig_get_full_path", orig_get_full_path)
 
+        if getattr(folder_paths, "_vstone_hook_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
             _ltx_virtual_files = {
-                "diffusion_models": ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
-                "unet": ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
-                "loras": ["ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors"],
-                "text_encoders": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
-                "clip": ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
+                "diffusion_models": [
+                    "wan2.1_vace_14B_fp16.safetensors",
+                    "wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+                    "wan2.1_vace_1.3B_fp16.safetensors",
+                    "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+                ],
+                "unet": [
+                    "wan2.1_vace_14B_fp16.safetensors",
+                    "wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+                    "wan2.1_vace_1.3B_fp16.safetensors",
+                    "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+                ],
+                "loras": [
+                    "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+                    "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+                    "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+                ],
+                "text_encoders": [
+                    "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+                    "umt5_xxl_fp16.safetensors",
+                    "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+                ],
+                "clip": [
+                    "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+                    "umt5_xxl_fp16.safetensors",
+                    "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+                ],
                 "vae": [
+                    "wan_2.1_vae.safetensors",
                     "ltx-2.5-video-vae-bf16.safetensors",
                     "ltx-2.5-audio-vae-bf16.safetensors",
                 ],
@@ -1008,27 +1149,201 @@ def apply_comfy_runtime_fixes() -> str:
             def _vstone_get_full_path(folder_name: str, filename: str):
                 p = orig_get_full_path(folder_name, filename)
                 if p is not None and os.path.exists(p):
-                    return p
+                    if _is_valid_safetensors_file(p):
+                        return p
+                    print(f"[VStone Auto-Downloader] Detected corrupted/incomplete file at {p}, removing and re-downloading...")
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
                 clean_name = os.path.basename(filename) if filename else ""
                 if clean_name in LTX25_URL_BY_FILENAME:
                     target_folder, url = LTX25_URL_BY_FILENAME[clean_name]
-                    print(f"[VStone Auto-Downloader] Missing {clean_name}, downloading from ungated mirror...")
+                    print(f"[VStone Auto-Downloader] Fetching {clean_name} from direct mirror...")
                     download_file_to_comfy_models(target_folder, clean_name, url)
                     p = orig_get_full_path(folder_name, filename)
-                    if p is not None and os.path.exists(p):
+                    if p is not None and os.path.exists(p) and _is_valid_safetensors_file(p):
                         return p
                     comfy_root = _get_comfy_root()
                     if comfy_root:
                         fallback_p = os.path.join(comfy_root, "models", target_folder, clean_name)
-                        if os.path.exists(fallback_p):
+                        if os.path.exists(fallback_p) and _is_valid_safetensors_file(fallback_p):
                             return fallback_p
                 return p
 
             folder_paths.get_filename_list = _vstone_get_filename_list
             folder_paths.get_full_path = _vstone_get_full_path
             setattr(folder_paths, "_vstone_ltx25_hooked", True)
+            setattr(folder_paths, "_vstone_hook_ver", VSTONE_RUNTIME_PATCH_VER)
     except Exception:
         pass
+
+    # 3b. Hook comfy.sd.load_clip & comfy.sd.load_diffusion_model to auto-heal corrupted UMT5
+    #     and auto-merge Kijai's split Wan2_1-VACE_module_14B_*.safetensors in UNETLoader!
+    try:
+        import comfy.sd
+        import comfy.utils
+        import folder_paths
+
+        orig_load_clip = getattr(comfy.sd, "_vstone_orig_load_clip", None) or comfy.sd.load_clip
+        setattr(comfy.sd, "_vstone_orig_load_clip", orig_load_clip)
+
+        if getattr(comfy.sd, "_vstone_sd_hook_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+            def _vstone_load_clip(ckpt_paths, embedding_directory=None, clip_type=comfy.sd.CLIPType.STABLE_DIFFUSION, model_options={}, disable_dynamic=False):
+                fixed_paths = []
+                for p in ckpt_paths:
+                    bname = os.path.basename(p).lower() if p else ""
+                    need_umt5_fallback = False
+                    if p and not _is_valid_safetensors_file(p):
+                        print(f"[VStone CLIP Guard] Corrupted text encoder detected: {p}")
+                        try:
+                            os.remove(p)
+                        except Exception:
+                            pass
+                        cname = os.path.basename(p)
+                        if cname in LTX25_URL_BY_FILENAME:
+                            tfolder, turl = LTX25_URL_BY_FILENAME[cname]
+                            download_file_to_comfy_models(tfolder, cname, turl)
+                            comfy_root = _get_comfy_root()
+                            re_p = os.path.join(comfy_root, "models", tfolder, cname) if comfy_root else p
+                            if os.path.exists(re_p) and _is_valid_safetensors_file(re_p):
+                                fixed_paths.append(re_p)
+                                continue
+                        need_umt5_fallback = "umt5" in bname or clip_type == getattr(comfy.sd.CLIPType, "WAN", None)
+                    elif bname.startswith("umt5-xxl-enc"):
+                        # Kijai's umt5-xxl-enc-*.safetensors uses blocks.0.attn.* keys which native CLIPLoader
+                        # mis-detects as SD1ClipModel (logging missing text_model.encoder.layers.* keys).
+                        print(f"[VStone CLIP Guard] Converting Kijai '{os.path.basename(p)}' selection to Comfy-Org native 'umt5_xxl_fp8_e4m3fn_scaled.safetensors'...")
+                        need_umt5_fallback = True
+
+                    if need_umt5_fallback:
+                        umt5_name = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+                        tfolder, turl = LTX25_URL_BY_FILENAME[umt5_name]
+                        download_file_to_comfy_models(tfolder, umt5_name, turl)
+                        comfy_root = _get_comfy_root()
+                        if comfy_root:
+                            umt5_p = os.path.join(comfy_root, "models", tfolder, umt5_name)
+                            if os.path.exists(umt5_p) and _is_valid_safetensors_file(umt5_p):
+                                fixed_paths.append(umt5_p)
+                                continue
+                    fixed_paths.append(p)
+                return orig_load_clip(fixed_paths, embedding_directory=embedding_directory, clip_type=clip_type, model_options=model_options, disable_dynamic=disable_dynamic)
+
+            orig_load_diffusion_model = getattr(comfy.sd, "_vstone_orig_load_diffusion_model", None) or comfy.sd.load_diffusion_model
+            setattr(comfy.sd, "_vstone_orig_load_diffusion_model", orig_load_diffusion_model)
+
+            def _vstone_load_diffusion_model(unet_path, model_options={}, disable_dynamic=False):
+                if unet_path and not _is_valid_safetensors_file(unet_path):
+                    cname = os.path.basename(unet_path)
+                    print(f"[VStone UNET Guard] Corrupted diffusion model detected at {unet_path}, removing...")
+                    try:
+                        os.remove(unet_path)
+                    except Exception:
+                        pass
+                    if cname in LTX25_URL_BY_FILENAME:
+                        tfolder, turl = LTX25_URL_BY_FILENAME[cname]
+                        download_file_to_comfy_models(tfolder, cname, turl)
+
+                hdr, _, _ = _read_safetensors_header(unet_path)
+                # Detect Kijai's split VACE module (e.g. Wan2_1-VACE_module_14B_fp8_e4m3fn.safetensors or bf16)
+                # which has vace_patch_embedding.weight (236 tensors) but lacks the 1,095 base T2V tensors (head.modulation).
+                if isinstance(hdr, dict) and "vace_patch_embedding.weight" in hdr and "head.modulation" not in hdr:
+                    vace_shape = hdr.get("vace_patch_embedding.weight", {}).get("shape", [])
+                    target_dim = vace_shape[0] if isinstance(vace_shape, list) and len(vace_shape) > 0 else 5120
+                    prefer_fp8 = "fp8" in os.path.basename(unet_path).lower()
+
+                    diff_dirs = []
+                    try:
+                        diff_dirs.extend(folder_paths.get_folder_paths("diffusion_models"))
+                    except Exception:
+                        pass
+                    comfy_root = _get_comfy_root()
+                    if comfy_root:
+                        d_default = os.path.join(comfy_root, "models", "diffusion_models")
+                        if d_default not in diff_dirs:
+                            diff_dirs.append(d_default)
+
+                    full_vace_candidates: list[str] = []
+                    base_t2v_candidates: list[str] = []
+                    for d_root in diff_dirs:
+                        if not os.path.isdir(d_root):
+                            continue
+                        for dirpath, _, filenames in os.walk(d_root):
+                            for fn in filenames:
+                                if not fn.lower().endswith(".safetensors"):
+                                    continue
+                                full_p = os.path.join(dirpath, fn)
+                                if os.path.abspath(full_p) == os.path.abspath(unet_path):
+                                    continue
+                                c_hdr, c_exp, c_act = _read_safetensors_header(full_p)
+                                if not isinstance(c_hdr, dict) or c_exp <= 8 or c_act != c_exp:
+                                    continue
+                                pe_shape = c_hdr.get("patch_embedding.weight", {}).get("shape")
+                                if "head.modulation" in c_hdr and pe_shape == [target_dim, 16, 1, 2, 2]:
+                                    if "vace_patch_embedding.weight" in c_hdr:
+                                        full_vace_candidates.append(full_p)
+                                    else:
+                                        base_t2v_candidates.append(full_p)
+
+                    # Sort candidates so matching precision (fp8 vs bf16/fp16) comes first
+                    base_t2v_candidates.sort(key=lambda p: (0 if ("fp8" in os.path.basename(p).lower()) == prefer_fp8 else 1, p))
+                    full_vace_candidates.sort(key=lambda p: (0 if ("fp8" in os.path.basename(p).lower()) == prefer_fp8 else 1, p))
+
+                    if base_t2v_candidates:
+                        base_path = base_t2v_candidates[0]
+                        print(f"[VStone WanVACE Adapter] Merging local 14B T2V base '{os.path.basename(base_path)}' + VACE module '{os.path.basename(unet_path)}' in RAM...")
+                        base_sd, base_meta = comfy.utils.load_torch_file(base_path, return_metadata=True)
+                        vace_sd, _ = comfy.utils.load_torch_file(unet_path, return_metadata=True)
+                        merged_sd = dict(base_sd)
+                        base_linear_dtype = base_sd["blocks.0.self_attn.q.weight"].dtype if "blocks.0.self_attn.q.weight" in base_sd else None
+                        base_pe_dtype = base_sd["patch_embedding.weight"].dtype if "patch_embedding.weight" in base_sd else None
+                        for k, v in vace_sd.items():
+                            if k.startswith("model_type."):
+                                continue
+                            if hasattr(v, "dtype"):
+                                if k == "vace_patch_embedding.weight" and base_pe_dtype is not None and v.dtype != base_pe_dtype:
+                                    v = v.to(dtype=base_pe_dtype)
+                                elif (
+                                    base_linear_dtype is not None
+                                    and k.startswith("vace_blocks.")
+                                    and k.endswith(".weight")
+                                    and "norm" not in k
+                                    and v.dtype != base_linear_dtype
+                                ):
+                                    v = v.to(dtype=base_linear_dtype)
+                            merged_sd[k] = v
+                        model_opts = dict(model_options) if isinstance(model_options, dict) else {}
+                        if base_linear_dtype == getattr(torch, "float8_e4m3fn", None) and "dtype" not in model_opts:
+                            model_opts["dtype"] = torch.float8_e4m3fn
+                        model = comfy.sd.load_diffusion_model_state_dict(
+                            merged_sd, model_options=model_opts, metadata=base_meta, disable_dynamic=disable_dynamic
+                        )
+                        if model is not None:
+                            model.cached_patcher_init = (_vstone_load_diffusion_model, (unet_path, model_options))
+                            return model
+
+                    if full_vace_candidates:
+                        chosen_full = full_vace_candidates[0]
+                        print(f"[VStone WanVACE Adapter] Redirecting split VACE module '{os.path.basename(unet_path)}' to full merged VACE model '{os.path.basename(chosen_full)}'...")
+                        return orig_load_diffusion_model(chosen_full, model_options=model_options, disable_dynamic=disable_dynamic)
+
+                    # Neither local T2V base nor full VACE model is on disk yet: auto-download full merged VACE model!
+                    dl_name = "wan2.1_vace_1.3B_fp16.safetensors" if target_dim == 1536 else "wan2.1_vace_14B_fp8_e4m3fn.safetensors"
+                    tfolder, turl = LTX25_URL_BY_FILENAME[dl_name]
+                    print(f"[VStone WanVACE Adapter] Split module '{os.path.basename(unet_path)}' has no local base T2V model. Auto-downloading full merged '{dl_name}'...")
+                    download_file_to_comfy_models(tfolder, dl_name, turl)
+                    if comfy_root:
+                        dl_path = os.path.join(comfy_root, "models", tfolder, dl_name)
+                        if os.path.exists(dl_path) and _is_valid_safetensors_file(dl_path):
+                            return orig_load_diffusion_model(dl_path, model_options=model_options, disable_dynamic=disable_dynamic)
+
+                return orig_load_diffusion_model(unet_path, model_options=model_options, disable_dynamic=disable_dynamic)
+
+            comfy.sd.load_clip = _vstone_load_clip
+            comfy.sd.load_diffusion_model = _vstone_load_diffusion_model
+            setattr(comfy.sd, "_vstone_sd_hook_ver", VSTONE_RUNTIME_PATCH_VER)
+    except Exception as e:
+        print(f"[VStone Runtime] Warning hooking comfy.sd: {e}")
 
     # 4. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()
@@ -1055,21 +1370,38 @@ def _clear_comfy_model_cache() -> None:
 
 
 def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> str:
-    """Download model/LoRA safely using a lock and temporary .part file with timeouts."""
+    """Download model/LoRA safely using a lock, .safetensors integrity verification, and temporary .part file."""
     comfy_root = _get_comfy_root()
     if not comfy_root:
         return "[VStone Downloader] ComfyUI root not found."
+
+    if "huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/" in url:
+        url = url.replace(
+            "huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/",
+            "huggingface.co/Comfy-Org/Wan-2.1/",
+        )
 
     target_dir = os.path.join(comfy_root, "models", folder_type)
     os.makedirs(target_dir, exist_ok=True)
     target_path = os.path.join(target_dir, filename)
 
-    if os.path.exists(target_path) and os.path.getsize(target_path) > 1024 * 1024:
-        return f"[VStone Downloader] Exists: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
+    if os.path.exists(target_path):
+        if _is_valid_safetensors_file(target_path):
+            return f"[VStone Downloader] Exists & verified: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
+        print(f"[VStone Downloader] Corrupted/incomplete file found at {target_path}, removing to re-download...")
+        try:
+            os.remove(target_path)
+        except Exception:
+            pass
 
     with _DOWNLOAD_LOCK:
-        if os.path.exists(target_path) and os.path.getsize(target_path) > 1024 * 1024:
-            return f"[VStone Downloader] Exists: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
+        if os.path.exists(target_path):
+            if _is_valid_safetensors_file(target_path):
+                return f"[VStone Downloader] Exists & verified: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
+            try:
+                os.remove(target_path)
+            except Exception:
+                pass
 
         tmp_name = f"{filename}.part"
         tmp_path = os.path.join(target_dir, tmp_name)
@@ -1085,8 +1417,14 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
             res = subprocess.run(cmd, check=False, timeout=3600)
             if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
                 os.replace(tmp_path, target_path)
-                _clear_comfy_model_cache()
-                return f"[VStone Downloader] Downloaded via aria2c: {target_path}"
+                if _is_valid_safetensors_file(target_path):
+                    _clear_comfy_model_cache()
+                    return f"[VStone Downloader] Downloaded & verified via aria2c: {target_path}"
+                print(f"[VStone Downloader] aria2c file failed safetensors verification, retrying via curl: {target_path}")
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
 
         curl_bin = shutil.which("curl")
         if curl_bin:
@@ -1094,8 +1432,13 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
             res = subprocess.run(cmd, check=False, timeout=3610)
             if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
                 os.replace(tmp_path, target_path)
-                _clear_comfy_model_cache()
-                return f"[VStone Downloader] Downloaded via curl: {target_path}"
+                if _is_valid_safetensors_file(target_path):
+                    _clear_comfy_model_cache()
+                    return f"[VStone Downloader] Downloaded & verified via curl: {target_path}"
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
 
         req = urllib.request.Request(url, headers={"User-Agent": "VStone-ComfyUI-Sync/2.0"})
         with urllib.request.urlopen(req, timeout=120) as resp, open(tmp_path, "wb") as out_f:
@@ -2221,6 +2564,11 @@ class stoneV_CloudSyncHub:
                 folder, fname, url = PRESET_DOWNLOAD_CATALOG[preset_model]
                 if folder == "__ALL_LAPTOP_LORAS__":
                     for item in DEFAULT_AUTO_SYNC_LORAS:
+                        reports.append(
+                            download_file_to_comfy_models(item["folder"], item["filename"], item["url"])
+                        )
+                elif folder == "__ALL_WAN21_VACE__":
+                    for item in WAN21_VACE_OUTPAINT_MODELS:
                         reports.append(
                             download_file_to_comfy_models(item["folder"], item["filename"], item["url"])
                         )

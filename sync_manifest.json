@@ -1,6 +1,46 @@
 {
-  "updated_at": "2026-11-05T11:57:00+07:00",
+  "updated_at": "2026-11-05T13:01:00+07:00",
   "loras": [
+    {
+      "filename": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "wan_2.1_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+      "url": "https://huggingface.co/Kamikaze-88/Wan2.1-VACE-14B-fp8/resolve/main/wan2.1_vace_14B_fp8_e4m3fn.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "wan2.1_vace_14B_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/diffusion_models/wan2.1_vace_14B_fp16.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "umt5_xxl_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp16.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "wan2.1_vace_1.3B_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/diffusion_models/wan2.1_vace_1.3B_fp16.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
+      "folder": "loras"
+    },
     {
       "filename": "High quality.safetensors",
       "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/High_quality.safetensors",
@@ -95,41 +135,6 @@
       "filename": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
       "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
       "folder": "diffusion_models"
-    },
-    {
-      "filename": "wan2.1_vace_14B_fp16.safetensors",
-      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_vace_14B_fp16.safetensors",
-      "folder": "diffusion_models"
-    },
-    {
-      "filename": "umt5_xxl_fp16.safetensors",
-      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp16.safetensors",
-      "folder": "text_encoders"
-    },
-    {
-      "filename": "wan_2.1_vae.safetensors",
-      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
-      "folder": "vae"
-    },
-    {
-      "filename": "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
-      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
-      "folder": "loras"
-    },
-    {
-      "filename": "wan2.1_vace_1.3B_fp16.safetensors",
-      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_vace_1.3B_fp16.safetensors",
-      "folder": "diffusion_models"
-    },
-    {
-      "filename": "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
-      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
-      "folder": "loras"
-    },
-    {
-      "filename": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-      "folder": "text_encoders"
     }
   ],
   "workflows": [
