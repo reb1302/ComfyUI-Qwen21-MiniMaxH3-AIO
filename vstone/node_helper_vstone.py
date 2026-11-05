@@ -3243,6 +3243,11 @@ svg{display:block}
 .add{width:48px;height:48px;flex:none;margin-block:5px;padding:0;background:transparent;border:1.5px dashed var(--ink-2);border-radius:6px;color:var(--ink);cursor:pointer;display:grid;place-items:center}
 .add:hover{border-style:solid;background:var(--surface)}
 .add.nudge{border-color:var(--paper);background:var(--raised)}
+.env{position:relative;width:48px;height:48px;flex:none;padding:0;background:transparent;border:1px solid var(--line);border-radius:6px;color:var(--ink);cursor:pointer;display:grid;place-items:center}
+.env:hover{background:var(--surface)}
+.env[aria-expanded="true"]{box-shadow:0 0 0 2px var(--bench),0 0 0 4px var(--paper)}
+.env img{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);max-width:none;object-fit:cover;display:block;border-radius:3px}
+.envcount{position:absolute;right:-5px;bottom:-5px;min-width:18px;height:18px;border-radius:9px;background:var(--paper);color:var(--paper-ink);font:600 11px/18px var(--font-ui);text-align:center}
 .strip hr{width:36px;border:0;border-top:1px solid var(--line);margin:4px 0;flex:none}
 .ibtn{width:48px;height:36px;flex:none;padding:0;background:transparent;border:0;border-radius:4px;color:var(--ink);cursor:pointer;display:grid;place-items:center}
 .ibtn:hover:not(:disabled){background:var(--surface)}
@@ -3320,6 +3325,9 @@ textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--fo
 .sw{width:24px;height:24px;padding:0;border:0;border-radius:50%;background:var(--c);cursor:pointer}
 .sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--paper)}
 .popfoot .ibtn{margin-left:auto;width:36px;height:30px}
+.typehint,.envhint{color:var(--ink-2);font-size:11.5px;line-height:1.35}
+.envslots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.imgpick.over{border-color:var(--paper)}
 
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
 .size{display:flex;align-items:center;gap:7px}
@@ -3397,7 +3405,7 @@ a.btn{color:inherit;text-decoration:none}
   .main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
   .strip{width:auto;flex-direction:row;flex-wrap:wrap;overflow:visible;align-items:center;gap:2px}
   .tiles{display:flex;gap:8px;padding:4px}
-  .tile,.add{width:42px;height:42px;margin-block:0}
+  .tile,.add,.env{width:42px;height:42px;margin-block:0}
   .strip hr{display:none}
   .ibtn{width:38px}
   .pop{width:min(100%,320px)}
@@ -3418,6 +3426,8 @@ a.btn{color:inherit;text-decoration:none}
     <nav class="strip" id="strip" aria-label="Cọ và công cụ">
       <div class="tiles" id="tiles"></div>
       <button class="add" id="addBrush" type="button" title="Thêm cọ (+)" aria-label="Thêm cọ" data-icon="plus"></button>
+      <hr>
+      <button class="env" id="envBtn" type="button" title="Môi trường: ảnh cho model hiểu cảnh khi kéo rộng" aria-label="Môi trường" aria-expanded="false" aria-controls="envPop"><span data-icon="mountain"></span><img id="envThumb" alt="" hidden><span class="envcount" id="envCount" hidden></span></button>
       <hr>
       <button class="ibtn" id="erase" type="button" title="Tẩy nét (E)" aria-label="Tẩy nét" aria-pressed="false" data-icon="eraser"></button>
       <button class="ibtn" id="undo" type="button" title="Hoàn tác (Ctrl+Z)" aria-label="Hoàn tác" data-icon="undo"></button>
@@ -3491,7 +3501,6 @@ a.btn{color:inherit;text-decoration:none}
       </div>
       <div class="drawer-body">
         <ul class="problems" id="problems"></ul>
-        <input class="field" id="scene" type="text" placeholder="Scene (phần nới, tuỳ chọn)" aria-label="Mô tả cảnh cho phần nới" hidden>
         <p class="none" id="noPrompt">Tô hoặc kéo rộng để tạo prompt.</p>
         <div class="lines" id="passes"></div>
       </div>
@@ -3499,6 +3508,7 @@ a.btn{color:inherit;text-decoration:none}
 
     <div class="pop" id="pop" role="dialog" aria-label="Tuỳ chỉnh cọ" hidden>
       <div class="types" id="popTypes"></div>
+      <p class="typehint" id="popHint"></p>
       <div class="detail" id="popDetail">
         <div class="imgwrap" id="popImgWrap">
           <label class="imgpick" title="Ảnh tham chiếu">
@@ -3512,9 +3522,14 @@ a.btn{color:inherit;text-decoration:none}
       </div>
       <div class="popfoot">
         <div class="popfoot" id="popSwatches"></div>
-        <button class="viewchip" id="popLocate" type="button" aria-pressed="false" title="Vẽ viền mỏng quanh vùng tô trên ảnh model nhìn. Dùng khi trong khung có nhiều người hoặc nhiều vật giống nhau.">Định vị</button>
         <button class="ibtn" id="popDelete" type="button" title="Xoá cọ này" aria-label="Xoá cọ này" data-icon="trash"></button>
       </div>
+    </div>
+
+    <div class="pop" id="envPop" role="dialog" aria-label="Môi trường" hidden>
+      <div class="envslots" id="envSlots"></div>
+      <textarea class="field" id="scene" placeholder="Mô tả cảnh, nếu cần (tiếng Anh)" aria-label="Mô tả cảnh"></textarea>
+      <p class="envhint">Model xem các ảnh này khi kéo rộng để biết xung quanh có gì.</p>
     </div>
   </div>
 
@@ -3556,7 +3571,7 @@ const ICONS = {
   add: 'M3 3h9v9H3zM14.5 12v6M11.5 15h6',
   personAdd: 'M8 3a3 3 0 110 6 3 3 0 010-6zM2 17c.8-3.6 3-5 6-5 1.800 0 3.300.5 4.400 1.700M15.500 6v6M12.500 9h6',
   clone: 'M7 7h10v10H7zM13 7V3H3v10h4',
-  guide: 'M10 3a7 7 0 1 1 0 14a7 7 0 1 1 0-14M10 8a2 2 0 1 1 0 4a2 2 0 1 1 0-4',
+  replace: 'M4 7h11l-3-3M16 13H5l3 3',
   capture: 'M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4',
   remove: 'M3 3h9v9H3zM12 12l5.5 5.5M17.5 12L12 17.5',
   mountain: 'M2 16l5.5-9 3.5 5.5 2-3 5 6.5z',
@@ -3583,144 +3598,111 @@ const PALETTE = [
 ];
 const PAINT = Object.fromEntries(PALETTE.map(c => [c.id, c]));
 
+// Bốn việc, không phân biệt người hay vật: ảnh trong hộp cọ và mô tả cho model biết đó là gì.
 const TYPES = {
-  guide: { label: 'Guide', icon: 'guide', image: true, ph: 'Chi tiết gì, nếu cần (tiếng Anh)' },
-  character: { label: 'Thay nhân vật', icon: 'person', image: true, ph: 'Người nào, mô tả thêm (tiếng Anh)' },
-  addChar: { label: 'Thêm nhân vật', icon: 'personAdd', image: true, ph: 'Mô tả (tiếng Anh)' },
-  add: { label: 'Thêm vật thể', icon: 'add', image: true, ph: 'Vật thể gì (tiếng Anh)' },
-  clone: { label: 'Clone', icon: 'clone', image: true, capture: true, ph: 'Mô tả (tiếng Anh)' },
-  remove: { label: 'Xoá vật thể', icon: 'remove', image: false, ph: 'Vật thể gì (tiếng Anh)' },
-  environment: { label: 'Môi trường', icon: 'mountain', image: true, ph: 'Mô tả (tiếng Anh)' },
-  fix: { label: 'Sửa', icon: 'pencil', image: true, ph: 'Sửa gì (tiếng Anh)' },
+  add: { label: 'Thêm', icon: 'add', image: true, ph: 'Thêm gì, nếu không có ảnh (tiếng Anh)', hint: 'Đặt thứ trong ảnh vào vùng tô.' },
+  replace: { label: 'Thay', icon: 'replace', image: true, ph: 'Đổi thành gì, nếu không có ảnh (tiếng Anh)', hint: 'Giữ dáng và vị trí, đổi thứ đang có trong vùng tô thành thứ trong ảnh.' },
+  remove: { label: 'Xoá', icon: 'remove', image: false, ph: 'Xoá gì, nếu cần (tiếng Anh)', hint: 'Xoá thứ trong vùng tô, lấp bằng nền xung quanh.' },
+  clone: { label: 'Clone', icon: 'clone', image: true, capture: true, ph: 'Mô tả, nếu cần (tiếng Anh)', hint: 'Chụp một vùng trên ảnh, rồi tô nơi muốn chép tới.' },
 };
 
-const extra = n => (n ? `, ${n}` : '');
-const upper = t => t.charAt(0).toUpperCase() + t.slice(1);
-const ONE_FIGURE = {
-  en: r => `<image${r}> is a character reference sheet of one character. Use it only for the character's face, hair, body and outfit. Ignore its lighting, background, poses and layout, and draw one single figure.`,
-  vi: r => `<image${r}> là sheet tham chiếu của một nhân vật. Chỉ dùng nó để biết mặt, tóc, vóc dáng và trang phục. Bỏ qua ánh sáng, nền, dáng và bố cục của nó, vẽ đúng một người.`,
-};
+const joinTags = (tags, word = 'and') => (tags.length > 1 ? `${tags.slice(0, -1).join(', ')} ${word} ${tags[tags.length - 1]}` : tags[0]);
 const PROMPTS = {
   outpaint: {
     en: 'Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.',
     vi: 'Nới rộng ảnh: thay các vùng xám đặc bằng phần cảnh nối liền, giữ nguyên phần ảnh đang có.',
   },
   scene: { en: t => `Scene: ${t}.`, vi: t => `Mô tả cảnh: ${t}.` },
-  character: {
-    en: (w, r, n) => `Replace the whole person in <image1>${w.en} with the character from <image${r}>${extra(n)}. Keep the exact pose, position, size and camera angle of the person in <image1>. ${ONE_FIGURE.en(r)}`,
-    vi: (w, r, n) => `Thay toàn bộ người trong <image1>${w.vi} bằng nhân vật từ <image${r}>${extra(n)}. Giữ đúng dáng, vị trí, cỡ và góc máy của người trong <image1>. ${ONE_FIGURE.vi(r)}`,
-  },
-  addChar: {
-    en: (w, r, n) => `Add the character from <image${r}>${w.en}${extra(n)}, in a natural pose for the scene. ${ONE_FIGURE.en(r)}`,
-    vi: (w, r, n) => `Thêm nhân vật từ <image${r}>${w.vi}${extra(n)}, với dáng tự nhiên hợp cảnh. ${ONE_FIGURE.vi(r)}`,
+  env: {
+    en: tags => (tags.length > 1
+      ? `${joinTags(tags)} show the environment this scene belongs to. Use them to understand what exists around the picture and continue the scene with that content, without copying their framing. Keep the lighting and perspective of <image1>.`
+      : `${tags[0]} shows the environment this scene belongs to. Use it to understand what exists around the picture and continue the scene with that content, without copying its framing. Keep the lighting and perspective of <image1>.`),
+    vi: tags => `${joinTags(tags, 'và')} cho biết môi trường của cảnh này. Dùng để hiểu xung quanh có gì và vẽ tiếp theo đó, không chép khung hình. Giữ ánh sáng và phối cảnh của <image1>.`,
   },
   add: {
-    en: (w, r, n) => `Add the object from <image${r}>${w.en}${n ? `, ${n}.` : ', preserve its shape and details.'}`,
-    vi: (w, r, n) => `Thêm vật thể từ <image${r}>${w.vi}${n ? `, ${n}.` : ', giữ nguyên hình dáng và chi tiết.'}`,
-  },
-  clone: {
-    en: (w, r, n) => `Add the object from <image${r}>${w.en}${extra(n)}, adapting it to the lighting, shadows and perspective of <image1>.`,
-    vi: (w, r, n) => `Thêm vật thể từ <image${r}>${w.vi}${extra(n)}, chỉnh theo ánh sáng, bóng đổ và phối cảnh của <image1>.`,
+    en: (c, r) => `Place what <image${r}> shows inside the ${c.en} outline in <image1>.`,
+    vi: (c, r) => `Đặt thứ trong <image${r}> vào viền ${c.area} trên <image1>.`,
   },
   addText: {
-    en: (w, r, n) => `Add ${n}${w.en}.`,
-    vi: (w, r, n) => `Thêm ${n}${w.vi}.`,
+    en: (c, n) => `Add ${n} inside the ${c.en} outline in <image1>.`,
+    vi: (c, n) => `Thêm ${n} vào viền ${c.area} trên <image1>.`,
+  },
+  replace: {
+    en: (c, r) => `Keep the position, pose, size and camera angle of what is inside the ${c.en} outline in <image1>, and change it into what <image${r}> shows.`,
+    vi: (c, r) => `Giữ vị trí, dáng, cỡ và góc máy của thứ trong viền ${c.area} trên <image1>, đổi nó thành thứ trong <image${r}>.`,
+  },
+  clone: {
+    en: (c, r) => `Copy all of what <image${r}> shows into the ${c.en} outline in <image1>, changing only its lighting, shadows and perspective to fit <image1>.`,
+    vi: (c, r) => `Chép toàn bộ thứ trong <image${r}> vào viền ${c.area} trên <image1>, chỉ đổi ánh sáng, bóng đổ và phối cảnh cho hợp <image1>.`,
   },
   remove: {
-    en: (w, r, n) => `Remove ${n || 'the object'}${w.en} and fill the space with the surrounding background.`,
-    vi: (w, r, n) => `Xoá ${n || 'vật thể'}${w.vi} và lấp bằng nền xung quanh.`,
+    en: (c, n) => `Remove ${n || 'what is'} inside the ${c.en} outline in <image1> and fill it with the surrounding background.`,
+    vi: (c, n) => `Xoá ${n || 'thứ'} trong viền ${c.area} trên <image1> và lấp bằng nền xung quanh.`,
   },
-  environment: {
-    en: (w, r, n) => `Change the background${w.en} to the environment from <image${r}>${extra(n)}.`,
-    vi: (w, r, n) => `Đổi nền${w.vi} thành môi trường từ <image${r}>${extra(n)}.`,
-  },
-  fix: {
-    en: (w, r, n) => `${upper(n)}${w.en}.`,
-    vi: (w, r, n) => `${upper(n)}${w.vi}.`,
-  },
-  fixRef: {
-    en: (w, r, n) => (n ? `${upper(n)}${w.en}, using <image${r}> as the reference.` : `Change this part${w.en} to match <image${r}>.`),
-    vi: (w, r, n) => (n ? `${upper(n)}${w.vi}, lấy <image${r}> làm tham chiếu.` : `Đổi phần này${w.vi} cho giống <image${r}>.`),
-  },
-  guide: {
-    en: (c, r) => `The ${c.en} outline in <image1> marks where the content of <image${r}> goes.`,
-    vi: (c, r) => `Viền ${c.area} trên <image1> là chỗ đặt nội dung của <image${r}>.`,
-  },
-  guideNote: {
+  note: {
     en: (c, n) => `Inside the ${c.en} outline: ${n}.`,
     vi: (c, n) => `Trong viền ${c.area}: ${n}.`,
   },
-  guideTail: [
-    { en: 'Keep it inside the outline, matching the lighting, shadows and perspective of <image1>. Remove the outline.', vi: 'Giữ nó trong viền, khớp ánh sáng, bóng đổ và phối cảnh của <image1>. Xoá viền đi.' },
-    { en: 'Keep each one inside its outline, matching the lighting, shadows and perspective of <image1>. Remove the outlines.', vi: 'Giữ mỗi thứ trong viền của nó, khớp ánh sáng, bóng đổ và phối cảnh của <image1>. Xoá các viền đi.' },
+  looks: {
+    en: tags => (tags.length > 1
+      ? `Use ${joinTags(tags)} only for how things look: do not copy their framing, layout or lighting, and if one shows several views of the same subject, draw it once.`
+      : `Use ${tags[0]} only for how things look: do not copy its framing, layout or lighting, and if it shows several views of the same subject, draw it once.`),
+    vi: tags => `Chỉ dùng ${joinTags(tags, 'và')} để biết trông thế nào: không chép khung hình, bố cục hay ánh sáng, nếu có nhiều góc nhìn của cùng một thứ thì chỉ vẽ một lần.`,
+  },
+  finish: [
+    { en: 'Stay inside the outline and match the lighting, shadows and perspective of <image1>. Remove the outline.', vi: 'Không vẽ ra ngoài viền, khớp ánh sáng, bóng đổ và phối cảnh của <image1>. Xoá viền đi.' },
+    { en: 'Stay inside each outline and match the lighting, shadows and perspective of <image1>. Remove the outlines.', vi: 'Không vẽ ra ngoài các viền, khớp ánh sáng, bóng đổ và phối cảnh của <image1>. Xoá các viền đi.' },
   ],
-  tail: [
-    { en: 'Match the lighting and perspective of <image1>.', vi: 'Khớp ánh sáng và phối cảnh của <image1>.' },
-    { en: 'Keep everything else exactly the same.', vi: 'Giữ nguyên mọi thứ còn lại.' },
-  ],
-  marker: c => ({ en: `The ${c.en} outline is only a marker, do not draw it.`, vi: `Viền ${c.area} chỉ để đánh dấu, không vẽ nó ra ảnh.` }),
+  keep: { en: 'Keep everything else exactly the same.', vi: 'Giữ nguyên mọi thứ còn lại.' },
 };
-const line = (p, w, r, n) => ({ en: p.en(w, r, n), vi: p.vi(w, r, n) });
+const line = (p, c, v) => ({ en: p.en(c, v), vi: p.vi(c, v) });
 
-// Mọi cọ Guide gom vào một lượt trên cả shot. Màu chỉ để nhận diện, ý nghĩa nằm trong hộp của cọ.
-function buildGuidePass(guides, problems) {
-  const lines = [], slots = [], brushes = [];
-  for (const m of guides) {
+// Mọi cọ gom vào một lượt trên cả shot. Màu chỉ để nhận diện, ý nghĩa nằm trong hộp của cọ.
+function buildEditPass(marks, problems) {
+  const lines = [], slots = [], looks = [], brushes = [];
+  for (const m of marks) {
     const c = PAINT[m.color];
     const note = m.note.trim().replace(/[.\s]+$/, '');
-    if (!m.hasRef && !note) {
+    if (m.type === 'remove') {
+      lines.push(line(PROMPTS.remove, c, note));
+    } else if (m.hasRef) {
+      const n = slots.length + 2;
+      lines.push(line(PROMPTS[m.type], c, n));
+      if (note) lines.push(line(PROMPTS.note, c, note));
+      slots.push({ brush: m.brush, n });
+      if (m.type !== 'clone') looks.push(`<image${n}>`);
+    } else if (m.type === 'clone') {
+      problems.push({ brush: m.brush, text: `${c.vi}: chưa chụp vùng` });
+      continue;
+    } else if (note) {
+      lines.push(line(m.type === 'add' ? PROMPTS.addText : PROMPTS.note, c, note));
+    } else {
       problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh hoặc mô tả` });
       continue;
     }
-    if (m.hasRef) {
-      const n = slots.length + 2;
-      lines.push(line(PROMPTS.guide, c, n));
-      slots.push({ brush: m.brush, n });
-    }
-    if (note) lines.push(line(PROMPTS.guideNote, c, note));
     brushes.push(m.brush);
   }
   if (!brushes.length) return null;
-  lines.push(PROMPTS.guideTail[brushes.length > 1 ? 1 : 0], PROMPTS.tail[1]);
-  return { kind: 'guide', name: TYPES.guide.label, lines, slots, brushes };
+  if (looks.length) lines.push({ en: PROMPTS.looks.en(looks), vi: PROMPTS.looks.vi(looks) });
+  lines.push(PROMPTS.finish[brushes.length > 1 ? 1 : 0], PROMPTS.keep);
+  return { kind: 'edit', name: 'Sửa', lines, slots, brushes };
 }
 
-// Các cọ còn lại, mỗi cọ đã tô là một lượt riêng với khung cắt và prompt riêng, ảnh tham chiếu của lượt đó luôn là image_2.
-function buildPasses({ marks, expanded, scene }) {
+function buildPasses({ marks, expanded, scene, envCount }) {
   const problems = [];
   const passes = [];
   if (expanded) {
     const out = [{ ...PROMPTS.outpaint }];
     const s = scene.trim().replace(/[.\s]+$/, '');
     if (s) out.push({ en: PROMPTS.scene.en(s), vi: PROMPTS.scene.vi(s) });
+    if (envCount) {
+      const tags = Array.from({ length: envCount }, (_, i) => `<image${i + 2}>`);
+      out.push({ en: PROMPTS.env.en(tags), vi: PROMPTS.env.vi(tags) });
+    }
     passes.push({ kind: 'expand', name: 'Kéo rộng', lines: out, slots: [] });
   }
-  const guide = buildGuidePass(marks.filter(m => m.type === 'guide' && m.cover), problems);
-  if (guide) passes.push(guide);
-  for (const m of marks) {
-    if (!m.cover || m.type === 'guide') continue;
-    const c = PAINT[m.color];
-    const note = m.note.trim().replace(/[.\s]+$/, '');
-    const w = m.locate ? { en: ` inside the ${c.en} outline`, vi: ` trong viền ${c.area}` } : { en: '', vi: '' };
-    let prompt = null;
-    let usesRef = false;
-    if (m.type === 'remove') prompt = PROMPTS.remove;
-    else if (m.type === 'fix' || m.type === 'add') {
-      const isFix = m.type === 'fix';
-      if (m.hasRef) {
-        prompt = isFix ? PROMPTS.fixRef : PROMPTS.add;
-        usesRef = true;
-      } else if (note) prompt = isFix ? PROMPTS.fix : PROMPTS.addText;
-      else problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh hoặc mô tả` });
-    } else if (m.hasRef) {
-      prompt = PROMPTS[m.type];
-      usesRef = true;
-    } else problems.push({ brush: m.brush, text: m.type === 'clone' ? `${c.vi}: chưa chụp vùng` : `${c.vi}: thiếu ảnh` });
-    if (!prompt) continue;
-    const lines = [line(prompt, w, 2, note), ...PROMPTS.tail];
-    if (m.locate) lines.push(PROMPTS.marker(c));
-    passes.push({ kind: `brush-${m.brush}`, brush: m.brush, name: TYPES[m.type].label, lines, slots: usesRef ? [{ brush: m.brush, n: 2 }] : [] });
-  }
+  const edit = buildEditPass(marks.filter(m => m.cover), problems);
+  if (edit) passes.push(edit);
   return { passes, problems };
 }
 
@@ -3742,7 +3724,8 @@ const S = {
   brushes: [], nextId: 1, active: null, editing: null, erase: false, size: 72,
   padsPainted: false, capture: null, baseFromResult: false, isSample: false, tab: 'edit',
   scene: '',
-  overrides: { expand: null, marks: null },
+  env: [0, 1, 2, 3].map(() => ({ ref: null, refUrl: '' })),
+  overrides: { expand: null, edit: null },
 };
 const V = { scale: 1, x: 0, y: 0 };
 const W = () => S.w + S.pads.left + S.pads.right;
@@ -3813,7 +3796,6 @@ function measureCover() {
     return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
   });
   const counts = S.brushes.map(() => 0);
-  const boxes = S.brushes.map(() => [w, h, 0, 0]);
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 64) continue;
     let best = 0, bestD = Infinity;
@@ -3822,17 +3804,8 @@ function measureCover() {
       if (d < bestD) { bestD = d; best = n; }
     });
     counts[best]++;
-    const x = (i / 4) % w, y = Math.floor(i / 4 / w), box = boxes[best];
-    box[0] = Math.min(box[0], x);
-    box[1] = Math.min(box[1], y);
-    box[2] = Math.max(box[2], x + 1);
-    box[3] = Math.max(box[3], y + 1);
   }
-  const toX = W() / w, toY = H() / h;
-  S.brushes.forEach((b, n) => {
-    b.cover = counts[n] / (w * h);
-    b.box = counts[n] ? [boxes[n][0] * toX, boxes[n][1] * toY, boxes[n][2] * toX, boxes[n][3] * toY] : null;
-  });
+  S.brushes.forEach((b, n) => { b.cover = counts[n] / (w * h); });
 }
 
 let raf = 0;
@@ -3972,7 +3945,7 @@ function addBrush() {
   const free = PALETTE.find(c => !S.brushes.some(b => b.color === c.id));
   if (!free) return;
   const last = S.brushes[S.brushes.length - 1];
-  const b = { id: S.nextId++, color: free.id, type: last && last.type === 'guide' ? 'guide' : 'character', ref: null, refUrl: '', note: '', cover: 0 };
+  const b = { id: S.nextId++, color: free.id, type: last && last.type !== 'clone' ? last.type : 'add', ref: null, refUrl: '', note: '', cover: 0 };
   S.brushes.push(b);
   renderTiles();
   selectBrush(b.id);
@@ -3991,7 +3964,7 @@ function deleteBrush(id) {
 
 function buildPop() {
   $('popTypes').innerHTML = Object.entries(TYPES).map(([k, t]) =>
-    `<button class="type" type="button" data-type="${k}" aria-pressed="false">${icon(t.icon)}<span>${t.label}</span></button>`).join('');
+    `<button class="type" type="button" data-type="${k}" aria-pressed="false" title="${t.hint}">${icon(t.icon)}<span>${t.label}</span></button>`).join('');
   $('popTypes').addEventListener('click', e => {
     const btn = e.target.closest('.type');
     const b = brushOf(S.editing);
@@ -4042,13 +4015,6 @@ function buildPop() {
     renderPanel();
   });
   $('popDelete').addEventListener('click', () => { if (S.editing !== null) deleteBrush(S.editing); });
-  $('popLocate').addEventListener('click', () => {
-    const b = brushOf(S.editing);
-    if (!b) return;
-    b.locate = !b.locate;
-    syncPop();
-    renderPanel();
-  });
 }
 function syncPop() {
   const b = brushOf(S.editing);
@@ -4056,8 +4022,7 @@ function syncPop() {
   const T = TYPES[b.type];
   pop.querySelectorAll('.type').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.type === b.type)));
   pop.querySelectorAll('.sw').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.color === b.color)));
-  $('popLocate').setAttribute('aria-pressed', String(!!b.locate));
-  $('popLocate').hidden = b.type === 'guide';
+  $('popHint').textContent = T.hint;
   $('popImgWrap').dataset.off = String(!T.image);
   $('popFile').disabled = !T.image || !!T.capture;
   $('popImgPlus').innerHTML = icon(T.capture ? 'capture' : 'plus');
@@ -4070,19 +4035,21 @@ function syncPop() {
   $('popImgPlus').hidden = hasRef;
   $('popImgClear').hidden = !hasRef || !T.image;
 }
+function placePop(el, anchor) {
+  const box = $('main').getBoundingClientRect(), t = anchor.getBoundingClientRect();
+  if (window.matchMedia('(max-width:780px)').matches) {
+    el.style.left = '0px';
+    el.style.top = t.bottom - box.top + 8 + 'px';
+  } else {
+    el.style.left = t.right - box.left + 14 + 'px';
+    el.style.top = Math.max(0, Math.min(t.top - box.top, box.height - el.offsetHeight)) + 'px';
+  }
+}
 function openPop(id) {
   S.editing = id;
   pop.hidden = false;
   syncPop();
-  const tile = document.querySelector(`.tile[data-id="${id}"]`);
-  const box = $('main').getBoundingClientRect(), t = tile.getBoundingClientRect();
-  if (window.matchMedia('(max-width:780px)').matches) {
-    pop.style.left = '0px';
-    pop.style.top = t.bottom - box.top + 8 + 'px';
-  } else {
-    pop.style.left = t.right - box.left + 14 + 'px';
-    pop.style.top = Math.max(0, Math.min(t.top - box.top, box.height - pop.offsetHeight)) + 'px';
-  }
+  placePop(pop, document.querySelector(`.tile[data-id="${id}"]`));
 }
 function closePop() {
   S.editing = null;
@@ -4090,6 +4057,7 @@ function closePop() {
 }
 document.addEventListener('pointerdown', e => {
   if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.tile') && !e.target.closest('.add')) closePop();
+  if (!$('envPop').hidden && !$('envPop').contains(e.target) && !e.target.closest('#envBtn')) toggleEnv(false);
 });
 
 const esc = s => String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
@@ -4111,25 +4079,11 @@ function paintThumb(cv) {
   g.fillRect(0, 0, W(), H());
   g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
 }
-function paintCropThumb(cv, b) {
-  const crop = planCrop(b.box, W(), H(), 0);
-  const k = 144 / crop.w;
-  cv.width = 144;
-  cv.height = Math.max(1, Math.round(crop.h * k));
-  const g = cv.getContext('2d');
-  g.setTransform(k, 0, 0, k, -crop.x * k, -crop.y * k);
-  g.imageSmoothingQuality = 'high';
-  g.fillStyle = PAD_GRAY;
-  g.fillRect(0, 0, W(), H());
-  g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
-  g.globalAlpha = 0.5;
-  g.drawImage(brushMask(b), 0, 0);
-}
-function paintGuideThumb(cv, ids) {
-  const crop = planCrop([0, 0, W(), H()], W(), H(), 0.25);
-  const clean = newCanvas(crop.outW, crop.outH);
+function paintShotThumb(cv, ids) {
+  const plan = planShot(W(), H(), 0.25);
+  const clean = newCanvas(plan.outW, plan.outH);
   const c = clean.getContext('2d');
-  c.setTransform(crop.outW / W(), 0, 0, crop.outH / H(), 0, 0);
+  c.setTransform(plan.outW / W(), 0, 0, plan.outH / H(), 0, 0);
   c.imageSmoothingQuality = 'high';
   c.fillStyle = PAD_GRAY;
   c.fillRect(0, 0, W(), H());
@@ -4140,7 +4094,13 @@ function paintGuideThumb(cv, ids) {
   });
   cv.width = 144;
   cv.height = Math.max(1, Math.round(H() * 144 / W()));
-  cv.getContext('2d').drawImage(guideImage(clean, marks, crop), 0, 0, cv.width, cv.height);
+  cv.getContext('2d').drawImage(guideImage(clean, marks, plan), 0, 0, cv.width, cv.height);
+}
+function paintRefThumb(cv, ref) {
+  const rw = ref.naturalWidth || ref.width, rh = ref.naturalHeight || ref.height;
+  cv.width = 144;
+  cv.height = Math.max(1, Math.round(rh * 144 / rw));
+  cv.getContext('2d').drawImage(ref, 0, 0, cv.width, cv.height);
 }
 function slotFigure(label, title, paint) {
   const fig = document.createElement('figure');
@@ -4164,15 +4124,14 @@ function iconButton(name, title, onclick) {
 }
 
 function renderPanel() {
-  const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover, locate: !!b.locate }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene }) : { passes: [], problems: [] };
+  const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
   });
   $('promptDot').hidden = !problems.length;
   $('problems').replaceChildren(...problems.map(p => { const li = document.createElement('li'); li.textContent = p.text; return li; }));
-  $('scene').hidden = S.tab === 'sheet' || !needsOutpaint() || !S.base;
   $('noPrompt').hidden = passes.length > 0 || problems.length > 0;
   $('noPrompt').textContent = S.tab === 'sheet' ? 'Thêm ảnh nhân vật để tạo prompt.' : 'Tô hoặc kéo rộng để tạo prompt.';
   S.passes = passes;
@@ -4211,27 +4170,19 @@ function renderPanel() {
     const slots = document.createElement('div');
     slots.className = 'slots';
     if (pass.kind === 'sheet') {
-      Sheet.slots.filter(s => s.ref).forEach((slot, i) => {
-        slots.append(slotFigure(`image_${i + 1}`, slot.label, cv => {
-          const rw = slot.ref.naturalWidth || slot.ref.width, rh = slot.ref.naturalHeight || slot.ref.height;
-          cv.width = 144;
-          cv.height = Math.max(1, Math.round(rh * 144 / rw));
-          cv.getContext('2d').drawImage(slot.ref, 0, 0, cv.width, cv.height);
-        }));
+      Sheet.slots.filter(s => s.ref).forEach((slot, n) => {
+        slots.append(slotFigure(`image_${n + 1}`, slot.label, cv => paintRefThumb(cv, slot.ref)));
       });
     } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv)));
+      S.env.filter(s => s.ref).forEach((slot, n) => {
+        slots.append(slotFigure(`image_${n + 2}`, 'Môi trường', cv => paintRefThumb(cv, slot.ref)));
+      });
     } else {
-      if (pass.kind === 'guide') slots.append(slotFigure('image_1', 'Cả shot, model thấy viền mỏng thay cho nét tô', cv => paintGuideThumb(cv, pass.brushes)));
-      else slots.append(slotFigure('image_1', 'Khung cắt, ảnh gửi đi không có màu tô', cv => paintCropThumb(cv, brushOf(pass.brush))));
+      slots.append(slotFigure('image_1', 'Cả shot, model thấy viền mỏng thay cho nét tô', cv => paintShotThumb(cv, pass.brushes)));
       for (const s of pass.slots) {
         const b = brushOf(s.brush);
-        slots.append(slotFigure(`image_${s.n}`, TYPES[b.type].label, cv => {
-          const rw = b.ref.naturalWidth || b.ref.width, rh = b.ref.naturalHeight || b.ref.height;
-          cv.width = 144;
-          cv.height = Math.max(1, Math.round(rh * 144 / rw));
-          cv.getContext('2d').drawImage(b.ref, 0, 0, cv.width, cv.height);
-        }));
+        slots.append(slotFigure(`image_${s.n}`, TYPES[b.type].label, cv => paintRefThumb(cv, b.ref)));
       }
     }
     sec.append(slots);
@@ -4453,7 +4404,7 @@ function setBase(img, sample, fromResult) {
   S.strokes = [];
   S.past = [];
   S.future = [];
-  S.overrides = { ...S.overrides, expand: null, marks: null };
+  S.overrides = { ...S.overrides, expand: null, edit: null };
   syncStage();
   afterChange();
   fit();
@@ -4501,9 +4452,11 @@ function clearBase() {
   S.base = null; S.w = 0; S.h = 0;
   S.pads = { left: 0, right: 0, top: 0, bottom: 0 };
   S.strokes = []; S.past = []; S.future = []; S.scene = '';
-  S.overrides = { ...S.overrides, expand: null, marks: null };
+  S.overrides = { ...S.overrides, expand: null, edit: null };
   S.isSample = false;
   $('scene').value = '';
+  S.env.forEach(slot => { slot.ref = null; slot.refUrl = ''; });
+  syncEnv();
   closePop();
   syncStage();
   rebuildLayer();
@@ -4608,18 +4561,72 @@ function syncSheetSlots() {
   });
 }
 // Ảnh đầu vào ô được chọn, các ảnh sau vào lần lượt những ô còn trống.
-function takeSheetFiles(fileList, start) {
+function takeFilesInto(slots, fileList, start, sync) {
   const files = [...fileList].filter(file => file.type.startsWith('image/'));
-  const targets = [start, ...Sheet.slots.map((slot, i) => i).filter(i => i !== start && !Sheet.slots[i].ref)];
+  const targets = [start, ...slots.map((slot, i) => i).filter(i => i !== start && !slots[i].ref)];
   if (files.length > targets.length) setStatus(`Mỗi lần chỉ nhận thêm được ${targets.length} ảnh, các ảnh còn lại đã bỏ qua.`);
   files.slice(0, targets.length).forEach((file, i) => {
     loadFile(file, (img, url) => {
-      Sheet.slots[targets[i]].ref = img;
-      Sheet.slots[targets[i]].refUrl = url;
-      syncSheetSlots();
+      slots[targets[i]].ref = img;
+      slots[targets[i]].refUrl = url;
+      sync();
       renderPanel();
     });
   });
+}
+function takeSheetFiles(fileList, start) {
+  takeFilesInto(Sheet.slots, fileList, start, syncSheetSlots);
+}
+function toggleEnv(open) {
+  $('envPop').hidden = !open;
+  $('envBtn').setAttribute('aria-expanded', String(open));
+  if (open) placePop($('envPop'), $('envBtn'));
+}
+function syncEnv() {
+  document.querySelectorAll('#envSlots .imgwrap').forEach((wrap, i) => {
+    const slot = S.env[i], has = !!slot.ref, img = wrap.querySelector('img');
+    img.hidden = !has;
+    if (has) img.src = slot.refUrl;
+    wrap.querySelector('.envplus').hidden = has;
+    wrap.querySelector('.imgx').hidden = !has;
+  });
+  const filled = S.env.filter(s => s.ref);
+  $('envThumb').hidden = !filled.length;
+  if (filled.length) $('envThumb').src = filled[0].refUrl;
+  $('envCount').hidden = !filled.length;
+  $('envCount').textContent = filled.length;
+}
+function buildEnvBox() {
+  $('envSlots').innerHTML = S.env.map((slot, i) => `
+    <div class="imgwrap">
+      <label class="imgpick" title="Ảnh môi trường">
+        <span class="envplus">${icon('plus')}</span>
+        <img alt="" hidden>
+        <input class="sr" type="file" accept="image/*" multiple aria-label="Ảnh môi trường ${i + 1}">
+      </label>
+      <button class="imgx" type="button" title="Bỏ ảnh" aria-label="Bỏ ảnh ${i + 1}" hidden>${icon('close')}</button>
+    </div>`).join('');
+  document.querySelectorAll('#envSlots .imgwrap').forEach((wrap, i) => {
+    const box = wrap.querySelector('.imgpick');
+    wrap.querySelector('input').addEventListener('change', e => {
+      takeFilesInto(S.env, e.target.files, i, syncEnv);
+      e.target.value = '';
+    });
+    wrap.querySelector('.imgx').addEventListener('click', () => {
+      S.env[i].ref = null;
+      S.env[i].refUrl = '';
+      syncEnv();
+      renderPanel();
+    });
+    box.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('over'); });
+    box.addEventListener('dragleave', () => box.classList.remove('over'));
+    box.addEventListener('drop', e => {
+      e.preventDefault();
+      box.classList.remove('over');
+      takeFilesInto(S.env, e.dataTransfer.files, i, syncEnv);
+    });
+  });
+  $('envBtn').addEventListener('click', () => toggleEnv($('envPop').hidden));
 }
 function buildSheetSlots() {
   $('sheetSlots').innerHTML = Sheet.slots.map(slot => `
@@ -4676,6 +4683,7 @@ function switchTab(tab) {
   $('sheetPanel').hidden = !sheet;
   document.querySelectorAll('.edit-only').forEach(el => { el.hidden = sheet; });
   closePop();
+  toggleEnv(false);
   stopCapture();
   $('viewer').hidden = true;
   brushcur.hidden = true;
@@ -4861,19 +4869,13 @@ function stitchOriginal(result, snap) {
   return out;
 }
 
-// Cách của ví dụ Qwen Image 2.1 Inpaint (AusBoss): cắt khung rộng hơn vùng chọn 1,6 lần, đưa lên khoảng 1,5 MP,
-// gửi ảnh sạch cho model, vùng được vẽ đi bằng mask nới 8 px, rồi dán lại với viền mềm hẹp.
-const CROP_ROOM = 1.6;
-const CROP_MIN = 256;
+// Gửi cả shot để model thấy môi trường, vùng được vẽ đi bằng mask nới 8 px, rồi dán lại với viền mềm hẹp (như ví dụ Inpaint của AusBoss).
+// Shot đã nhỏ hơn mức MP đã chọn thì giữ cỡ gốc: phóng lên chỉ tốn thêm, dán lại vẫn về cỡ cũ.
 const MASK_GROW = 8;
-function planCrop(box, w, h, megapixels) {
-  const cw = Math.min(w, Math.max(CROP_MIN, Math.ceil((box[2] - box[0]) * CROP_ROOM)));
-  const ch = Math.min(h, Math.max(CROP_MIN, Math.ceil((box[3] - box[1]) * CROP_ROOM)));
-  const x = Math.round(Math.max(0, Math.min(w - cw, (box[0] + box[2] - cw) / 2)));
-  const y = Math.round(Math.max(0, Math.min(h - ch, (box[1] + box[3] - ch) / 2)));
-  const scale = megapixels ? Math.sqrt(megapixels * 1e6 / (cw * ch)) : 1;
+function planShot(w, h, megapixels) {
+  const scale = megapixels && w * h > megapixels * 1e6 ? Math.sqrt(megapixels * 1e6 / (w * h)) : 1;
   const to32 = v => Math.max(64, Math.round(v * scale / 32) * 32);
-  return { x, y, w: cw, h: ch, outW: to32(cw), outH: to32(ch) };
+  return { x: 0, y: 0, w, h, outW: to32(w), outH: to32(h) };
 }
 function brushMask(b) {
   const mask = newCanvas(W(), H());
@@ -4911,7 +4913,7 @@ function modelMask(mask, crop) {
   g.fillRect(0, 0, crop.outW, crop.outH);
   return out;
 }
-// Nút Định vị: viền mỏng nằm ngoài mask, chỉ có trên ảnh model nhìn, ảnh bắt đầu vẽ vẫn sạch.
+// Viền mỏng nằm ngoài mask, chỉ có trên ảnh model nhìn, ảnh bắt đầu vẽ vẫn sạch.
 function locatorImage(clean, mask, crop, hex) {
   const scaled = cropCanvas(mask, crop);
   const ring = newCanvas(crop.outW, crop.outH);
@@ -4963,12 +4965,10 @@ function fitReference(img, megapixels = 1) {
   g.drawImage(img, 0, 0, c.width, c.height);
   return c;
 }
-function buildInpaintPrompt({ crop, locator, mask, refs, text, seed }) {
-  const graph = buildApiPrompt({ image1: crop, refs, text, resolution: 0, seed, lora: null });
-  if (locator) {
-    graph[44] = { class_type: 'LoadImage', inputs: { image: locator } };
-    graph[7].inputs['images.image_1'] = ['44', 0];
-  }
+function buildInpaintPrompt({ shot, outlined, mask, refs, text, seed }) {
+  const graph = buildApiPrompt({ image1: shot, refs, text, resolution: 0, seed, lora: null });
+  graph[44] = { class_type: 'LoadImage', inputs: { image: outlined } };
+  graph[7].inputs['images.image_1'] = ['44', 0];
   graph[41] = { class_type: 'VAEEncode', inputs: { pixels: ['4', 0], vae: ['3', 0] } };
   graph[42] = { class_type: 'LoadImageMask', inputs: { image: mask, channel: 'red' } };
   graph[43] = { class_type: 'SetLatentNoiseMask', inputs: { samples: ['41', 0], mask: ['42', 0] } };
@@ -5118,22 +5118,23 @@ function connectProgress() {
     setTimeout(connectProgress, 4000);
   };
 }
-// Lượt Guide chia nhau 2 MP cho ảnh tham chiếu, để nhiều màu không làm lượt chạy quá nặng.
-const GUIDE_REF_MP = 2;
-function stepOf(pass) {
-  if (pass.kind === 'guide') {
-    const marks = pass.brushes.map(id => {
-      const b = brushOf(id);
-      return { mask: brushMask(b), hex: PAINT[b.color].hex };
-    });
-    const area = newCanvas(W(), H());
-    for (const m of marks) area.getContext('2d').drawImage(m.mask, 0, 0);
-    const refMp = Math.min(1, GUIDE_REF_MP / pass.slots.length);
-    return { name: pass.name, text: promptFor(pass), box: [0, 0, W(), H()], whole: true, locate: true, marks, area, refs: pass.slots.map(s => fitReference(brushOf(s.brush).ref, refMp)) };
-  }
-  const b = brushOf(pass.brush);
-  const mask = brushMask(b);
-  return { name: pass.name, text: promptFor(pass), box: b.box, whole: false, locate: !!b.locate, marks: [{ mask, hex: PAINT[b.color].hex }], area: mask, refs: pass.slots.length ? [fitReference(b.ref)] : [] };
+// Ảnh tham chiếu của lượt sửa chia nhau 2 MP, ảnh môi trường mỗi ảnh 0,5 MP, để lượt chạy không quá nặng.
+const EDIT_REF_MP = 2;
+const ENV_REF_MP = 0.5;
+function editStep(pass) {
+  const marks = pass.brushes.map(id => {
+    const b = brushOf(id);
+    return { mask: brushMask(b), hex: PAINT[b.color].hex };
+  });
+  const area = newCanvas(W(), H());
+  for (const m of marks) area.getContext('2d').drawImage(m.mask, 0, 0);
+  const refMp = Math.min(1, EDIT_REF_MP / pass.slots.length);
+  return { name: pass.name, text: promptFor(pass), marks, area, refs: pass.slots.map(s => fitReference(brushOf(s.brush).ref, refMp)) };
+}
+async function uploadAll(canvases, prefix) {
+  const names = [];
+  for (let i = 0; i < canvases.length; i++) names.push(await uploadCanvas(canvases[i], `${prefix}${i + 1}.png`));
+  return names;
 }
 async function generate() {
   if (run.active) {
@@ -5151,11 +5152,13 @@ async function generate() {
     return;
   }
   const expand = S.passes.find(p => p.kind === 'expand');
+  const edit = S.passes.find(p => p.kind === 'edit');
   const snap = takeRunSnapshot();
   const expandText = expand && promptFor(expand);
-  const steps = S.passes.filter(p => p.kind !== 'expand').map(pass => stepOf(pass));
+  const envRefs = expand ? S.env.filter(s => s.ref).map(s => fitReference(s.ref, ENV_REF_MP)) : [];
+  const step = edit && editStep(edit);
   const megapixels = Number($('resolution').value);
-  const total = steps.length + (expand ? 1 : 0);
+  const total = (expand ? 1 : 0) + (edit ? 1 : 0);
   const passLabel = (index, name) => (total > 1 ? `Lượt ${index}/${total}: ${name}` : name);
   const stamp = Date.now().toString(36);
   const strokesAtStart = S.strokes;
@@ -5165,31 +5168,28 @@ async function generate() {
     if (expand) {
       startPass(passLabel(1, 'Kéo rộng'));
       const name = await uploadCanvas(current, `${stamp}_outpaint.png`);
-      run.promptId = await queueGraph(buildApiPrompt({ image1: name, refs: [], text: expandText, resolution: 0, seed: randomSeed(), lora: OUTPAINT_LORA }));
+      const refs = await uploadAll(envRefs, `${stamp}_env`);
+      run.promptId = await queueGraph(buildApiPrompt({ image1: name, refs, text: expandText, resolution: 0, seed: randomSeed(), lora: OUTPAINT_LORA }));
       advanceJob('queue');
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
       current = stitchOriginal(img, snap);
     }
-    for (let i = 0; i < steps.length; i++) {
-      const step = steps[i];
+    if (step) {
       if (run.cancelled) throw new Error('Đã dừng.');
       run.promptId = null;
-      startPass(passLabel(i + (expand ? 2 : 1), step.name));
-      // Cả shot đã nhỏ hơn mức MP đã chọn thì giữ cỡ gốc: phóng lên chỉ tốn thêm, dán lại vẫn về cỡ cũ.
-      const crop = planCrop(step.box, snap.w, snap.h, step.whole && snap.w * snap.h <= megapixels * 1e6 ? 0 : megapixels);
-      const clean = cropCanvas(current, crop);
-      const prefix = `${stamp}_${i + 1}`;
-      const cropName = await uploadCanvas(clean, `${prefix}_crop.png`);
-      const maskName = await uploadCanvas(modelMask(step.area, crop), `${prefix}_mask.png`);
-      const locator = step.locate ? await uploadCanvas(guideImage(clean, step.marks, crop), `${prefix}_locator.png`) : null;
-      const refs = [];
-      for (let k = 0; k < step.refs.length; k++) refs.push(await uploadCanvas(step.refs[k], `${prefix}_ref${k + 1}.png`));
-      run.promptId = await queueGraph(buildInpaintPrompt({ crop: cropName, locator, mask: maskName, refs, text: step.text, seed: randomSeed() }));
+      startPass(passLabel(total, step.name));
+      const plan = planShot(snap.w, snap.h, megapixels);
+      const clean = cropCanvas(current, plan);
+      const shot = await uploadCanvas(clean, `${stamp}_shot.png`);
+      const mask = await uploadCanvas(modelMask(step.area, plan), `${stamp}_mask.png`);
+      const outlined = await uploadCanvas(guideImage(clean, step.marks, plan), `${stamp}_outlined.png`);
+      const refs = await uploadAll(step.refs, `${stamp}_ref`);
+      run.promptId = await queueGraph(buildInpaintPrompt({ shot, outlined, mask, refs, text: step.text, seed: randomSeed() }));
       advanceJob('queue');
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
-      current = pasteCrop(current, img, crop, step.area);
+      current = pasteCrop(current, img, plan, step.area);
     }
     const finished = await canvasToResult(current);
     const continued = await continueFrom(finished, snap, strokesAtStart);
@@ -5317,6 +5317,7 @@ function sampleScene() {
 
 buildPop();
 buildSheetPanel();
+buildEnvBox();
 renderTiles();
 if (ON_COMFY) {
   clearBase();
