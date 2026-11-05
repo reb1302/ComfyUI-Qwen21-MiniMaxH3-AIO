@@ -3488,10 +3488,10 @@ a.btn{color:inherit;text-decoration:none}
     <span class="nums" id="readout"></span>
     <span class="warn" id="sizeNote"></span>
     <span class="grow"></span>
-    <select class="field model" id="resolution" aria-label="Cỡ ảnh ra" title="Càng lớn càng chậm">
-      <option value="1024">Ảnh ra 1 MP</option>
-      <option value="2048">Ảnh ra 4 MP</option>
-      <option value="0">Giữ cỡ ảnh gốc</option>
+    <select class="field model" id="resolution" aria-label="Độ nét khi gen" title="Càng lớn vùng sửa càng nét và càng chậm. Ảnh ra luôn giữ cỡ ảnh đang sửa.">
+      <option value="1024">Gen ở 1 MP</option>
+      <option value="2048">Gen ở 4 MP</option>
+      <option value="0">Gen ở cỡ gốc</option>
     </select>
     <select class="field model" id="model" aria-label="Model">
       <option>Qwen 2.1</option>
@@ -4556,6 +4556,28 @@ function stitchOriginal(result, snap) {
   return out;
 }
 
+// Chỉ lấy kết quả trong vùng tô, ngoài vùng tô giữ đúng điểm ảnh cũ để sửa nhiều lần không trôi ảnh.
+// Vẽ mờ nhiều lần để mask nới ra và mềm dần, vẽ nét gốc lên trên cùng để trong vùng tô luôn lấy trọn kết quả.
+function pasteOutsideMarks(result, previous, snap) {
+  const feather = Math.max(8, Math.round(Math.max(snap.w, snap.h) * 0.012));
+  const edited = newCanvas(snap.w, snap.h);
+  const e = edited.getContext('2d');
+  e.drawImage(result, 0, 0, snap.w, snap.h);
+  const mask = newCanvas(snap.w, snap.h);
+  const m = mask.getContext('2d');
+  m.filter = `blur(${feather}px)`;
+  for (let i = 0; i < 4; i++) m.drawImage(snap.marks, 0, 0);
+  m.filter = 'none';
+  m.drawImage(snap.marks, 0, 0);
+  e.globalCompositeOperation = 'destination-in';
+  e.drawImage(mask, 0, 0);
+  const out = newCanvas(snap.w, snap.h);
+  const g = out.getContext('2d');
+  g.drawImage(previous, 0, 0);
+  g.drawImage(edited, 0, 0);
+  return out;
+}
+
 async function uploadCanvas(canvas, name) {
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
   const form = new FormData();
@@ -4754,7 +4776,8 @@ async function generate() {
       run.promptId = await queueGraph(buildApiPrompt({ image1, refs, text: marksText, resolution, seed: randomSeed(), lora: null }));
       advanceJob('queue');
       renderJob();
-      finished = await loadOutput(await waitForImage(run.promptId));
+      const output = await loadOutput(await waitForImage(run.promptId));
+      finished = await canvasToResult(pasteOutsideMarks(output.img, current, snap));
     }
     const continued = await continueFrom(finished, snap, strokesAtStart);
     hideJob();
