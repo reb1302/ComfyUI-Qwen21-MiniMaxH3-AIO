@@ -115,7 +115,6 @@ svg{display:block}
 .rotview.dragging{cursor:grabbing}
 .rotview canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .rotframe{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);outline:1px dashed #ffffffb0;box-shadow:0 0 0 1px #00000080;pointer-events:none}
-.rotread{position:absolute;left:8px;top:8px;padding:3px 8px;font:400 12px var(--font-data);color:#fff;background:#000000a8;border-radius:3px;pointer-events:none}
 .rotnote{position:absolute;right:8px;top:8px;padding:3px 8px;font-size:12px;color:var(--paper-ink);background:var(--warn);border-radius:3px;pointer-events:none}
 .rotmsg{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;text-align:center;padding:16px;color:var(--ink-2);pointer-events:none}
 .rotmsg .bar-track{width:220px;height:4px;background:var(--raised);border-radius:2px;overflow:hidden}
@@ -123,10 +122,8 @@ svg{display:block}
 .rotctl{display:grid;justify-items:center;gap:6px}
 .rotrow{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 6px}
 .rotrow .viewchip{padding:3px 10px;font-size:12px}
-.rotsep{align-self:stretch;width:1px;background:var(--line);margin:2px 4px}
 .rotslider{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
 .rotslider input{width:220px;accent-color:var(--paper)}
-.rotslider output{width:42px;font:400 12px var(--font-data);color:var(--ink);text-align:right}
 .capbox{position:absolute;pointer-events:none;outline:2px dashed #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px #00000066}
 .capture-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--paper);color:var(--paper-ink);border-radius:6px;font-weight:600;white-space:nowrap;box-shadow:0 8px 24px #00000080}
 .capture-hint button{background:transparent;border:1px solid var(--paper-ink);border-radius:4px;padding:2px 8px;color:inherit;font-weight:500;cursor:pointer}
@@ -289,7 +286,6 @@ a.btn{color:inherit;text-decoration:none}
         <div class="rotview" id="rotView" title="Kéo để xoay">
           <canvas id="rotCanvas"></canvas>
           <div class="rotframe" id="rotFrame" hidden></div>
-          <div class="rotread" id="rotRead"></div>
           <div class="rotnote" id="rotNote" hidden>Giả lập để xem giao diện, chưa phải splat thật</div>
           <div class="rotmsg" id="rotMsg" hidden>
             <span id="rotMsgText"></span>
@@ -297,17 +293,12 @@ a.btn{color:inherit;text-decoration:none}
           </div>
         </div>
         <div class="rotctl" id="rotDummyCtl">
-          <div class="rotrow" id="rotAz" role="group" aria-label="Hướng nhìn"></div>
-          <div class="rotrow">
-            <div class="rotrow" id="rotEl" role="group" aria-label="Độ cao"></div>
-            <span class="rotsep"></span>
-            <div class="rotrow" id="rotDist" role="group" aria-label="Cự ly"></div>
-          </div>
+          <div class="rotrow" id="rotDist" role="group" aria-label="Cự ly"></div>
         </div>
         <div class="rotctl" id="rotSplatCtl" hidden>
           <div class="rotrow">
-            <label class="rotslider">Ngang <input id="rotAzRange" type="range" min="-180" max="180" step="1" value="0" aria-label="Góc ngang"><output id="rotAzOut">0°</output></label>
-            <label class="rotslider">Dọc <input id="rotElRange" type="range" min="-80" max="80" step="1" value="0" aria-label="Góc dọc"><output id="rotElOut">0°</output></label>
+            <label class="rotslider"><span aria-hidden="true">↔</span><input id="rotAzRange" type="range" min="-180" max="180" step="1" value="0" aria-label="Xoay ngang"></label>
+            <label class="rotslider"><span aria-hidden="true">↕</span><input id="rotElRange" type="range" min="-80" max="80" step="1" value="0" aria-label="Xoay dọc"></label>
             <button class="viewchip" id="rotReset" type="button">Chính diện</button>
             <button class="viewchip" id="rotRetry" type="button" hidden>Dựng lại</button>
           </div>
@@ -1607,64 +1598,156 @@ function buildRotatePasses() {
   return { passes: [{ kind: 'rotate', name: Rotate.mode === 'splat' ? 'Xoay bằng splat' : 'Xoay', lines, slots: [] }], problems: [] };
 }
 
-// Con mèo ghép từ các khối, mặt ở phía trước, đuôi ở phía sau, để nhìn là biết đang xem hướng nào.
+// Con mèo ngồi kiểu tượng gốm: mặt và bụng kem ở phía trước, lưng vằn và đuôi dựng ở phía sau, nhìn là biết đang xem hướng nào.
 function buildCatMesh() {
   const out = [];
-  const unit = v => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
-  const push = (p, n, c) => out.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2]);
-  const quad = (a, b, c, d, col) => {
-    for (const q of [a, b, c, a, c, d]) push(q.p, q.n, col);
+  const lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+  const ramp = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const unit = v => { const l = Math.hypot(v[0], v[1], v[2]); return l > 1e-9 ? [v[0] / l, v[1] / l, v[2] / l] : [0, 0, 0]; };
+  const spline = (pts, t) => {
+    const f = Math.max(0, Math.min(0.9999, t)) * (pts.length - 1), i = Math.floor(f), s = f - i;
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    return p1.map((_, k) => 0.5 * (2 * p1[k] + (p2[k] - p0[k]) * s + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * s * s + (3 * p1[k] - p0[k] - 3 * p2[k] + p3[k]) * s * s * s));
   };
-  const ellipsoid = (c, r, col, lat = 20, lon = 32) => {
-    const at = (i, j) => {
-      const t = Math.PI * i / lat, f = 2 * Math.PI * j / lon;
-      const s = [Math.sin(t) * Math.cos(f), Math.cos(t), Math.sin(t) * Math.sin(f)];
-      return { p: [c[0] + r[0] * s[0], c[1] + r[1] * s[1], c[2] + r[2] * s[2]], n: unit([s[0] / r[0], s[1] / r[1], s[2] / r[2]]) };
+  // Lưới trơn: pháp tuyến tính từ các điểm lân cận và hướng ra ngoài theo tâm tham chiếu ref(u, v).
+  const surface = (fn, ref, nu, nv, color) => {
+    const grid = [];
+    for (let i = 0; i <= nu; i++) {
+      const row = [];
+      for (let j = 0; j < nv; j++) row.push(fn(i / nu, j / nv));
+      grid.push(row);
+    }
+    const at = (i, j) => grid[Math.max(0, Math.min(nu, i))][((j % nv) + nv) % nv];
+    const vertex = (i, j) => {
+      const p = at(i, j), outward = sub(p, ref(i / nu, j / nv));
+      let n = unit(cross(sub(at(i + 1, j), at(i - 1, j)), sub(at(i, j + 1), at(i, j - 1))));
+      if (dot(n, n) < 0.5) n = unit(outward);
+      if (dot(n, outward) < 0) n = [-n[0], -n[1], -n[2]];
+      const c = typeof color === 'function' ? color(p, n) : color;
+      out.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2]);
     };
-    for (let i = 0; i < lat; i++) for (let j = 0; j < lon; j++) quad(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1), col);
-  };
-  const cone = (base, rx, rz, tip, col, seg = 20) => {
-    for (let j = 0; j < seg; j++) {
-      const f0 = 2 * Math.PI * j / seg, f1 = 2 * Math.PI * (j + 1) / seg;
-      const a = [base[0] + rx * Math.cos(f0), base[1], base[2] + rz * Math.sin(f0)];
-      const b = [base[0] + rx * Math.cos(f1), base[1], base[2] + rz * Math.sin(f1)];
-      const na = unit([Math.cos(f0), 0.35, Math.sin(f0)]), nb = unit([Math.cos(f1), 0.35, Math.sin(f1)]);
-      push(a, na, col); push(b, nb, col); push(tip, unit([Math.cos((f0 + f1) / 2), 0.35, Math.sin((f0 + f1) / 2)]), col);
+    for (let i = 0; i < nu; i++) {
+      for (let j = 0; j < nv; j++) {
+        for (const [a, b] of [[i, j], [i + 1, j], [i + 1, j + 1], [i, j], [i + 1, j + 1], [i, j + 1]]) vertex(a, b);
+      }
     }
   };
-  const ring = (y, R, r, col, seg = 72, side = 6) => {
-    const at = (i, j) => {
-      const f = 2 * Math.PI * i / seg, t = 2 * Math.PI * j / side;
-      const n = [Math.cos(f) * Math.cos(t), Math.sin(t), Math.sin(f) * Math.cos(t)];
-      return { p: [(R + r * Math.cos(t)) * Math.cos(f), y + r * Math.sin(t), (R + r * Math.cos(t)) * Math.sin(f)], n };
-    };
-    for (let i = 0; i < seg; i++) for (let j = 0; j < side; j++) quad(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1), col);
+  const ball = (c, r, color, nu = 24, nv = 36, shape) => surface((u, v) => {
+    const t = Math.PI * u, f = 2 * Math.PI * v;
+    const s = [Math.sin(t) * Math.cos(f), Math.cos(t), Math.sin(t) * Math.sin(f)];
+    const k = shape ? shape(s) : [1, 1, 1];
+    return [c[0] + r[0] * s[0] * k[0], c[1] + r[1] * s[1] * k[1], c[2] + r[2] * s[2] * k[2]];
+  }, () => c, nu, nv, color);
+  const tube = (pts, radius, color, nu = 40, nv = 14) => {
+    const center = t => spline(pts, t);
+    const frames = [];
+    let side = null;
+    for (let i = 0; i <= nu; i++) {
+      const u = i / nu;
+      const d = unit(sub(center(Math.min(1, u + 0.01)), center(Math.max(0, u - 0.01))));
+      if (side) {
+        const k = dot(side, d);
+        side = unit([side[0] - k * d[0], side[1] - k * d[1], side[2] - k * d[2]]);
+      } else {
+        side = unit(cross(d, Math.abs(d[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
+      }
+      frames.push([side, cross(d, side)]);
+    }
+    surface((u, v) => {
+      const c = center(u), [a, b] = frames[Math.round(u * nu)];
+      const f = 2 * Math.PI * v, r = radius(u);
+      return [0, 1, 2].map(k => c[k] + r * (Math.cos(f) * a[k] + Math.sin(f) * b[k]));
+    }, u => center(u), nu, nv, color);
   };
-  const fur = [0.83, 0.56, 0.30], cream = [0.96, 0.89, 0.76], stripe = [0.56, 0.34, 0.16], dark = [0.09, 0.08, 0.09], pink = [0.93, 0.52, 0.58], white = [0.96, 0.96, 0.94], gray = [0.42, 0.43, 0.48];
-  ellipsoid([0, -0.42, -0.25], [0.58, 0.68, 0.78], fur);
-  ellipsoid([0, -0.5, 0.26], [0.4, 0.5, 0.3], cream);
-  ellipsoid([0, 0.58, 0.32], [0.64, 0.54, 0.52], fur);
-  ellipsoid([0, 0.43, 0.72], [0.25, 0.16, 0.14], cream);
+  const ear = (base, tip, width, thick, color, push = 0) => surface((u, v) => {
+    const f = 2 * Math.PI * v, k = (1 - u) ** 0.72;
+    return [
+      base[0] + (tip[0] - base[0]) * u + width * k * Math.cos(f),
+      base[1] + (tip[1] - base[1]) * u,
+      base[2] + (tip[2] - base[2]) * u + thick * k * Math.sin(f) + push,
+    ];
+  }, u => [base[0] + (tip[0] - base[0]) * u, base[1] + (tip[1] - base[1]) * u, base[2] + (tip[2] - base[2]) * u + push], 24, 28, color);
+
+  const coat = [0.93, 0.61, 0.32], stripe = [0.78, 0.44, 0.2], cream = [0.99, 0.93, 0.82], pink = [0.95, 0.63, 0.62], ink = [0.13, 0.11, 0.15], white = [1, 1, 1];
+  // Thân: tròn ở dưới, thon dần lên cổ, phía trước màu kem, sau lưng có vằn.
+  const bodyProfile = [[0.0, -1.1], [0.42, -1.1], [0.66, -0.92], [0.7, -0.6], [0.6, -0.22], [0.45, 0.14], [0.34, 0.42], [0.0, 0.56]];
+  const bodyColor = (p, n) => {
+    const base = lerp(coat, cream, ramp(0.25, 0.8, n[2]));
+    const band = ramp(0.35, 0.75, Math.sin(p[1] * 13 + 0.6)) * ramp(-0.05, -0.45, n[2]) * ramp(0.75, 0.4, Math.abs(n[0]));
+    return lerp(base, stripe, band);
+  };
+  surface((u, v) => {
+    const [r, y] = spline(bodyProfile, u), f = 2 * Math.PI * v;
+    return [r * Math.cos(f), y, r * 0.92 * Math.sin(f) - 0.1 * (1 - ramp(-1.1, 0.4, y))];
+  }, u => [0, spline(bodyProfile, u)[1], -0.1 * (1 - ramp(-1.1, 0.4, spline(bodyProfile, u)[1]))], 64, 72, bodyColor);
+  // Đùi sau và bàn chân.
   for (const s of [-1, 1]) {
-    cone([s * 0.38, 0.92, 0.3], 0.21, 0.15, [s * 0.5, 1.46, 0.28], fur);
-    cone([s * 0.38, 0.95, 0.38], 0.12, 0.05, [s * 0.48, 1.32, 0.38], pink);
-    ellipsoid([s * 0.25, 0.66, 0.74], [0.115, 0.135, 0.07], dark);
-    ellipsoid([s * 0.21, 0.71, 0.8], [0.035, 0.04, 0.02], white);
-    ellipsoid([s * 0.25, -1.04, 0.42], [0.17, 0.1, 0.24], cream);
-    ellipsoid([s * 0.48, -1.03, -0.5], [0.2, 0.11, 0.3], fur);
+    ball([s * 0.5, -0.76, -0.12], [0.29, 0.34, 0.44], (p, n) => lerp(coat, cream, ramp(0.55, 0.95, n[2]) * 0.6));
+    ball([s * 0.46, -1.03, 0.3], [0.17, 0.085, 0.24], cream);
+    ball([s * 0.2, -1.03, 0.56], [0.15, 0.095, 0.19], cream);
   }
-  ellipsoid([0, 0.5, 0.86], [0.065, 0.045, 0.035], pink);
-  for (const y of [0.96, 0.76, 0.56]) ellipsoid([0, y, -0.14], [0.26, 0.05, 0.07], stripe);
-  for (const y of [0.0, -0.3, -0.6]) ellipsoid([0, y, -0.98], [0.34, 0.06, 0.06], stripe);
-  for (let i = 0; i <= 14; i++) {
-    const t = i / 14;
-    ellipsoid([0.42 * Math.sin(t * 2.4), -0.98 + 1.5 * t, -1.0 - 0.45 * Math.sin(t * Math.PI)], [0.12, 0.12, 0.12], i > 11 ? stripe : fur, 10, 14);
-  }
-  ring(-1.16, 1.75, 0.012, gray);
-  ROTATE_AZ.forEach((_, i) => {
-    const f = i * Math.PI / 4;
-    ellipsoid([1.75 * Math.sin(f), -1.16, 1.75 * Math.cos(f)], i === 0 ? [0.075, 0.075, 0.075] : [0.04, 0.04, 0.04], i === 0 ? white : gray, 10, 14);
+  // Đầu: má hơi bè, nửa dưới mặt màu kem, trán có ba vằn.
+  const headC = [0, 0.8, 0.06];
+  const headColor = (p, n) => {
+    const y = p[1] - headC[1];
+    const face = ramp(0.15, 0.6, n[2]) * (1 - ramp(-0.08, 0.08, y - 0.02 + 0.32 * Math.abs(p[0])));
+    let c = lerp(coat, cream, face);
+    for (const x of [-0.15, 0, 0.15]) {
+      const mark = (1 - ramp(0.02, 0.05, Math.abs(p[0] - x))) * ramp(0.2, 0.3, y) * ramp(0.05, 0.3, n[2] + 0.3);
+      c = lerp(c, stripe, mark);
+    }
+    return c;
+  };
+  ball(headC, [0.6, 0.47, 0.5], headColor, 72, 96, s => {
+    const cheek = ramp(0.25, -0.25, s[1]) * (1 - ramp(-0.25, -0.85, s[1]));
+    return [1 + 0.1 * cheek, 1, 1];
   });
+  // Tai.
+  for (const s of [-1, 1]) {
+    ear([s * 0.27, 0.9, 0.04], [s * 0.5, 1.6, 0.0], 0.3, 0.13, coat);
+    ear([s * 0.3, 1.02, 0.11], [s * 0.47, 1.5, 0.05], 0.17, 0.035, pink);
+  }
+  // Mắt, mũi, miệng, ria.
+  for (const s of [-1, 1]) {
+    ball([s * 0.23, 0.84, 0.5], [0.068, 0.092, 0.03], ink, 14, 18);
+    ball([s * 0.21, 0.875, 0.528], [0.021, 0.024, 0.008], white, 8, 10);
+    tube([[0, 0.665, 0.55], [s * 0.035, 0.635, 0.552], [s * 0.085, 0.65, 0.535]], () => 0.009, ink, 14, 6);
+    for (const [y, lift] of [[0.72, 0.03], [0.68, -0.03]]) {
+      tube([[s * 0.3, y, 0.42], [s * 0.5, y + lift * 0.6, 0.39], [s * 0.72, y + lift, 0.31]], u => 0.007 * (1 - u * 0.7), [0.97, 0.95, 0.9], 12, 5);
+    }
+  }
+  ball([0, 0.695, 0.56], [0.038, 0.026, 0.02], pink, 10, 14);
+  // Vòng cổ và chuông ở phía trước.
+  surface((u, v) => {
+    const f = 2 * Math.PI * u, t = 2 * Math.PI * v, r = 0.05;
+    return [(0.37 + r * Math.cos(t)) * Math.sin(f), 0.38 + r * Math.sin(t), (0.34 + r * Math.cos(t)) * Math.cos(f)];
+  }, u => [0.37 * Math.sin(2 * Math.PI * u), 0.38, 0.34 * Math.cos(2 * Math.PI * u)], 72, 12, [0.83, 0.2, 0.25]);
+  ball([0, 0.28, 0.4], [0.07, 0.07, 0.07], [0.98, 0.78, 0.3], 16, 22);
+  // Đuôi dựng phía sau, chóp đậm.
+  const tailPts = [[0, -0.92, -0.62], [0.12, -0.98, -0.98], [0.42, -0.72, -1.1], [0.55, -0.22, -1.02], [0.4, 0.2, -0.96], [0.5, 0.56, -0.88]];
+  tube(tailPts, u => 0.125 * Math.sqrt(Math.max(0, 1 - ramp(0.86, 1, u) ** 2)) * (1 - 0.18 * u), (p, n) => lerp(coat, stripe, ramp(0.05, 0.3, p[1])), 72, 18);
+
+  // Bóng mềm dưới chân và vòng mảnh, chấm sáng chỉ phía trước. Pháp tuyến 0 là không đổ sáng.
+  const floor = -1.14, bg = [0.09, 0.094, 0.106], dark = [0.035, 0.037, 0.043];
+  const seg = 72, rings = 14;
+  for (let i = 0; i < rings; i++) {
+    const r0 = 1.3 * i / rings, r1 = 1.3 * (i + 1) / rings;
+    const c0 = lerp(dark, bg, ramp(0.3, 1, i / rings)), c1 = lerp(dark, bg, ramp(0.3, 1, (i + 1) / rings));
+    for (let j = 0; j < seg; j++) {
+      const a = 2 * Math.PI * j / seg, b = 2 * Math.PI * (j + 1) / seg;
+      const put = (r, f, c) => out.push(r * Math.sin(f), floor, r * Math.cos(f), 0, 0, 0, c[0], c[1], c[2]);
+      put(r0, a, c0); put(r1, a, c1); put(r1, b, c1);
+      put(r0, a, c0); put(r1, b, c1); put(r0, b, c0);
+    }
+  }
+  surface((u, v) => {
+    const f = 2 * Math.PI * u, t = 2 * Math.PI * v, R = 1.42, r = 0.007;
+    return [(R + r * Math.cos(t)) * Math.sin(f), floor + r * Math.sin(t), (R + r * Math.cos(t)) * Math.cos(f)];
+  }, u => [1.42 * Math.sin(2 * Math.PI * u), floor, 1.42 * Math.cos(2 * Math.PI * u)], 120, 6, [0.36, 0.37, 0.42]);
+  ball([0, floor, 1.42], [0.05, 0.05, 0.05], [0.94, 0.93, 0.9], 12, 16);
   return new Float32Array(out);
 }
 
@@ -1820,7 +1903,17 @@ const RotateView = (() => {
       uniform mat4 M, VP; out vec3 vn; out vec3 vc;
       void main(){ vn = mat3(M) * n; vc = c; gl_Position = VP * M * vec4(p, 1.0); }`, `#version 300 es
       precision highp float; in vec3 vn; in vec3 vc; out vec4 o;
-      void main(){ vec3 n = normalize(vn); float d = max(dot(n, normalize(vec3(0.45, 0.8, 0.65))), 0.0); float f = max(dot(n, normalize(vec3(-0.6, 0.1, 0.4))), 0.0); o = vec4(vc * (0.36 + 0.72 * d + 0.14 * f), 1.0); }`);
+      void main(){
+        if (dot(vn, vn) < 0.0001) { o = vec4(vc, 1.0); return; }
+        vec3 n = normalize(vn), L = normalize(vec3(0.42, 0.72, 0.62)), H = normalize(L + vec3(0.0, 0.0, 1.0));
+        float wrap = clamp((dot(n, L) + 0.55) / 1.55, 0.0, 1.0);
+        float sky = 0.5 + 0.5 * n.y;
+        float rim = pow(1.0 - clamp(n.z, 0.0, 1.0), 3.0);
+        float gloss = pow(max(dot(n, H), 0.0), 48.0);
+        vec3 ambient = mix(vec3(0.6, 0.5, 0.47), vec3(0.62, 0.6, 0.58), sky);
+        vec3 c = vc * (ambient + 0.46 * wrap) + vec3(1.0, 0.96, 0.9) * (0.08 * gloss + 0.07 * rim);
+        o = vec4(c, 1.0);
+      }`);
     meshU = { M: gl.getUniformLocation(meshProg, 'M'), VP: gl.getUniformLocation(meshProg, 'VP') };
     splatProg = program(`#version 300 es
       precision highp float; precision highp int;
@@ -1936,7 +2029,7 @@ const RotateView = (() => {
       gl.clearColor(0.09, 0.094, 0.106, 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       const f = Math.tan(17.5 * Math.PI / 180), aspect = w / h;
-      const VP = mul(frustum(-f * aspect, f * aspect, -f, f, 0.1, 50), move(0, -0.1, -cur.z));
+      const VP = mul(frustum(-f * aspect, f * aspect, -f, f, 0.1, 50), move(0, -0.22, -cur.z));
       gl.enable(gl.DEPTH_TEST);
       gl.useProgram(meshProg);
       gl.uniformMatrix4fv(meshU.M, false, mul(rotX(cur.el), rotY(-cur.az)));
@@ -2054,18 +2147,9 @@ const RotateView = (() => {
 })();
 
 function syncRotateChips() {
-  const az = rotateAzIndex(), el = rotateElIndex();
-  $('rotAz').querySelectorAll('.viewchip').forEach((chip, i) => chip.setAttribute('aria-pressed', String(i === az)));
-  $('rotEl').querySelectorAll('.viewchip').forEach((chip, i) => chip.setAttribute('aria-pressed', String(i === el)));
   $('rotDist').querySelectorAll('.viewchip').forEach((chip, i) => chip.setAttribute('aria-pressed', String(i === Rotate.dist)));
-  const azDeg = Math.round(wrapDegrees(Rotate.az)), elDeg = Math.round(Rotate.el);
-  $('rotAzRange').value = azDeg;
-  $('rotElRange').value = elDeg;
-  $('rotAzOut').textContent = `${azDeg}°`;
-  $('rotElOut').textContent = `${elDeg}°`;
-  $('rotRead').textContent = Rotate.mode === 'splat'
-    ? `Ngang ${azDeg}° · Dọc ${elDeg}°`
-    : `${ROTATE_AZ[az].vi} · ${ROTATE_EL[el].vi} · ${ROTATE_DIST[Rotate.dist].vi}`;
+  $('rotAzRange').value = Math.round(wrapDegrees(Rotate.az));
+  $('rotElRange').value = Math.round(Rotate.el);
 }
 function applyRotate() {
   syncRotateChips();
@@ -2232,8 +2316,6 @@ function buildRotatePanel() {
     $(id).innerHTML = items.map(item => `<button class="viewchip" type="button" aria-pressed="false">${item.vi}</button>`).join('');
     $(id).querySelectorAll('.viewchip').forEach((chip, i) => chip.addEventListener('click', () => pick(i)));
   };
-  chips('rotAz', ROTATE_AZ, i => setRotate({ az: Rotate.az + wrapDegrees(i * 45 - Rotate.az) }));
-  chips('rotEl', ROTATE_EL, i => setRotate({ el: ROTATE_EL[i].deg }));
   chips('rotDist', ROTATE_DIST, i => setRotate({ dist: i }));
   $('rotMode').addEventListener('click', e => {
     const chip = e.target.closest('.viewchip');
