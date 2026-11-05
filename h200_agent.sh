@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # ==============================================================================
-# H200 COMPANY AI & CODING AGENT (SELF-HEALING, AUTO VRAM FIT, NO DOCKER)
-# - Mặc định        : ./h200_agent.sh start       (Chạy Qwen/Qwen3.8-27B sẵn có)
-# - Chế độ Siêu tốc : ./h200_agent.sh start --moe (Chạy Qwen/Qwen3-30B-A3B-FP8 MoE)
+# H200 DUAL-SOTA COMPANY AI & CODING AGENT (NO DOCKER, AUTO VRAM BALANCER)
+# Cài đặt & Chạy cả 2 Model SOTA Bản Tối Giản Chính Chủ (FP8):
+#   1. Qwen/Qwen3.8-27B-FP8     (28.75 GiB - Suy luận sâu 20đ Artificial Analysis)
+#   2. Qwen/Qwen3.6-35B-A3B-FP8 (34.89 GiB - Siêu MoE 35B/3B active nhanh gấp 5 lần)
 # ==============================================================================
 
 WORK_DIR="${WORK_DIR:-$HOME/h200-coding-agent}"
@@ -13,23 +14,25 @@ LITELLM_VENV="$WORK_DIR/.venv-litellm"
 LOG_DIR="$WORK_DIR/logs"
 PID_DIR="$WORK_DIR/pids"
 
-MAIN_MODEL="${MAIN_MODEL:-Qwen/Qwen3.8-27B}"
-USE_MOE=false
+MODEL_38="Qwen/Qwen3.8-27B-FP8"
+MODEL_36="Qwen/Qwen3.6-35B-A3B-FP8"
 
-for arg in "$@"; do
-    case "$arg" in
-        --moe)
-            USE_MOE=true
-            MAIN_MODEL="Qwen/Qwen3-30B-A3B-FP8"
-            ;;
-    esac
-done
-
-MAIN_PORT="${MAIN_PORT:-8001}"
+PORT_38="${PORT_38:-8001}"
+PORT_36="${PORT_36:-8002}"
 GATEWAY_PORT="${GATEWAY_PORT:-4000}"
 
 TEAM_API_KEY="${TEAM_API_KEY:-sk-team-h200-super-secret}"
 INTERNAL_KEY="sk-internal-vllm-key"
+
+# Chế độ chạy: "dual" (chạy cả 2 nếu đủ VRAM), "only38", hoặc "only36"
+RUN_MODE="dual"
+for arg in "$@"; do
+    case "$arg" in
+        --only-38|--38) RUN_MODE="only38" ;;
+        --only-36|--36|--moe) RUN_MODE="only36" ;;
+        --dual) RUN_MODE="dual" ;;
+    esac
+done
 
 export HF_HUB_ENABLE_HF_TRANSFER=1
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
@@ -39,7 +42,7 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 mkdir -p "$WORK_DIR" "$LOG_DIR" "$PID_DIR"
 
 # ==============================================================================
-# 1. DỌN SẠCH TIẾN TRÌNH CŨ CỦA VLLM / LITELLM (KHÔNG ĐỤNG VÀO COMFYUI)
+# 1. DỌN SẠCH TIẾN TRÌNH VLLM / LITELLM CŨ (GIỮ NGUYÊN COMFYUI)
 # ==============================================================================
 stop_stack() {
     echo "🛑 Đang dọn sạch các tiến trình vLLM / EngineCore / LiteLLM cũ..."
@@ -61,91 +64,44 @@ stop_stack() {
     echo "✅ Đã giải phóng sạch tiến trình vLLM cũ!"
 }
 
-# ==============================================================================
-# 2. TÍNH CHÍNH XÁC % VRAM TRỐNG (TRỪ BUFFER AN TOÀN ĐỂ KHÔNG BAO GIỜ LỖI 82/139 GiB)
-# ==============================================================================
-calc_safe_gpu_util() {
-    if ! command -v nvidia-smi &> /dev/null; then
-        echo "0.52"
-        return
-    fi
+get_free_mib() {
+    nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | head -n 1 | tr -d ' '
+}
+
+get_total_mib() {
+    nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1 | tr -d ' '
+}
+
+calc_util_for_mib() {
+    local target_mib=$1
     local free_mib total_mib
-    free_mib=$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits | head -n 1 | tr -d ' ')
-    total_mib=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -n 1 | tr -d ' ')
+    free_mib=$(get_free_mib)
+    total_mib=$(get_total_mib)
 
-    if [ -z "$free_mib" ] || [ -z "$total_mib" ] || [ "$total_mib" -le 0 ]; then
-        echo "0.52"
-        return
-    fi
-
-    echo "📊 VRAM H200 hiện tại: Trống ${free_mib} MiB / Tổng ${total_mib} MiB" >&2
-
-    # Lấy chính xác tỷ lệ (free / total) trừ đi 0.05 (~7 GiB buffer an toàn cho CUDA context)
-    awk -v f="$free_mib" -v t="$total_mib" 'BEGIN {
-        free_ratio = f / t;
-        u = free_ratio - 0.05;
+    awk -v target="$target_mib" -v f="$free_mib" -v t="$total_mib" 'BEGIN {
+        # Không bao giờ vượt quá (free_mib - 3500 MiB)
+        max_safe = f - 3500;
+        use_mib = (target < max_safe) ? target : max_safe;
+        u = use_mib / t;
         if (u > 0.85) u = 0.85;
-        if (u < 0.25) u = 0.25;
+        if (u < 0.20) u = 0.20;
         printf "%.2f", u;
     }'
 }
 
 # ==============================================================================
-# 3. GHI CẤU HÌNH LITELLM (CÓ CẢ CODE AGENT + DỊCH THUẬT TIẾNG HÀN CHO CÔNG TY)
+# 2. CÀI ĐẶT MÔI TRƯỜNG & TẢI CẢ 2 MODEL FP8 VỀ Ổ CỨNG
 # ==============================================================================
-write_litellm_config() {
-    cat << YAML > "$WORK_DIR/litellm_config.yaml"
-model_list:
-  # 1. Chế độ Agent Suy Luận Sâu (Debug khó, Thiết kế kiến trúc)
-  - model_name: qwen3.8-agent-xhigh
-    litellm_params:
-      model: openai/$MAIN_MODEL
-      api_base: http://127.0.0.1:$MAIN_PORT/v1
-      api_key: "$INTERNAL_KEY"
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: true
-
-  # 2. Chế độ Code Nhanh & Chat Công Ty (Phản hồi tức thì 0ms delay)
-  - model_name: qwen3.8-coder-fast
-    litellm_params:
-      model: openai/$MAIN_MODEL
-      api_base: http://127.0.0.1:$MAIN_PORT/v1
-      api_key: "$INTERNAL_KEY"
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-
-  # 3. Chế độ Chuyên Dịch Thuật Tiếng Hàn <-> Việt/Anh & Hành chính Công ty
-  - model_name: company-korean-translator
-    litellm_params:
-      model: openai/$MAIN_MODEL
-      api_base: http://127.0.0.1:$MAIN_PORT/v1
-      api_key: "$INTERNAL_KEY"
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-
-  # 4. Chế độ Tab Autocomplete cho IDE (FIM siêu tốc)
-  - model_name: qwen-autocomplete-fim
-    litellm_params:
-      model: openai/$MAIN_MODEL
-      api_base: http://127.0.0.1:$MAIN_PORT/v1
-      api_key: "$INTERNAL_KEY"
-      extra_body:
-        chat_template_kwargs:
-          enable_thinking: false
-
-general_settings:
-  master_key: "$TEAM_API_KEY"
-YAML
-}
-
 install_stack() {
+    echo "======================================================================"
     echo "🚀 [1/4] Kiểm tra phần cứng GPU NVIDIA H200..."
+    echo "======================================================================"
     nvidia-smi --query-gpu=name,memory.free,memory.total,driver_version --format=csv
 
-    echo "🚀 [2/4] Kiểm tra 'uv' & môi trường Python 3.12..."
+    echo ""
+    echo "======================================================================"
+    echo "🚀 [2/4] Cài đặt 'uv' & môi trường Python 3.12 độc lập..."
+    echo "======================================================================"
     if ! command -v uv &> /dev/null; then
         curl -LsSf https://astral.sh/uv/install.sh | sh
         export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
@@ -166,12 +122,85 @@ install_stack() {
         uv pip install --python "$LITELLM_VENV/bin/python" --upgrade "litellm[proxy]"
     fi
 
-    echo "🚀 [3/4] Đảm bảo Model $MAIN_MODEL đã có trên ổ cứng..."
-    "$VLLM_VENV/bin/huggingface-cli" download "$MAIN_MODEL"
+    echo ""
+    echo "======================================================================"
+    echo "🚀 [3/4] Tải Bản 1: $MODEL_38 (28.75 GiB - SOTA Reasoning)..."
+    echo "======================================================================"
+    "$VLLM_VENV/bin/huggingface-cli" download "$MODEL_38"
 
-    echo "🚀 [4/4] Tạo file cấu hình LiteLLM..."
-    write_litellm_config
-    echo "✅ CÀI ĐẶT HOÀN TẤT!"
+    echo ""
+    echo "======================================================================"
+    echo "🚀 [4/4] Tải Bản 2: $MODEL_36 (34.89 GiB - Siêu MoE 35B-A3B)..."
+    echo "======================================================================"
+    "$VLLM_VENV/bin/huggingface-cli" download "$MODEL_36"
+
+    echo "✅ ĐÃ TẢI & CÀI ĐẶT XONG CẢ 2 BẢN MODEL!"
+}
+
+# ==============================================================================
+# 3. GHI CẤU HÌNH LITELLM GATEWAY (TỰ ĐỘNG ĐỊNH TUYẾN THEO ENGINE ĐANG CHẠY)
+# ==============================================================================
+write_litellm_config() {
+    local model_deep="$1"
+    local port_deep="$2"
+    local model_fast="$3"
+    local port_fast="$4"
+
+    cat << YAML > "$WORK_DIR/litellm_config.yaml"
+model_list:
+  # 1. Chế độ Suy Luận Sâu (Qwen3.8-27B-FP8 xhigh - Debug khó, Kiến trúc)
+  - model_name: qwen3.8-agent-xhigh
+    litellm_params:
+      model: openai/$model_deep
+      api_base: http://127.0.0.1:$port_deep/v1
+      api_key: "$INTERNAL_KEY"
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: true
+
+  # 2. Chế độ Siêu MoE 35B-A3B (Tốc độ 200+ tok/s cho cả công ty)
+  - model_name: qwen3.6-moe-fast
+    litellm_params:
+      model: openai/$model_fast
+      api_base: http://127.0.0.1:$port_fast/v1
+      api_key: "$INTERNAL_KEY"
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+  # 3. Tên tương thích ngược (Code nhanh)
+  - model_name: qwen3.8-coder-fast
+    litellm_params:
+      model: openai/$model_fast
+      api_base: http://127.0.0.1:$port_fast/v1
+      api_key: "$INTERNAL_KEY"
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+  # 4. Chuyên gia Dịch Thuật Tiếng Hàn <-> Việt/Anh & Hành chính Công ty
+  - model_name: company-korean-translator
+    litellm_params:
+      model: openai/$model_fast
+      api_base: http://127.0.0.1:$port_fast/v1
+      api_key: "$INTERNAL_KEY"
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+  # 5. Chế độ Tab Autocomplete cho IDE (FIM siêu tốc)
+  - model_name: qwen-autocomplete-fim
+    litellm_params:
+      model: openai/$model_fast
+      api_base: http://127.0.0.1:$port_fast/v1
+      api_key: "$INTERNAL_KEY"
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: false
+
+general_settings:
+  master_key: "$TEAM_API_KEY"
+YAML
 }
 
 # ==============================================================================
@@ -183,12 +212,12 @@ wait_for_port() {
     local log_file=$3
     local pid_file=$4
 
-    echo -n "⏳ Đang khởi động $name (Port $port) "
+    echo -n "⏳ Đang nạp $name lên H200 (Port $port) "
     for _ in {1..180}; do
         if [ -f "$pid_file" ] && ! kill -0 "$(cat "$pid_file")" 2>/dev/null; then
             echo -e "\n⚠️ $name dừng sớm! Chi tiết lỗi trong $log_file:"
             echo "----------------------------------------------------------------------"
-            grep -E -B 2 -A 20 "ERROR|Traceback|RuntimeError|ValueError|OutOfMemoryError" "$log_file" | tail -n 45 || tail -n 45 "$log_file"
+            grep -E -B 2 -A 20 "ERROR|Traceback|RuntimeError|ValueError|OutOfMemoryError" "$log_file" | tail -n 40 || tail -n 40 "$log_file"
             echo "----------------------------------------------------------------------"
             return 1
         fi
@@ -201,51 +230,24 @@ wait_for_port() {
         echo -n "."
         sleep 2
     done
-    echo -e "\n⚠️ Quá thời gian chờ $name! Xem log tại: $log_file"
+    echo -e "\n⚠️ Quá thời gian chờ $name!"
     return 1
 }
 
-# ==============================================================================
-# 5. KHỞI CHẠY VLLM VỚI TỰ ĐỘNG CÂN CHỈNH VRAM (CHẠY CHUNG VỚI COMFYUI OK!)
-# ==============================================================================
-launch_vllm_with_fallback() {
-    local gpu_util
-    gpu_util=$(calc_safe_gpu_util)
+start_one_vllm() {
+    local model=$1
+    local port=$2
+    local util=$3
+    local max_len=$4
+    local tag=$5
 
-    if [ "$USE_MOE" = true ]; then
-        echo "🔥 Đang tải (nếu chưa có) & khởi chạy Siêu MoE $MAIN_MODEL (30.5B/3.3B active, ~30GB VRAM, GPU Util: $gpu_util)..."
-        "$VLLM_VENV/bin/huggingface-cli" download "$MAIN_MODEL"
-        rm -f "$LOG_DIR/vllm_main.log"
-        nohup "$VLLM_VENV/bin/vllm" serve "$MAIN_MODEL" \
-            --host 127.0.0.1 \
-            --port "$MAIN_PORT" \
-            --api-key "$INTERNAL_KEY" \
-            --gpu-memory-utilization "$gpu_util" \
-            --max-model-len 65536 \
-            --max-num-batched-tokens 16384 \
-            --max-num-seqs 64 \
-            --enable-prefix-caching \
-            --enable-chunked-prefill \
-            --enable-auto-tool-choice \
-            --tool-call-parser hermes \
-            --reasoning-parser qwen3 \
-            --trust-remote-code \
-            > "$LOG_DIR/vllm_main.log" 2>&1 &
-        echo $! > "$PID_DIR/vllm_main.pid"
-        if wait_for_port "$MAIN_PORT" "vLLM MoE ($MAIN_MODEL)" "$LOG_DIR/vllm_main.log" "$PID_DIR/vllm_main.pid"; then
-            return 0
-        fi
-    fi
-
-    echo "🔥 [Cấp độ 1 - FP8 Tiết kiệm VRAM (~28GB)] Khởi chạy $MAIN_MODEL (GPU Util: $gpu_util)..."
-    rm -f "$LOG_DIR/vllm_main.log"
-    nohup "$VLLM_VENV/bin/vllm" serve "$MAIN_MODEL" \
+    rm -f "$LOG_DIR/vllm_${tag}.log"
+    nohup "$VLLM_VENV/bin/vllm" serve "$model" \
         --host 127.0.0.1 \
-        --port "$MAIN_PORT" \
+        --port "$port" \
         --api-key "$INTERNAL_KEY" \
-        --quantization fp8 \
-        --gpu-memory-utilization "$gpu_util" \
-        --max-model-len 32768 \
+        --gpu-memory-utilization "$util" \
+        --max-model-len "$max_len" \
         --max-num-batched-tokens 8192 \
         --max-num-seqs 32 \
         --language-model-only \
@@ -254,59 +256,85 @@ launch_vllm_with_fallback() {
         --tool-call-parser qwen3_coder \
         --reasoning-parser qwen3 \
         --trust-remote-code \
-        > "$LOG_DIR/vllm_main.log" 2>&1 &
-    echo $! > "$PID_DIR/vllm_main.pid"
+        > "$LOG_DIR/vllm_${tag}.log" 2>&1 &
+    echo $! > "$PID_DIR/vllm_${tag}.pid"
 
-    if wait_for_port "$MAIN_PORT" "vLLM ($MAIN_MODEL - FP8 Mode)" "$LOG_DIR/vllm_main.log" "$PID_DIR/vllm_main.pid"; then
-        return 0
-    fi
-
-    echo "🔄 Tự động kích hoạt [Cấp độ 2 - BF16 Safe Mode] (GPU Util: $gpu_util)..."
-    stop_stack
-    gpu_util=$(calc_safe_gpu_util)
-    rm -f "$LOG_DIR/vllm_main.log"
-    nohup "$VLLM_VENV/bin/vllm" serve "$MAIN_MODEL" \
-        --host 127.0.0.1 \
-        --port "$MAIN_PORT" \
-        --api-key "$INTERNAL_KEY" \
-        --dtype bfloat16 \
-        --gpu-memory-utilization "$gpu_util" \
-        --max-model-len 16384 \
-        --max-num-batched-tokens 4096 \
-        --max-num-seqs 16 \
-        --language-model-only \
-        --enforce-eager \
-        --enable-auto-tool-choice \
-        --tool-call-parser qwen3_coder \
-        --reasoning-parser qwen3 \
-        --trust-remote-code \
-        > "$LOG_DIR/vllm_main.log" 2>&1 &
-    echo $! > "$PID_DIR/vllm_main.pid"
-
-    if wait_for_port "$MAIN_PORT" "vLLM ($MAIN_MODEL - BF16 Safe Mode)" "$LOG_DIR/vllm_main.log" "$PID_DIR/vllm_main.pid"; then
-        return 0
-    fi
-
-    echo "❌ Không thể khởi động vLLM! Các tiến trình đang chiếm VRAM trên H200 của bạn:"
-    nvidia-smi
-    exit 1
+    wait_for_port "$port" "vLLM [$model] (Util: $util)" "$LOG_DIR/vllm_${tag}.log" "$PID_DIR/vllm_${tag}.pid"
 }
 
 # ==============================================================================
-# 6. KHỞI ĐỘNG TOÀN BỘ & SMOKE-TEST CẢ CODE LẪN DỊCH TIẾNG HÀN
+# 5. KHỞI CHẠY THÔNG MINH (DUAL-MODEL HOẶC SINGLE-MODEL TÙY LƯỢNG VRAM TRỐNG)
 # ==============================================================================
 start_stack() {
-    if [ ! -x "$VLLM_VENV/bin/vllm" ] || [ ! -x "$LITELLM_VENV/bin/litellm" ]; then
-        install_stack
-    else
-        write_litellm_config
-    fi
-
+    install_stack
     stop_stack
     ulimit -n 65535 2>/dev/null || true
 
+    local free_mib total_mib
+    free_mib=$(get_free_mib)
+    total_mib=$(get_total_mib)
     echo ""
-    launch_vllm_with_fallback
+    echo "📊 Dung lượng VRAM H200 trống trước khi nạp: ${free_mib} MiB / ${total_mib} MiB"
+
+    ACTIVE_SUMMARY=""
+
+    if [ "$RUN_MODE" = "only38" ]; then
+        local u38
+        u38=$(calc_util_for_mib 65000)
+        echo "🔥 Chạy chuyên biệt Bản 1: $MODEL_38 (GPU Util: $u38)..."
+        start_one_vllm "$MODEL_38" "$PORT_38" "$u38" 65536 "38"
+        write_litellm_config "$MODEL_38" "$PORT_38" "$MODEL_38" "$PORT_38"
+        ACTIVE_SUMMARY="$MODEL_38 (Port $PORT_38)"
+
+    elif [ "$RUN_MODE" = "only36" ]; then
+        local u36
+        u36=$(calc_util_for_mib 70000)
+        echo "🔥 Chạy chuyên biệt Bản 2 (Siêu MoE): $MODEL_36 (GPU Util: $u36)..."
+        start_one_vllm "$MODEL_36" "$PORT_36" "$u36" 65536 "36"
+        write_litellm_config "$MODEL_36" "$PORT_36" "$MODEL_36" "$PORT_36"
+        ACTIVE_SUMMARY="$MODEL_36 (Port $PORT_36)"
+
+    else
+        # Chế độ DUAL: Thử nạp cả 2 bản cùng lúc nếu VRAM trống >= 76,000 MiB (~74.2 GiB)
+        if [ "$free_mib" -ge 76000 ]; then
+            echo "🔥 [DUAL-ENGINE MODE] Nạp song song cả 2 Model lên H200..."
+            # Bản 1 (28.75 GiB weights) -> cấp ~35,500 MiB (~34.6 GiB)
+            local u1
+            u1=$(calc_util_for_mib 35500)
+            echo "👉 [1/2] Nạp $MODEL_38 (Suy luận sâu - Util: $u1)..."
+            if start_one_vllm "$MODEL_38" "$PORT_38" "$u1" 16384 "38"; then
+                local rem_mib
+                rem_mib=$(get_free_mib)
+                echo "📊 VRAM còn trống cho Bản 2: ${rem_mib} MiB"
+                if [ "$rem_mib" -ge 41000 ]; then
+                    # Bản 2 (34.89 GiB weights) -> cấp phần VRAM trống còn lại trừ buffer
+                    local u2
+                    u2=$(calc_util_for_mib 43500)
+                    echo "👉 [2/2] Nạp tiếp $MODEL_36 (Siêu MoE tốc độ cao - Util: $u2)..."
+                    if start_one_vllm "$MODEL_36" "$PORT_36" "$u2" 16384 "36"; then
+                        write_litellm_config "$MODEL_38" "$PORT_38" "$MODEL_36" "$PORT_36"
+                        ACTIVE_SUMMARY="CHẠY SONG SONG CẢ 2: $MODEL_38 (Port $PORT_38) + $MODEL_36 (Port $PORT_36)"
+                    else
+                        echo "⚠️ VRAM không đủ nhét đồng thời cả 2 (do ComfyUI đang chiếm 58GB). Giữ $MODEL_38 chạy chính!"
+                        pkill -9 -f "port $PORT_36" 2>/dev/null || true
+                        write_litellm_config "$MODEL_38" "$PORT_38" "$MODEL_38" "$PORT_38"
+                        ACTIVE_SUMMARY="$MODEL_38 (Đã cài sẵn $MODEL_36 trên ổ cứng, gõ './h200_agent.sh start --36' để đổi)"
+                    fi
+                else
+                    echo "ℹ️ VRAM còn lại (${rem_mib} MiB) đang nhường cho ComfyUI. Sử dụng $MODEL_38 làm Engine chính!"
+                    write_litellm_config "$MODEL_38" "$PORT_38" "$MODEL_38" "$PORT_38"
+                    ACTIVE_SUMMARY="$MODEL_38 (Đã cài sẵn $MODEL_36 trên ổ cứng, gõ './h200_agent.sh start --36' để đổi)"
+                fi
+            fi
+        else
+            local u_single
+            u_single=$(calc_util_for_mib 60000)
+            echo "ℹ️ VRAM trống (${free_mib} MiB) đang chia sẻ với ComfyUI -> Chạy Siêu MoE $MODEL_36 (Util: $u_single)..."
+            start_one_vllm "$MODEL_36" "$PORT_36" "$u_single" 32768 "36"
+            write_litellm_config "$MODEL_36" "$PORT_36" "$MODEL_36" "$PORT_36"
+            ACTIVE_SUMMARY="$MODEL_36 (Đã cài sẵn $MODEL_38 trên ổ cứng, gõ './h200_agent.sh start --38' để đổi)"
+        fi
+    fi
 
     echo ""
     echo "🔥 Khởi chạy LiteLLM Gateway cho toàn công ty tại cổng $GATEWAY_PORT..."
@@ -319,13 +347,10 @@ start_stack() {
         > "$LOG_DIR/litellm.log" 2>&1 &
     echo $! > "$PID_DIR/litellm.pid"
 
-    if ! wait_for_port "$GATEWAY_PORT" "LiteLLM Gateway" "$LOG_DIR/litellm.log" "$PID_DIR/litellm.pid"; then
-        echo "❌ LiteLLM khởi động thất bại!"
-        exit 1
-    fi
+    wait_for_port "$GATEWAY_PORT" "LiteLLM Gateway" "$LOG_DIR/litellm.log" "$PID_DIR/litellm.pid"
 
     echo ""
-    echo "🧪 Chạy Smoke Test (Kiểm tra phản hồi Code & Dịch thuật Tiếng Hàn)..."
+    echo "🧪 Chạy Smoke Test kiểm tra phản hồi Dịch thuật Tiếng Hàn & Code..."
     test_api
 
     SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
@@ -333,19 +358,21 @@ start_stack() {
 
     echo ""
     echo "======================================================================"
-    echo "🎉 HỆ THỐNG AI & CODING AGENT TOÀN CÔNG TY ĐÃ HOẠT ĐỘNG 100%!"
+    echo "🎉 HỆ THỐNG DUAL-SOTA TRÊN H200 ĐÃ HOẠT ĐỘNG 100%!"
     echo "======================================================================"
     echo "🌐 API Base URL cho công ty : http://$SERVER_IP:$GATEWAY_PORT/v1"
     echo "🔑 API Key chung            : $TEAM_API_KEY"
-    echo "📦 Model vật lý đang chạy   : $MAIN_MODEL"
+    echo "⚙️  Engine đang hoạt động    : $ACTIVE_SUMMARY"
     echo "----------------------------------------------------------------------"
-    echo "🧠 Model 1 (Code Agent Sâu) : qwen3.8-agent-xhigh"
-    echo "⚡ Model 2 (Code Siêu Tốc)  : qwen3.8-coder-fast"
-    echo "🇰🇷 Model 3 (Dịch Tiếng Hàn) : company-korean-translator"
-    echo "⌨️  Model 4 (Tab Gợi Ý Code) : qwen-autocomplete-fim"
+    echo "🧠 1. qwen3.8-agent-xhigh       (Suy luận sâu 20đ - Debug & Kiến trúc)"
+    echo "⚡ 2. qwen3.6-moe-fast          (Siêu MoE 35B-A3B - Code & Chat 200+ tok/s)"
+    echo "🇰🇷 3. company-korean-translator (Dịch thuật Tiếng Hàn <-> Việt/Anh)"
+    echo "⌨️  4. qwen-autocomplete-fim     (Tab Autocomplete cho VSCode/JetBrains)"
     echo "----------------------------------------------------------------------"
-    echo "💡 Mẹo: Muốn đổi sang chạy MoE 30B-A3B-FP8 (nhanh gấp 5 lần, nhẹ VRAM):"
-    echo "   ./h200_agent.sh start --moe"
+    echo "🔄 Lệnh chuyển đổi nhanh khi cần:"
+    echo "   ./h200_agent.sh start --dual    (Chạy song song cả 2 model)"
+    echo "   ./h200_agent.sh start --only-36 (Dồn hết VRAM cho Siêu MoE Qwen3.6-35B-A3B-FP8)"
+    echo "   ./h200_agent.sh start --only-38 (Dồn hết VRAM cho Qwen3.8-27B-FP8)"
     echo "======================================================================"
 }
 
@@ -372,7 +399,7 @@ test_api() {
         }' || true)
 
     if echo "$resp" | grep -q "choices"; then
-        echo "✅ SMOKE TEST PASS! Kết quả dịch Tiếng Hàn từ Model:"
+        echo "✅ SMOKE TEST PASS! Phản hồi thực tế từ Model:"
         echo "$resp" | grep -o '"content":"[^"]*"' | head -n 1 || echo "$resp"
     else
         echo "⚠️ Phản hồi Smoke Test:"
@@ -385,7 +412,7 @@ logs_stack() {
 }
 
 case "${1:-start}" in
-    all)      install_stack && start_stack ;;
+    all)      start_stack ;;
     install)  install_stack ;;
     start)    start_stack ;;
     stop)     stop_stack ;;
@@ -394,7 +421,7 @@ case "${1:-start}" in
     test)     test_api ;;
     logs)     logs_stack ;;
     *)
-        echo "Cách dùng: $0 {start|stop|restart|install|status|test|logs} [--moe]"
+        echo "Cách dùng: $0 {start|stop|restart|install|status|test|logs} [--dual|--only-36|--only-38]"
         exit 1
         ;;
 esac
