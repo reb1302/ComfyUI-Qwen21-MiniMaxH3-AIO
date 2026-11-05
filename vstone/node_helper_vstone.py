@@ -1551,7 +1551,7 @@ def _restart_comfyui_after(delay_sec: float) -> None:
     """Khởi động lại ComfyUI với đúng tham số đang chạy (giữ nguyên port), cùng cách ComfyUI-Manager dùng."""
     def _restart() -> None:
         time.sleep(delay_sec)
-        print("[VStone] Khởi động lại ComfyUI để nạp pack LTX-2.5...", flush=True)
+        print("[VStone] Khởi động lại ComfyUI để nạp pack vừa cài...", flush=True)
         _stop_download_processes()
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
@@ -1626,6 +1626,60 @@ def install_ltx25_one_click(unique_id: Any = None) -> str:
         details.append("Model chưa có: " + ", ".join(models_missing) + ". Bấm Queue lần nữa để tải tiếp.")
         return "\n".join(["❌ Pack đã đủ, còn thiếu model."] + details)
     return "\n".join(["✅ LTX-2.5 đã đủ pack và model. Mở workflow ltx_2.5/LTX25_Outpaint_Official."] + details)
+
+
+# ------------------------------------------------------------------------------
+# Cài pack AusBoss cho workflow outpaint Qwen của tác giả LoRA, model đi theo sync_manifest.json
+# ------------------------------------------------------------------------------
+AUSBOSS_PACK: dict[str, Any] = {
+    "dir": "ComfyUI-AusBoss",
+    "repo": "ausboss/ComfyUI-AusBoss",
+    "branch": "main",
+    "node_ids": [
+        "AUSBOSS_NODES_Compare",
+        "AUSBOSS_NODES_CropForInpaint",
+        "AUSBOSS_NODES_ImageCropRotatePad",
+        "AUSBOSS_NODES_LoraLoader",
+        "AUSBOSS_NODES_RunTimer",
+        "AUSBOSS_NODES_SaveImage",
+        "AUSBOSS_NODES_Seed",
+        "AUSBOSS_NODES_ShowText",
+        "AUSBOSS_NODES_StitchInpaint",
+        "AUSBOSS_NODES_Text",
+        "AUSBOSS_NODES_WorkflowNote",
+    ],
+}
+AUSBOSS_RESTARTED_ENV = "VSTONE_AUSBOSS_PACK_RESTARTED"
+AUSBOSS_WORKFLOW = "qwen_image_2.1/qwen_image_2_1_outpaint_ausboss"
+
+
+def install_ausboss_outpaint(unique_id: Any = None) -> str:
+    """Cài pack rồi khởi động lại. Lần Queue sau xác nhận node đã nạp. Dòng đầu của báo cáo là kết luận."""
+    root = _get_comfy_root()
+    if not root:
+        return "❌ Không tìm thấy thư mục ComfyUI."
+    missing = _missing_node_ids(AUSBOSS_PACK["node_ids"])
+    if not missing:
+        return f"✅ Pack AusBoss đã đủ node. Mở workflow {AUSBOSS_WORKFLOW}."
+    if os.environ.get(AUSBOSS_RESTARTED_ENV) == "1":
+        return "\n".join([
+            "❌ Đã khởi động lại nhưng vẫn thiếu node AusBoss. Xem log khởi động, dòng IMPORT FAILED.",
+            "Thiếu node: " + ", ".join(missing),
+        ])
+
+    custom_nodes = os.path.join(root, "custom_nodes")
+    os.makedirs(custom_nodes, exist_ok=True)
+    installed_dirs = {name.lower(): name for name in os.listdir(custom_nodes)}
+    pack_dir = os.path.join(custom_nodes, installed_dirs.get(AUSBOSS_PACK["dir"].lower(), AUSBOSS_PACK["dir"]))
+
+    _vstone_ui_status(unique_id, f"Đang cài pack {AUSBOSS_PACK['dir']}...")
+    ok, tail = _fetch_node_pack(AUSBOSS_PACK, pack_dir)
+    if not ok or not os.path.isfile(os.path.join(pack_dir, "__init__.py")):
+        return f"❌ Không tải được pack AusBoss, chưa khởi động lại. {tail}"
+
+    os.environ[AUSBOSS_RESTARTED_ENV] = "1"
+    _restart_comfyui_after(5.0)
+    return "🔄 Đã cài pack AusBoss, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."
 
 
 def _start_background_sync_daemon(interval_sec: int = 30):
@@ -2498,6 +2552,7 @@ class stoneV_CloudSyncHub:
                     "3. Pull Code + Download Model (Cập nhật tất cả)",
                     "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)",
                     "2. Download Selected Model / LoRA (Tải Model/LoRA đã chọn bên dưới)",
+                    "4. Cài pack AusBoss cho outpaint Qwen (tự khởi động lại)",
                 ], {
                     "default": "3. Pull Code + Download Model (Cập nhật tất cả)"
                 }),
@@ -2551,6 +2606,11 @@ class stoneV_CloudSyncHub:
     ):
         if action.startswith("0."):
             report = install_ltx25_one_click(unique_id)
+            _vstone_ui_status(unique_id, report)
+            return {"ui": {"text": [report]}, "result": (report,)}
+
+        if action.startswith("4."):
+            report = install_ausboss_outpaint(unique_id)
             _vstone_ui_status(unique_id, report)
             return {"ui": {"text": [report]}, "result": (report,)}
 

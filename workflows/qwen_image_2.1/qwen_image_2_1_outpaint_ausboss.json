@@ -1,0 +1,2533 @@
+{
+  "id": "d380965c-93fc-49f3-a19e-ed4899281ea7",
+  "revision": 0,
+  "last_node_id": 119,
+  "last_link_id": 47,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [
+        1060,
+        890
+      ],
+      "size": [
+        440,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            27
+          ]
+        }
+      ],
+      "title": "Diffusion model",
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.37.0",
+        "models": [
+          {
+            "name": "qwen_image_2.1_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+            "directory": "diffusion_models"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "qwen_image_2.1_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+        1060,
+        586
+      ],
+      "size": [
+        440,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            30,
+            35
+          ]
+        }
+      ],
+      "title": "Text encoder",
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.37.0",
+        "models": [
+          {
+            "name": "qwen3vl_8b_int8_convrot.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+        "type": "qwen_image",
+        "device": "default"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [
+        1060,
+        762
+      ],
+      "size": [
+        440,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "title": "VAE",
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.37.0",
+        "models": [
+          {
+            "name": "qwen_image_2.1_vae_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+            "directory": "vae"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+      },
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 4,
+      "type": "AUSBOSS_NODES_LoraLoader",
+      "pos": [
+        1060,
+        1042
+      ],
+      "size": [
+        440,
+        224
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 27
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            37
+          ]
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": []
+        },
+        {
+          "name": "triggers",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "title": "LoRA Loader - Outpaint LoRA",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_LoraLoader",
+        "ausbossLoraLinked": true,
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0",
+        "models": [
+          {
+            "name": "qwen-image-2.1-outpaint-v2.safetensors",
+            "url": "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors",
+            "directory": "loras"
+          },
+          {
+            "name": "qwen-image-2.1-outpaint.safetensors",
+            "url": "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint.safetensors",
+            "directory": "loras"
+          }
+        ]
+      },
+      "widgets_values": [
+        "[{\"name\": \"qwen-image-2.1-outpaint-v2.safetensors\", \"strength\": 1, \"enabled\": true, \"triggers\": \"\"}, {\"name\": \"qwen-image-2.1-outpaint.safetensors\", \"strength\": 1, \"enabled\": false, \"triggers\": \"\"}]",
+        ", ",
+        "error"
+      ],
+      "widgets_values_named": {
+        "loras": "[{\"name\": \"qwen-image-2.1-outpaint-v2.safetensors\", \"strength\": 1, \"enabled\": true, \"triggers\": \"\"}, {\"name\": \"qwen-image-2.1-outpaint.safetensors\", \"strength\": 1, \"enabled\": false, \"triggers\": \"\"}]",
+        "trigger_separator": ", ",
+        "on_missing": "error"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 23,
+      "type": "AUSBOSS_NODES_ImageCropRotatePad",
+      "pos": [
+        500,
+        80
+      ],
+      "size": [
+        440,
+        959
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            31,
+            39
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            47
+          ]
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_STITCHER",
+          "links": [
+            32
+          ]
+        },
+        {
+          "name": "original",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "prompt_image",
+          "type": "IMAGE",
+          "links": [
+            46
+          ]
+        }
+      ],
+      "title": "Image Crop + Rotate + Pad - Your image",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_ImageCropRotatePad",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0",
+        "ausboss_fit_aspect": "1:1",
+        "ausboss_aspect_mode": "pad",
+        "ausboss_aspect_lock": false,
+        "ausboss_pad_portrait": true
+      },
+      "widgets_values": {
+        "image": "",
+        "rotation_degrees": 0,
+        "crop_aspect_ratio": "free",
+        "crop_x": 0,
+        "crop_y": 0,
+        "crop_width": 0,
+        "crop_height": 0,
+        "pad_left": 0,
+        "pad_top": 0,
+        "pad_right": 0,
+        "pad_bottom": 0,
+        "feather": 12,
+        "canvas_multiple": 1,
+        "fill_color": "#808080",
+        "resize_to_megapixels": true,
+        "megapixels": 1,
+        "resize_method": "lanczos",
+        "resolution_steps": 32,
+        "stitch_blend": 0,
+        "stitch_grow": 0
+      },
+      "widgets_values_named": {
+        "image": "",
+        "rotation_degrees": 0,
+        "crop_aspect_ratio": "free",
+        "crop_x": 0,
+        "crop_y": 0,
+        "crop_width": 0,
+        "crop_height": 0,
+        "pad_left": 0,
+        "pad_top": 0,
+        "pad_right": 0,
+        "pad_bottom": 0,
+        "feather": 12,
+        "canvas_multiple": 1,
+        "fill_color": "#808080",
+        "resize_to_megapixels": true,
+        "megapixels": 1,
+        "resize_method": "lanczos",
+        "resolution_steps": 32,
+        "stitch_blend": 0,
+        "stitch_grow": 0,
+        "upload": "image"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 21,
+      "type": "AUSBOSS_NODES_Text",
+      "pos": [
+        500,
+        1109
+      ],
+      "size": [
+        440,
+        168
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "slot_index": 0,
+          "links": [
+            29
+          ]
+        }
+      ],
+      "title": "Text - What goes there",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Text",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0"
+      },
+      "widgets_values": [
+        "Also include in the prompt: "
+      ],
+      "widgets_values_named": {
+        "text": "Also include in the prompt: "
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 10,
+      "type": "AUSBOSS_NODES_Seed",
+      "pos": [
+        500,
+        1347
+      ],
+      "size": [
+        440,
+        216
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            34
+          ]
+        }
+      ],
+      "title": "Seed",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Seed",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0"
+      },
+      "widgets_values": [
+        26092503,
+        "randomize"
+      ],
+      "widgets_values_named": {
+        "seed": 26092503,
+        "control_after_generate": "randomize"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 24,
+      "type": "0f7e28a0-f4a5-41a1-b3fb-ed8fc80d3c94",
+      "pos": [
+        1060,
+        80
+      ],
+      "size": [
+        440,
+        86
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "canvas",
+          "type": "IMAGE",
+          "link": 46
+        },
+        {
+          "name": "what goes there",
+          "type": "STRING",
+          "link": 29
+        },
+        {
+          "name": "text encoder",
+          "type": "CLIP",
+          "link": 30
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 47
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": [
+            33
+          ]
+        }
+      ],
+      "properties": {
+        "previewExposures": []
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 25,
+      "type": "0a7c6e01-8f50-4e3f-b8fb-f1513cd39efc",
+      "pos": [
+        1060,
+        268
+      ],
+      "size": [
+        440,
+        160
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "canvas",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 31
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_STITCHER",
+          "link": 32
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "link": 33
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 34
+        },
+        {
+          "name": "text encoder",
+          "type": "CLIP",
+          "link": 35
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 36
+        },
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 37
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "IMAGE",
+          "links": [
+            38
+          ]
+        }
+      ],
+      "properties": {
+        "previewExposures": [
+          {
+            "name": "$$canvas-image-preview",
+            "sourceNodeId": "114",
+            "sourcePreviewName": "$$canvas-image-preview"
+          }
+        ]
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 15,
+      "type": "AUSBOSS_NODES_Compare",
+      "pos": [
+        1580,
+        80
+      ],
+      "size": [
+        440,
+        606
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_a",
+          "type": "IMAGE",
+          "link": 38
+        },
+        {
+          "name": "image_b",
+          "type": "IMAGE",
+          "link": 39
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image_a",
+          "type": "IMAGE",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "title": "Image Compare A/B - Before and after",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Compare",
+        "ausboss_compare_mode": "slide",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {},
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 16,
+      "type": "AUSBOSS_NODES_SaveImage",
+      "pos": [
+        1580,
+        756
+      ],
+      "size": [
+        440,
+        700
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 40
+        },
+        {
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "caption_text",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": []
+        }
+      ],
+      "title": "Save Image",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_SaveImage",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0"
+      },
+      "widgets_values": {
+        "filename_prefix": "qwen21_outpaint",
+        "format": "png",
+        "save_metadata": true,
+        "exact_name": "",
+        "on_existing": "overwrite",
+        "output_dir": "",
+        "caption": "",
+        "name_counter": true,
+        "name_date": false,
+        "name_time": false,
+        "name_size": false,
+        "name_batch": false,
+        "preview": true
+      },
+      "widgets_values_named": {
+        "filename_prefix": "qwen21_outpaint",
+        "format": "png",
+        "save_metadata": true,
+        "exact_name": "",
+        "on_existing": "overwrite",
+        "output_dir": "",
+        "caption": "",
+        "name_counter": true,
+        "name_date": false,
+        "name_time": false,
+        "name_size": false,
+        "name_batch": false,
+        "preview": true
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 14,
+      "type": "AUSBOSS_NODES_RunTimer",
+      "pos": [
+        1695,
+        1496
+      ],
+      "size": [
+        210,
+        67
+      ],
+      "flags": {
+        "no_title": true
+      },
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Run Timer",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_RunTimer",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0"
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a"
+    },
+    {
+      "id": 17,
+      "type": "AUSBOSS_NODES_WorkflowNote",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        440,
+        928
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "🆎 AusBoss",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_WorkflowNote",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.4.0"
+      },
+      "widgets_values": [
+        "{\"v\": 1, \"title\": \"Qwen Image 2.1 Outpaint\", \"subtitle\": \"Extend a picture, and Qwen paints the new area.\", \"author\": \"AusBoss\", \"layout\": \"card\", \"accent\": \"\", \"body\": \"[▶ AusBoss on YouTube](https://www.youtube.com/@ausbossdev) · videos on these nodes and workflows\\n\\n[▶ AusBoss on Discord](https://discord.gg/RwVxY9Fuaj) · need help, have a suggestion, or want more workflows?\\n\\n---\\n\\n1. Load your image.\\n2. Pick a ratio, or drag the orange handles out.\\n3. Optional: finish the sentence in **What goes there**.\\n4. Press **Run**.\\n\\nPull out at most about your picture's own size on one side per run. For more, run again on the result.\\n\\nThe two boxes in the middle do the work. Double-click one to see inside.\\n\\nIf the run stops at a red **LoRA Loader**, the LoRA file is missing. Download it below, or switch its row off to run without it.\\n\\nNeeds AusBoss nodes 2.5.0 or newer.\", \"models\": [{\"name\": \"qwen_image_2.1_int8_convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"7.26 GB\", \"url\": \"https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"qwen3vl_8b_int8_convrot.safetensors\", \"dir\": \"text_encoders\", \"size\": \"9.35 GB\", \"url\": \"https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"qwen_image_2.1_vae_bf16.safetensors\", \"dir\": \"vae\", \"size\": \"676 MB\", \"url\": \"https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors\", \"note\": \"\"}, {\"name\": \"qwen-image-2.1-outpaint-v2.safetensors\", \"dir\": \"loras\", \"size\": \"159 MB\", \"url\": \"https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors\", \"note\": \"v2, for everyday extensions\"}, {\"name\": \"qwen-image-2.1-outpaint.safetensors\", \"dir\": \"loras\", \"size\": \"159 MB\", \"url\": \"https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint.safetensors\", \"note\": \"v1, for big zoom-outs\"}], \"packs\": [{\"name\": \"ComfyUI-AusBoss\", \"url\": \"https://github.com/ausboss/ComfyUI-AusBoss\", \"node\": \"AUSBOSS_NODES_ImageCropRotatePad\"}], \"links\": [{\"label\": \"YouTube · ausbossdev\", \"url\": \"https://www.youtube.com/@ausbossdev\"}, {\"label\": \"Discord · AusBoss\", \"url\": \"https://discord.gg/RwVxY9Fuaj\"}, {\"label\": \"Outpaint LoRA · Hugging Face\", \"url\": \"https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA\"}, {\"label\": \"GitHub · ausboss\", \"url\": \"https://github.com/ausboss\"}, {\"label\": \"Civitai · AusBoss\", \"url\": \"https://civitai.com/user/AusBoss\"}, {\"label\": \"X · Zanzibased\", \"url\": \"https://x.com/Zanzibased\"}]}"
+      ],
+      "widgets_values_named": {
+        "note": "{\"v\": 1, \"title\": \"Qwen Image 2.1 Outpaint\", \"subtitle\": \"Extend a picture, and Qwen paints the new area.\", \"author\": \"AusBoss\", \"layout\": \"card\", \"accent\": \"\", \"body\": \"[▶ AusBoss on YouTube](https://www.youtube.com/@ausbossdev) · videos on these nodes and workflows\\n\\n[▶ AusBoss on Discord](https://discord.gg/RwVxY9Fuaj) · need help, have a suggestion, or want more workflows?\\n\\n---\\n\\n1. Load your image.\\n2. Pick a ratio, or drag the orange handles out.\\n3. Optional: finish the sentence in **What goes there**.\\n4. Press **Run**.\\n\\nPull out at most about your picture's own size on one side per run. For more, run again on the result.\\n\\nThe two boxes in the middle do the work. Double-click one to see inside.\\n\\nIf the run stops at a red **LoRA Loader**, the LoRA file is missing. Download it below, or switch its row off to run without it.\\n\\nNeeds AusBoss nodes 2.5.0 or newer.\", \"models\": [{\"name\": \"qwen_image_2.1_int8_convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"7.26 GB\", \"url\": \"https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"qwen3vl_8b_int8_convrot.safetensors\", \"dir\": \"text_encoders\", \"size\": \"9.35 GB\", \"url\": \"https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"qwen_image_2.1_vae_bf16.safetensors\", \"dir\": \"vae\", \"size\": \"676 MB\", \"url\": \"https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors\", \"note\": \"\"}, {\"name\": \"qwen-image-2.1-outpaint-v2.safetensors\", \"dir\": \"loras\", \"size\": \"159 MB\", \"url\": \"https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint-v2.safetensors\", \"note\": \"v2, for everyday extensions\"}, {\"name\": \"qwen-image-2.1-outpaint.safetensors\", \"dir\": \"loras\", \"size\": \"159 MB\", \"url\": \"https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint.safetensors\", \"note\": \"v1, for big zoom-outs\"}], \"packs\": [{\"name\": \"ComfyUI-AusBoss\", \"url\": \"https://github.com/ausboss/ComfyUI-AusBoss\", \"node\": \"AUSBOSS_NODES_ImageCropRotatePad\"}], \"links\": [{\"label\": \"YouTube · ausbossdev\", \"url\": \"https://www.youtube.com/@ausbossdev\"}, {\"label\": \"Discord · AusBoss\", \"url\": \"https://discord.gg/RwVxY9Fuaj\"}, {\"label\": \"Outpaint LoRA · Hugging Face\", \"url\": \"https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA\"}, {\"label\": \"GitHub · ausboss\", \"url\": \"https://github.com/ausboss\"}, {\"label\": \"Civitai · AusBoss\", \"url\": \"https://civitai.com/user/AusBoss\"}, {\"label\": \"X · Zanzibased\", \"url\": \"https://x.com/Zanzibased\"}]}"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    }
+  ],
+  "links": [
+    [
+      27,
+      1,
+      0,
+      4,
+      0,
+      "MODEL"
+    ],
+    [
+      29,
+      21,
+      0,
+      24,
+      1,
+      "STRING"
+    ],
+    [
+      30,
+      2,
+      0,
+      24,
+      2,
+      "CLIP"
+    ],
+    [
+      31,
+      23,
+      0,
+      25,
+      0,
+      "IMAGE"
+    ],
+    [
+      32,
+      23,
+      2,
+      25,
+      1,
+      "AUSBOSS_STITCHER"
+    ],
+    [
+      33,
+      24,
+      0,
+      25,
+      2,
+      "STRING"
+    ],
+    [
+      34,
+      10,
+      0,
+      25,
+      3,
+      "INT"
+    ],
+    [
+      35,
+      2,
+      0,
+      25,
+      4,
+      "CLIP"
+    ],
+    [
+      36,
+      3,
+      0,
+      25,
+      5,
+      "VAE"
+    ],
+    [
+      37,
+      4,
+      0,
+      25,
+      6,
+      "MODEL"
+    ],
+    [
+      38,
+      25,
+      0,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      39,
+      23,
+      0,
+      15,
+      1,
+      "IMAGE"
+    ],
+    [
+      40,
+      15,
+      0,
+      16,
+      0,
+      "IMAGE"
+    ],
+    [
+      46,
+      23,
+      6,
+      24,
+      0,
+      "IMAGE"
+    ],
+    [
+      47,
+      23,
+      1,
+      24,
+      3,
+      "MASK"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 84,
+      "title": "1 · Your input",
+      "bounding": [
+        480,
+        0,
+        480,
+        1610
+      ],
+      "color": "#1d5560",
+      "flags": {}
+    },
+    {
+      "id": 85,
+      "title": "2 · Behind the scenes",
+      "bounding": [
+        1040,
+        0,
+        480,
+        466
+      ],
+      "color": "#1d5560",
+      "flags": {}
+    },
+    {
+      "id": 86,
+      "title": "3 · Models",
+      "bounding": [
+        1040,
+        506,
+        480,
+        836
+      ],
+      "color": "#1d5560",
+      "flags": {}
+    },
+    {
+      "id": 87,
+      "title": "4 · Result",
+      "bounding": [
+        1560,
+        0,
+        480,
+        1610
+      ],
+      "color": "#1d5560",
+      "flags": {}
+    }
+  ],
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "0f7e28a0-f4a5-41a1-b3fb-ed8fc80d3c94",
+        "version": 1,
+        "state": {
+          "lastGroupId": 94,
+          "lastNodeId": 119,
+          "lastLinkId": 47,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "Write the prompt",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -260,
+            120,
+            128,
+            120
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1660,
+            120,
+            128,
+            80
+          ]
+        },
+        "inputs": [
+          {
+            "id": "8a123556-e465-48ec-a432-a4aecfd318f0",
+            "name": "canvas",
+            "type": "IMAGE",
+            "linkIds": [
+              43
+            ],
+            "localized_name": "canvas",
+            "pos": [
+              51,
+              24
+            ]
+          },
+          {
+            "id": "4a66229b-cc26-457f-a538-37cb3a2118d1",
+            "name": "what goes there",
+            "type": "STRING",
+            "linkIds": [
+              3
+            ],
+            "localized_name": "what goes there",
+            "pos": [
+              51,
+              44
+            ]
+          },
+          {
+            "id": "55e4cf87-182e-40c9-9c37-f80b964d0265",
+            "name": "text encoder",
+            "type": "CLIP",
+            "linkIds": [
+              2
+            ],
+            "localized_name": "text encoder",
+            "pos": [
+              51,
+              64
+            ]
+          },
+          {
+            "id": "928b1a57-b2c6-482d-b50b-87615ff3f52d",
+            "name": "mask",
+            "type": "MASK",
+            "linkIds": [
+              44
+            ],
+            "localized_name": "mask",
+            "pos": [
+              51,
+              84
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "8f8957d4-3b85-47f3-93e7-7364dd17d4d0",
+            "name": "prompt",
+            "type": "STRING",
+            "linkIds": [
+              8
+            ],
+            "localized_name": "prompt",
+            "pos": [
+              24,
+              24
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 100,
+            "type": "MarkdownNote",
+            "pos": [
+              20,
+              80
+            ],
+            "size": [
+              960,
+              88
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "title": "Note",
+            "properties": {},
+            "widgets_values": [
+              "Qwen3-VL describes your picture the way the LoRA's training captions were written, and adds what you typed in What goes there. It reads your picture back out of the prompt image, where see-through parts show as white, so a cutout gets a real backdrop."
+            ],
+            "widgets_values_named": {
+              "text": "Qwen3-VL describes your picture the way the LoRA's training captions were written, and adds what you typed in What goes there. It reads your picture back out of the prompt image, where see-through parts show as white, so a cutout gets a real backdrop."
+            },
+            "color": "#1f2c38",
+            "bgcolor": "#2a3b4a"
+          },
+          {
+            "id": 101,
+            "type": "MarkdownNote",
+            "pos": [
+              1060,
+              80
+            ],
+            "size": [
+              460,
+              88
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "title": "Note",
+            "properties": {},
+            "widgets_values": [
+              "The outpaint instruction comes first and stays as written. It is the LoRA's trigger. The description follows after Scene:"
+            ],
+            "widgets_values_named": {
+              "text": "The outpaint instruction comes first and stays as written. It is the LoRA's trigger. The description follows after Scene:"
+            },
+            "color": "#1f2c38",
+            "bgcolor": "#2a3b4a"
+          },
+          {
+            "id": 102,
+            "type": "Reroute",
+            "pos": [
+              20,
+              208
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 3
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "STRING",
+                "links": [
+                  41
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 103,
+            "type": "StringConcatenate",
+            "pos": [
+              520,
+              238
+            ],
+            "size": [
+              460,
+              190
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string_b",
+                "name": "string_b",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_b"
+                },
+                "link": 42
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "slot_index": 0,
+                "links": [
+                  5
+                ]
+              }
+            ],
+            "title": "Instruction plus what goes there",
+            "properties": {
+              "Node name for S&R": "StringConcatenate",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "widgets_values": [
+              "Write the text-to-image prompt that would generate this exact picture. One paragraph of 50 to 90 words. Begin with the medium and style in a few words, such as \"Photograph\", \"Smartphone photo\", \"Anime illustration\", \"Oil painting\" or \"3D render\". Then describe the subject, the setting, and what fills every part of the frame from edge to edge, including the background and the areas near the borders. Any flat mid-gray parts, such as corners or a background, are blank space that will be painted to continue the scene: describe the scene as if it filled the whole frame, and don't describe a border, frame or vignette around it. Include materials, colours, lighting, time of day, camera angle and framing. Quote any readable text exactly. Use plain factual language; do not start with 'The image' or 'This picture' and do not give opinions. Output only the prompt.",
+              "",
+              " "
+            ],
+            "widgets_values_named": {
+              "string_a": "Write the text-to-image prompt that would generate this exact picture. One paragraph of 50 to 90 words. Begin with the medium and style in a few words, such as \"Photograph\", \"Smartphone photo\", \"Anime illustration\", \"Oil painting\" or \"3D render\". Then describe the subject, the setting, and what fills every part of the frame from edge to edge, including the background and the areas near the borders. Any flat mid-gray parts, such as corners or a background, are blank space that will be painted to continue the scene: describe the scene as if it filled the whole frame, and don't describe a border, frame or vignette around it. Include materials, colours, lighting, time of day, camera angle and framing. Quote any readable text exactly. Use plain factual language; do not start with 'The image' or 'This picture' and do not give opinions. Output only the prompt.",
+              "string_b": "",
+              "delimiter": " "
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 104,
+            "type": "TextGenerate",
+            "pos": [
+              520,
+              498
+            ],
+            "size": [
+              460,
+              440
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 2
+              },
+              {
+                "localized_name": "image",
+                "name": "image",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": 45
+              },
+              {
+                "localized_name": "video",
+                "name": "video",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              },
+              {
+                "localized_name": "audio",
+                "name": "audio",
+                "shape": 7,
+                "type": "AUDIO",
+                "link": null
+              },
+              {
+                "localized_name": "prompt",
+                "name": "prompt",
+                "type": "STRING",
+                "widget": {
+                  "name": "prompt"
+                },
+                "link": 5
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "generated_text",
+                "name": "generated_text",
+                "type": "STRING",
+                "links": [
+                  6
+                ]
+              }
+            ],
+            "title": "Describe the picture",
+            "properties": {
+              "Node name for S&R": "TextGenerate",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "widgets_values": [
+              "Write the text-to-image prompt that would generate this exact picture. One paragraph of 50 to 90 words. Begin with the medium and style in a few words, such as \"Photograph\", \"Smartphone photo\", \"Anime illustration\", \"Oil painting\" or \"3D render\". Then describe the subject, the setting, and what fills every part of the frame from edge to edge, including the background and the areas near the borders. Include materials, colours, lighting, time of day, camera angle and framing. Quote any readable text exactly. Use plain factual language; do not start with 'The image' or 'This picture' and do not give opinions. Output only the prompt.",
+              300,
+              "on",
+              0.3,
+              64,
+              0.95,
+              0.05,
+              1.05,
+              20260925,
+              0,
+              false,
+              true,
+              "auto"
+            ],
+            "widgets_values_named": {
+              "prompt": "Write the text-to-image prompt that would generate this exact picture. One paragraph of 50 to 90 words. Begin with the medium and style in a few words, such as \"Photograph\", \"Smartphone photo\", \"Anime illustration\", \"Oil painting\" or \"3D render\". Then describe the subject, the setting, and what fills every part of the frame from edge to edge, including the background and the areas near the borders. Include materials, colours, lighting, time of day, camera angle and framing. Quote any readable text exactly. Use plain factual language; do not start with 'The image' or 'This picture' and do not give opinions. Output only the prompt.",
+              "max_length": 300,
+              "sampling_mode": "on",
+              "sampling_mode.temperature": 0.3,
+              "sampling_mode.top_k": 64,
+              "sampling_mode.top_p": 0.95,
+              "sampling_mode.min_p": 0.05,
+              "sampling_mode.repetition_penalty": 1.05,
+              "sampling_mode.seed": 20260925,
+              "sampling_mode.presence_penalty": 0,
+              "thinking": false,
+              "use_default_template": true,
+              "mtp": "auto"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 105,
+            "type": "StringConcatenate",
+            "pos": [
+              1060,
+              238
+            ],
+            "size": [
+              460,
+              190
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string_b",
+                "name": "string_b",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_b"
+                },
+                "link": 6
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "slot_index": 0,
+                "links": [
+                  7
+                ]
+              }
+            ],
+            "title": "Outpaint instruction plus description",
+            "properties": {
+              "Node name for S&R": "StringConcatenate",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "widgets_values": [
+              "Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.",
+              "",
+              " Scene: "
+            ],
+            "widgets_values_named": {
+              "string_a": "Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.",
+              "string_b": "",
+              "delimiter": " Scene: "
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 106,
+            "type": "AUSBOSS_NODES_ShowText",
+            "pos": [
+              1060,
+              498
+            ],
+            "size": [
+              460,
+              300
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "link": 7
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "slot_index": 0,
+                "links": [
+                  8
+                ]
+              }
+            ],
+            "title": "Show Text - Prompt for Qwen",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_ShowText",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.4.0"
+            },
+            "widgets_values": [],
+            "widgets_values_named": {},
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 118,
+            "type": "RegexReplace",
+            "pos": [
+              20,
+              304
+            ],
+            "size": [
+              460,
+              292
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string",
+                "name": "string",
+                "type": "STRING",
+                "widget": {
+                  "name": "string"
+                },
+                "link": 41
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  42
+                ]
+              }
+            ],
+            "title": "Add the lead-in if it's missing",
+            "properties": {
+              "Node name for S&R": "RegexReplace",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "widgets_values": [
+              "",
+              "^\\s*(?:also include in the prompt\\s*:?\\s*)?",
+              "Also include in the prompt: ",
+              true,
+              false,
+              false,
+              1
+            ],
+            "widgets_values_named": {
+              "string": "",
+              "regex_pattern": "^\\s*(?:also include in the prompt\\s*:?\\s*)?",
+              "replace": "Also include in the prompt: ",
+              "case_insensitive": true,
+              "multiline": false,
+              "dotall": false,
+              "count": 1
+            }
+          },
+          {
+            "id": 119,
+            "type": "AUSBOSS_NODES_CropForInpaint",
+            "pos": [
+              20,
+              666
+            ],
+            "size": [
+              460,
+              347
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 43
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "type": "MASK",
+                "link": 44
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "links": [
+                  45
+                ]
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "type": "MASK",
+                "links": []
+              },
+              {
+                "localized_name": "stitcher",
+                "name": "stitcher",
+                "type": "AUSBOSS_STITCHER",
+                "links": []
+              }
+            ],
+            "title": "Crop For Inpaint - Your picture, see-through parts filled",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_CropForInpaint",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.4.0"
+            },
+            "widgets_values": [
+              1,
+              0,
+              1,
+              0,
+              0,
+              0,
+              0,
+              true,
+              0,
+              0,
+              "bilinear",
+              0,
+              0,
+              0,
+              0,
+              true
+            ],
+            "widgets_values_named": {
+              "context_factor": 1,
+              "blend_pixels": 0,
+              "output_multiple": 1,
+              "target_width": 0,
+              "target_height": 0,
+              "mask_grow": 0,
+              "mask_blur": 0,
+              "invert_mask": true,
+              "context_pixels": 0,
+              "target_megapixels": 0,
+              "rescale_algorithm": "bilinear",
+              "extend_left": 0,
+              "extend_right": 0,
+              "extend_up": 0,
+              "extend_down": 0,
+              "keep_inside": true
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          }
+        ],
+        "groups": [
+          {
+            "id": 90,
+            "title": "1 · Describe the picture",
+            "bounding": [
+              0,
+              0,
+              1000,
+              1043
+            ],
+            "color": "#1d5560",
+            "flags": {}
+          },
+          {
+            "id": 91,
+            "title": "2 · Build the prompt",
+            "bounding": [
+              1040,
+              0,
+              500,
+              818
+            ],
+            "color": "#1d5560",
+            "flags": {}
+          }
+        ],
+        "links": [
+          {
+            "id": 3,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 102,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 7,
+            "origin_id": 105,
+            "origin_slot": 0,
+            "target_id": 106,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 8,
+            "origin_id": 106,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 41,
+            "origin_id": 102,
+            "origin_slot": 0,
+            "target_id": 118,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 43,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 119,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 44,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 119,
+            "target_slot": 1,
+            "type": "MASK"
+          },
+          {
+            "id": 2,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 104,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 45,
+            "origin_id": 119,
+            "origin_slot": 0,
+            "target_id": 104,
+            "target_slot": 1,
+            "type": "IMAGE"
+          },
+          {
+            "id": 5,
+            "origin_id": 103,
+            "origin_slot": 0,
+            "target_id": 104,
+            "target_slot": 4,
+            "type": "STRING"
+          },
+          {
+            "id": 42,
+            "origin_id": 118,
+            "origin_slot": 0,
+            "target_id": 103,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 6,
+            "origin_id": 104,
+            "origin_slot": 0,
+            "target_id": 105,
+            "target_slot": 0,
+            "type": "STRING"
+          }
+        ],
+        "extra": {}
+      },
+      {
+        "id": "0a7c6e01-8f50-4e3f-b8fb-f1513cd39efc",
+        "version": 1,
+        "state": {
+          "lastGroupId": 94,
+          "lastNodeId": 119,
+          "lastLinkId": 47,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "Paint with Qwen 2.1",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -260,
+            120,
+            128,
+            200
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1700,
+            120,
+            128,
+            80
+          ]
+        },
+        "inputs": [
+          {
+            "id": "bc6fa235-ffab-4d12-8c2c-a8b2da68d15a",
+            "name": "canvas",
+            "type": "IMAGE",
+            "linkIds": [
+              9
+            ],
+            "localized_name": "canvas",
+            "pos": [
+              51,
+              24
+            ]
+          },
+          {
+            "id": "185f6b13-a146-454a-9381-cb9fa02bf81a",
+            "name": "stitcher",
+            "type": "AUSBOSS_STITCHER",
+            "linkIds": [
+              25
+            ],
+            "localized_name": "stitcher",
+            "pos": [
+              51,
+              44
+            ]
+          },
+          {
+            "id": "4f245cf5-42e4-4859-ad1c-dedc168f9b05",
+            "name": "prompt",
+            "type": "STRING",
+            "linkIds": [
+              13
+            ],
+            "localized_name": "prompt",
+            "pos": [
+              51,
+              64
+            ]
+          },
+          {
+            "id": "3c3f98d3-39d7-47a7-9ed9-f0a58c831183",
+            "name": "seed",
+            "type": "INT",
+            "linkIds": [
+              17
+            ],
+            "localized_name": "seed",
+            "pos": [
+              51,
+              84
+            ]
+          },
+          {
+            "id": "0124b71b-3bf8-4511-aec2-62e75e015e41",
+            "name": "text encoder",
+            "type": "CLIP",
+            "linkIds": [
+              10
+            ],
+            "localized_name": "text encoder",
+            "pos": [
+              51,
+              104
+            ]
+          },
+          {
+            "id": "8523eb25-ebf7-44fd-a0ef-e3d6fd7fe10b",
+            "name": "vae",
+            "type": "VAE",
+            "linkIds": [
+              11,
+              12
+            ],
+            "localized_name": "vae",
+            "pos": [
+              51,
+              124
+            ]
+          },
+          {
+            "id": "acf738a6-7db7-48fe-839a-613abc7ef561",
+            "name": "model",
+            "type": "MODEL",
+            "linkIds": [
+              15
+            ],
+            "localized_name": "model",
+            "pos": [
+              51,
+              144
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "72a3b709-7991-430f-bd8b-bc1d45dc466e",
+            "name": "result",
+            "type": "IMAGE",
+            "linkIds": [
+              26
+            ],
+            "localized_name": "result",
+            "pos": [
+              24,
+              24
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 107,
+            "type": "MarkdownNote",
+            "pos": [
+              20,
+              80
+            ],
+            "size": [
+              460,
+              88
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "title": "Note",
+            "properties": {},
+            "widgets_values": [
+              "The gray canvas goes in as the reference image, at its own size. The prompt comes from the first box."
+            ],
+            "widgets_values_named": {
+              "text": "The gray canvas goes in as the reference image, at its own size. The prompt comes from the first box."
+            },
+            "color": "#1f2c38",
+            "bgcolor": "#2a3b4a"
+          },
+          {
+            "id": 108,
+            "type": "MarkdownNote",
+            "pos": [
+              560,
+              80
+            ],
+            "size": [
+              460,
+              88
+            ],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "title": "Note",
+            "properties": {},
+            "widgets_values": [
+              "25 steps, CFG 1, euler and simple. No noise mask: on Qwen 2.1 it drew a visible box at the seam."
+            ],
+            "widgets_values_named": {
+              "text": "25 steps, CFG 1, euler and simple. No noise mask: on Qwen 2.1 it drew a visible box at the seam."
+            },
+            "color": "#1f2c38",
+            "bgcolor": "#2a3b4a"
+          },
+          {
+            "id": 109,
+            "type": "MarkdownNote",
+            "pos": [
+              1100,
+              80
+            ],
+            "size": [
+              460,
+              88
+            ],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [],
+            "title": "Note",
+            "properties": {},
+            "widgets_values": [
+              "Qwen 2.1 decodes four channels, so the alpha goes first. Blend in fades the new area into your image, and Tone match evens out colour."
+            ],
+            "widgets_values_named": {
+              "text": "Qwen 2.1 decodes four channels, so the alpha goes first. Blend in fades the new area into your image, and Tone match evens out colour."
+            },
+            "color": "#1f2c38",
+            "bgcolor": "#2a3b4a"
+          },
+          {
+            "id": 110,
+            "type": "Reroute",
+            "pos": [
+              20,
+              208
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 13
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "STRING",
+                "links": [
+                  14
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 111,
+            "type": "Reroute",
+            "pos": [
+              560,
+              208
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 17
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "INT",
+                "links": [
+                  18
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 112,
+            "type": "TextEncodeQwenImage21",
+            "pos": [
+              20,
+              304
+            ],
+            "size": [
+              460,
+              266
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 10
+              },
+              {
+                "localized_name": "image_1",
+                "name": "images.image_1",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": 9
+              },
+              {
+                "localized_name": "image_2",
+                "name": "images.image_2",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              },
+              {
+                "localized_name": "image_3",
+                "name": "images.image_3",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              },
+              {
+                "localized_name": "image_4",
+                "name": "images.image_4",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "shape": 7,
+                "type": "VAE",
+                "link": 11
+              },
+              {
+                "localized_name": "prompt",
+                "name": "prompt",
+                "type": "STRING",
+                "widget": {
+                  "name": "prompt"
+                },
+                "link": 14
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "links": [
+                  19
+                ]
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "links": [
+                  20
+                ]
+              },
+              {
+                "localized_name": "latent",
+                "name": "latent",
+                "type": "LATENT",
+                "links": [
+                  21
+                ]
+              }
+            ],
+            "title": "Text Encode Qwen Image 2.1 - Prompt and canvas",
+            "properties": {
+              "Node name for S&R": "TextEncodeQwenImage21",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "widgets_values": [
+              "",
+              "",
+              0
+            ],
+            "widgets_values_named": {
+              "prompt": "",
+              "negative_prompt": "",
+              "resolution": 0
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 113,
+            "type": "QwenImage21Cache",
+            "pos": [
+              20,
+              640
+            ],
+            "size": [
+              460,
+              82
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 15
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "MODEL",
+                "name": "MODEL",
+                "type": "MODEL",
+                "links": [
+                  16
+                ]
+              }
+            ],
+            "title": "Reference cache",
+            "properties": {
+              "Node name for S&R": "QwenImage21Cache",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "widgets_values": [
+              "auto",
+              "default"
+            ],
+            "widgets_values_named": {
+              "device": "auto",
+              "dtype": "default"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 114,
+            "type": "KSampler",
+            "pos": [
+              560,
+              304
+            ],
+            "size": [
+              460,
+              262
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 16
+              },
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 19
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 20
+              },
+              {
+                "localized_name": "latent_image",
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 21
+              },
+              {
+                "localized_name": "seed",
+                "name": "seed",
+                "type": "INT",
+                "widget": {
+                  "name": "seed"
+                },
+                "link": 18
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  22
+                ]
+              }
+            ],
+            "title": "Qwen 2.1 sampler",
+            "properties": {
+              "Node name for S&R": "KSampler",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "widgets_values": [
+              26092503,
+              "fixed",
+              25,
+              1,
+              "euler",
+              "simple",
+              1
+            ],
+            "widgets_values_named": {
+              "seed": 26092503,
+              "control_after_generate": "fixed",
+              "steps": 25,
+              "cfg": 1,
+              "sampler_name": "euler",
+              "scheduler": "simple",
+              "denoise": 1
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 115,
+            "type": "VAEDecode",
+            "pos": [
+              560,
+              636
+            ],
+            "size": [
+              460,
+              46
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "samples",
+                "name": "samples",
+                "type": "LATENT",
+                "link": 22
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 12
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  23
+                ]
+              }
+            ],
+            "title": "Decode",
+            "properties": {
+              "Node name for S&R": "VAEDecode",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 116,
+            "type": "SplitImageWithAlpha",
+            "pos": [
+              1100,
+              238
+            ],
+            "size": [
+              460,
+              46
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 23
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  24
+                ]
+              },
+              {
+                "localized_name": "MASK",
+                "name": "MASK",
+                "type": "MASK",
+                "links": []
+              }
+            ],
+            "title": "Drop the alpha",
+            "properties": {
+              "Node name for S&R": "SplitImageWithAlpha",
+              "cnr_id": "comfy-core",
+              "ver": "0.37.0"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 117,
+            "type": "AUSBOSS_NODES_StitchInpaint",
+            "pos": [
+              1100,
+              354
+            ],
+            "size": [
+              460,
+              176
+            ],
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "stitcher",
+                "name": "stitcher",
+                "type": "AUSBOSS_STITCHER",
+                "link": 25
+              },
+              {
+                "localized_name": "inpainted",
+                "name": "inpainted",
+                "type": "IMAGE",
+                "link": 24
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "links": [
+                  26
+                ]
+              },
+              {
+                "localized_name": "blend_mask",
+                "name": "blend_mask",
+                "type": "MASK",
+                "links": []
+              }
+            ],
+            "title": "Stitch Inpaint - Put the new part back",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_StitchInpaint",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.4.0"
+            },
+            "widgets_values": [
+              false,
+              1,
+              "blend in"
+            ],
+            "widgets_values_named": {
+              "fix_edge_halo": false,
+              "color_match": 1,
+              "seam": "blend in"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          }
+        ],
+        "groups": [
+          {
+            "id": 92,
+            "title": "1 · Set up the painting",
+            "bounding": [
+              0,
+              0,
+              500,
+              774
+            ],
+            "color": "#1d5560",
+            "flags": {}
+          },
+          {
+            "id": 93,
+            "title": "2 · Paint",
+            "bounding": [
+              540,
+              0,
+              500,
+              710
+            ],
+            "color": "#1d5560",
+            "flags": {}
+          },
+          {
+            "id": 94,
+            "title": "3 · Put it back",
+            "bounding": [
+              1080,
+              0,
+              500,
+              550
+            ],
+            "color": "#1d5560",
+            "flags": {}
+          }
+        ],
+        "links": [
+          {
+            "id": 12,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 115,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 13,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 110,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 15,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 113,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 16,
+            "origin_id": 113,
+            "origin_slot": 0,
+            "target_id": 114,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 17,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 111,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 18,
+            "origin_id": 111,
+            "origin_slot": 0,
+            "target_id": 114,
+            "target_slot": 4,
+            "type": "INT"
+          },
+          {
+            "id": 19,
+            "origin_id": 112,
+            "origin_slot": 0,
+            "target_id": 114,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 20,
+            "origin_id": 112,
+            "origin_slot": 1,
+            "target_id": 114,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 21,
+            "origin_id": 112,
+            "origin_slot": 2,
+            "target_id": 114,
+            "target_slot": 3,
+            "type": "LATENT"
+          },
+          {
+            "id": 22,
+            "origin_id": 114,
+            "origin_slot": 0,
+            "target_id": 115,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 23,
+            "origin_id": 115,
+            "origin_slot": 0,
+            "target_id": 116,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 24,
+            "origin_id": 116,
+            "origin_slot": 0,
+            "target_id": 117,
+            "target_slot": 1,
+            "type": "IMAGE"
+          },
+          {
+            "id": 25,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 117,
+            "target_slot": 0,
+            "type": "AUSBOSS_STITCHER"
+          },
+          {
+            "id": 26,
+            "origin_id": 117,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 10,
+            "origin_id": -10,
+            "origin_slot": 4,
+            "target_id": 112,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 9,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 112,
+            "target_slot": 1,
+            "type": "IMAGE"
+          },
+          {
+            "id": 11,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 112,
+            "target_slot": 5,
+            "type": "VAE"
+          },
+          {
+            "id": 14,
+            "origin_id": 110,
+            "origin_slot": 0,
+            "target_id": 112,
+            "target_slot": 6,
+            "type": "STRING"
+          }
+        ],
+        "extra": {}
+      }
+    ]
+  },
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.62,
+      "offset": [
+        483,
+        20
+      ]
+    },
+    "frontendVersion": "1.53.6"
+  },
+  "version": 0.4
+}

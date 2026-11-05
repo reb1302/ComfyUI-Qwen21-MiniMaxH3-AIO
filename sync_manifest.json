@@ -2,6 +2,31 @@
   "updated_at": "2026-11-05T13:01:00+07:00",
   "loras": [
     {
+      "filename": "qwen_image_2.1_int8_convrot.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "qwen3vl_8b_int8_convrot.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "qwen_image_2.1_vae_bf16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "qwen-image-2.1-outpaint.safetensors",
+      "url": "https://huggingface.co/ausboss/Qwen-Image-2.1-Outpaint-LoRA/resolve/main/qwen-image-2.1-outpaint.safetensors",
+      "folder": "loras"
+    },
+    {
       "filename": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "folder": "text_encoders"
@@ -138,6 +163,7 @@
     }
   ],
   "workflows": [
+    "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",
     "workflows/video_wan_vace_outpainting.json",
     "workflows/wan_vace/video_wan_vace_outpainting.json",
     "workflows/ltx_2.5/LTX25_Cai_Dat_1_Click.json",
