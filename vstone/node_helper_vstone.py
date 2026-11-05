@@ -3279,7 +3279,9 @@ svg{display:block}
 .tab:hover{color:var(--ink)}
 .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--paper)}
 .sheetpanel{width:280px;display:grid;gap:10px;align-content:start;min-height:0;overflow-y:auto;padding:2px}
-.sheetbox{position:relative;display:grid;place-items:center;height:300px;border:1.5px dashed var(--ink-2);border-radius:4px;color:var(--ink-2);cursor:pointer;overflow:hidden}
+.sheetslots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.slotlabel{position:absolute;left:5px;bottom:5px;font-size:11px;background:#000000b8;color:#fff;padding:1px 5px;border-radius:2px;pointer-events:none}
+.sheetbox{position:relative;display:grid;place-items:center;height:150px;border:1.5px dashed var(--ink-2);border-radius:4px;color:var(--ink-2);cursor:pointer;overflow:hidden}
 .sheetbox:hover{border-style:solid}
 .sheetbox:focus-within{outline:2px solid var(--paper);outline-offset:2px}
 .sheetbox.over{border-color:var(--paper)}
@@ -3400,7 +3402,7 @@ a.btn{color:inherit;text-decoration:none}
   .ibtn{width:38px}
   .pop{width:min(100%,320px)}
   .sheetpanel{width:auto;overflow:visible}
-  .sheetbox{height:180px}
+  .sheetbox{height:110px}
   .size input{width:110px}
   #gen{flex:1}
 }
@@ -3425,14 +3427,7 @@ a.btn{color:inherit;text-decoration:none}
     </nav>
 
     <section class="sheetpanel" id="sheetPanel" aria-label="Char sheet" hidden>
-      <div class="sheetwrap">
-        <label class="sheetbox" id="sheetBox" title="Ảnh nhân vật">
-          <span class="sheetempty-box" id="sheetEmptyBox"><span data-icon="plus"></span><span>Ảnh nhân vật</span></span>
-          <img id="sheetImg" alt="Ảnh nhân vật" hidden>
-          <input class="sr" id="sheetFile" type="file" accept="image/*" aria-label="Ảnh nhân vật">
-        </label>
-        <button class="sheetx" id="sheetClear" type="button" title="Bỏ ảnh" aria-label="Bỏ ảnh" data-icon="close" hidden></button>
-      </div>
+      <div class="sheetslots" id="sheetSlots"></div>
       <div class="viewchips" id="sheetViews" role="group" aria-label="Góc nhìn"></div>
       <textarea class="field" id="sheetNote" placeholder="Mô tả thêm (tiếng Anh)" aria-label="Mô tả thêm"></textarea>
       <select class="field" id="sheetSize" aria-label="Cỡ bảng nhân vật" title="Càng lớn càng chậm">
@@ -4109,12 +4104,14 @@ function renderPanel() {
     const slots = document.createElement('div');
     slots.className = 'slots';
     if (pass.kind === 'sheet') {
-      slots.append(slotFigure('image_1', 'Ảnh nhân vật', cv => {
-        const rw = Sheet.ref.naturalWidth || Sheet.ref.width, rh = Sheet.ref.naturalHeight || Sheet.ref.height;
-        cv.width = 144;
-        cv.height = Math.max(1, Math.round(rh * 144 / rw));
-        cv.getContext('2d').drawImage(Sheet.ref, 0, 0, cv.width, cv.height);
-      }));
+      Sheet.slots.filter(s => s.ref).forEach((slot, i) => {
+        slots.append(slotFigure(`image_${i + 1}`, slot.label, cv => {
+          const rw = slot.ref.naturalWidth || slot.ref.width, rh = slot.ref.naturalHeight || slot.ref.height;
+          cv.width = 144;
+          cv.height = Math.max(1, Math.round(rh * 144 / rw));
+          cv.getContext('2d').drawImage(slot.ref, 0, 0, cv.width, cv.height);
+        }));
+      });
     } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv, false)));
     } else {
@@ -4373,7 +4370,7 @@ stage.addEventListener('dragover', () => stage.classList.add('over'));
 stage.addEventListener('dragleave', () => stage.classList.remove('over'));
 stage.addEventListener('drop', e => {
   stage.classList.remove('over');
-  if (S.tab === 'sheet') takeSheetRef(e.dataTransfer.files[0]);
+  if (S.tab === 'sheet') takeSheetFiles(e.dataTransfer.files, Math.max(0, Sheet.slots.findIndex(s => !s.ref)));
   else takeBase(e.dataTransfer.files[0]);
 });
 
@@ -4448,45 +4445,109 @@ const SHEET_VIEWS = [
   { id: 'back', label: 'Sau', en: 'back view', vi: 'nhìn sau', on: true },
   { id: 'face', label: 'Cận mặt', on: false },
 ];
-const Sheet = { ref: null, refUrl: '', views: new Set(SHEET_VIEWS.filter(v => v.on).map(v => v.id)), note: '' };
+const Sheet = {
+  slots: [
+    { role: 'body', label: 'Toàn thân' },
+    { role: 'face', label: 'Chân dung' },
+    { role: 'extra', label: 'Ảnh thêm' },
+    { role: 'extra', label: 'Ảnh thêm' },
+  ].map(slot => ({ ...slot, ref: null, refUrl: '' })),
+  views: new Set(SHEET_VIEWS.filter(v => v.on).map(v => v.id)),
+  note: '',
+};
+const imageTags = numbers => numbers.map(n => `<image${n}>`);
+const joinList = (items, word) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} ${word} ${items[items.length - 1]}` : items[0]);
 
+// Ô đã có ảnh được đánh số image theo thứ tự, ô trống không chiếm số.
 function buildSheetPasses() {
-  if (!Sheet.ref) return { passes: [], problems: [] };
+  const filled = Sheet.slots.filter(s => s.ref).map((slot, i) => ({ role: slot.role, n: i + 1 }));
+  if (!filled.length) return { passes: [], problems: [] };
   const picked = SHEET_VIEWS.filter(v => v.en && Sheet.views.has(v.id));
   if (!picked.length) return { passes: [], problems: [{ brush: null, text: 'Chọn ít nhất một góc nhìn' }] };
-  const lines = [
-    {
-      en: `Using the character in <image1>, create a character reference sheet on a plain light gray background: ${picked.map(v => v.en).join(', ')}, full body, same scale, evenly spaced in one row.`,
-      vi: `Dựa trên nhân vật trong <image1>, tạo bảng nhân vật trên nền xám nhạt trơn: ${picked.map(v => v.vi).join(', ')}, toàn thân, cùng tỉ lệ, cách đều trên một hàng.`,
-    },
-    {
-      en: 'Keep the face, hair, body shape, outfit and colors identical to <image1> in every view.',
-      vi: 'Giữ mặt, tóc, vóc dáng, trang phục và màu sắc giống hệt <image1> ở mọi góc.',
-    },
+  const tags = imageTags(filled.map(f => f.n));
+  const allEn = joinList(tags, 'and'), allVi = joinList(tags, 'và');
+  const lines = [{
+    en: `Using the character in ${allEn}, create a character reference sheet on a plain light gray background: ${picked.map(v => v.en).join(', ')}, full body, same scale, evenly spaced in one row.`,
+    vi: `Dựa trên nhân vật trong ${allVi}, tạo bảng nhân vật trên nền xám nhạt trơn: ${picked.map(v => v.vi).join(', ')}, toàn thân, cùng tỉ lệ, cách đều trên một hàng.`,
+  }];
+  if (filled.length > 1) {
+    lines.push({ en: `${allEn} show the same character.`, vi: `${allVi} là cùng một nhân vật.` });
+    const body = filled.find(f => f.role === 'body'), face = filled.find(f => f.role === 'face');
+    if (body) lines.push({ en: `Take the body and outfit from <image${body.n}>.`, vi: `Lấy vóc dáng và trang phục từ <image${body.n}>.` });
+    if (face) lines.push({ en: `Take the face and hair from <image${face.n}>.`, vi: `Lấy mặt và tóc từ <image${face.n}>.` });
+    const extra = imageTags(filled.filter(f => f.role === 'extra').map(f => f.n));
+    if (extra.length) lines.push({ en: `Use ${joinList(extra, 'and')} for more details of the same character.`, vi: `Dùng ${joinList(extra, 'và')} để lấy thêm chi tiết của nhân vật.` });
+  }
+  lines.push(
+    { en: `Keep the face, hair, body shape, outfit and colors identical to ${allEn} in every view.`, vi: `Giữ mặt, tóc, vóc dáng, trang phục và màu sắc giống hệt ${allVi} ở mọi góc.` },
     { en: 'Neutral standing pose, even studio lighting, no text, no labels.', vi: 'Dáng đứng trung tính, ánh sáng studio đều, không chữ, không nhãn.' },
-  ];
+  );
   if (Sheet.views.has('face')) lines.push({ en: 'Add a close-up of the face.', vi: 'Thêm một ô cận mặt.' });
   const note = Sheet.note.trim().replace(/[.\s]+$/, '');
   if (note) lines.push({ en: `${note}.`, vi: `${note}.` });
   return { passes: [{ kind: 'sheet', name: 'Char sheet', lines, slots: [] }], problems: [] };
 }
-function syncSheetBox() {
-  const has = !!Sheet.ref;
-  $('sheetImg').hidden = !has;
-  if (has) $('sheetImg').src = Sheet.refUrl;
-  $('sheetEmptyBox').hidden = has;
-  $('sheetClear').hidden = !has;
+function syncSheetSlots() {
+  document.querySelectorAll('#sheetSlots .sheetwrap').forEach((wrap, i) => {
+    const slot = Sheet.slots[i];
+    const has = !!slot.ref;
+    const img = wrap.querySelector('img');
+    img.hidden = !has;
+    if (has) img.src = slot.refUrl;
+    wrap.querySelector('.sheetempty-box').hidden = has;
+    wrap.querySelector('.slotlabel').hidden = !has;
+    wrap.querySelector('.sheetx').hidden = !has;
+  });
 }
-function takeSheetRef(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  loadFile(file, (img, url) => {
-    Sheet.ref = img;
-    Sheet.refUrl = url;
-    syncSheetBox();
-    renderPanel();
+// Ảnh đầu vào ô được chọn, các ảnh sau vào lần lượt những ô còn trống.
+function takeSheetFiles(fileList, start) {
+  const files = [...fileList].filter(file => file.type.startsWith('image/'));
+  const targets = [start, ...Sheet.slots.map((slot, i) => i).filter(i => i !== start && !Sheet.slots[i].ref)];
+  if (files.length > targets.length) setStatus(`Mỗi lần chỉ nhận thêm được ${targets.length} ảnh, các ảnh còn lại đã bỏ qua.`);
+  files.slice(0, targets.length).forEach((file, i) => {
+    loadFile(file, (img, url) => {
+      Sheet.slots[targets[i]].ref = img;
+      Sheet.slots[targets[i]].refUrl = url;
+      syncSheetSlots();
+      renderPanel();
+    });
+  });
+}
+function buildSheetSlots() {
+  $('sheetSlots').innerHTML = Sheet.slots.map(slot => `
+    <div class="sheetwrap">
+      <label class="sheetbox" title="${slot.label}">
+        <span class="sheetempty-box">${icon('plus')}<span>${slot.label}</span></span>
+        <img alt="${slot.label}" hidden>
+        <span class="slotlabel" hidden>${slot.label}</span>
+        <input class="sr" type="file" accept="image/*" multiple aria-label="${slot.label}">
+      </label>
+      <button class="sheetx" type="button" title="Bỏ ảnh" aria-label="Bỏ ảnh ${slot.label}" hidden>${icon('close')}</button>
+    </div>`).join('');
+  document.querySelectorAll('#sheetSlots .sheetwrap').forEach((wrap, i) => {
+    const box = wrap.querySelector('.sheetbox');
+    wrap.querySelector('input').addEventListener('change', e => {
+      takeSheetFiles(e.target.files, i);
+      e.target.value = '';
+    });
+    wrap.querySelector('.sheetx').addEventListener('click', () => {
+      Sheet.slots[i].ref = null;
+      Sheet.slots[i].refUrl = '';
+      syncSheetSlots();
+      renderPanel();
+    });
+    box.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); box.classList.add('over'); });
+    box.addEventListener('dragleave', () => box.classList.remove('over'));
+    box.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      box.classList.remove('over');
+      takeSheetFiles(e.dataTransfer.files, i);
+    });
   });
 }
 function buildSheetPanel() {
+  buildSheetSlots();
   $('sheetViews').innerHTML = SHEET_VIEWS.map(v => `<button class="viewchip" type="button" data-view="${v.id}" aria-pressed="${Sheet.views.has(v.id)}">${v.label}</button>`).join('');
   $('sheetViews').addEventListener('click', e => {
     const chip = e.target.closest('.viewchip');
@@ -4496,26 +4557,7 @@ function buildSheetPanel() {
     chip.setAttribute('aria-pressed', String(Sheet.views.has(id)));
     renderPanel();
   });
-  $('sheetFile').addEventListener('change', e => {
-    takeSheetRef(e.target.files[0]);
-    e.target.value = '';
-  });
-  $('sheetClear').addEventListener('click', () => {
-    Sheet.ref = null;
-    Sheet.refUrl = '';
-    syncSheetBox();
-    renderPanel();
-  });
   $('sheetNote').addEventListener('input', e => { Sheet.note = e.target.value; renderPanel(); });
-  const box = $('sheetBox');
-  box.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); box.classList.add('over'); });
-  box.addEventListener('dragleave', () => box.classList.remove('over'));
-  box.addEventListener('drop', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    box.classList.remove('over');
-    takeSheetRef(e.dataTransfer.files[0]);
-  });
 }
 function switchTab(tab) {
   S.tab = tab;
@@ -4968,14 +5010,15 @@ function endRun() {
 async function generateSheet() {
   const pass = S.passes.find(p => p.kind === 'sheet');
   const text = promptFor(pass);
-  const reference = imageToCanvas(Sheet.ref);
+  const references = Sheet.slots.filter(s => s.ref).map(s => imageToCanvas(s.ref));
   const [w, h] = $('sheetSize').value.split('x').map(Number);
   const stamp = Date.now().toString(36);
   beginRun();
   try {
     startPass('Char sheet');
-    const image1 = await uploadCanvas(reference, `${stamp}_sheet.png`);
-    run.promptId = await queueGraph(buildApiPrompt({ image1, refs: [], text, resolution: 1024, seed: randomSeed(), lora: null, latent: { w, h } }));
+    const names = [];
+    for (let i = 0; i < references.length; i++) names.push(await uploadCanvas(references[i], `${stamp}_sheet${i + 1}.png`));
+    run.promptId = await queueGraph(buildApiPrompt({ image1: names[0], refs: names.slice(1), text, resolution: 1024, seed: randomSeed(), lora: null, latent: { w, h } }));
     advanceJob('queue');
     renderJob();
     const { img, url } = await loadOutput(await waitForImage(run.promptId));
