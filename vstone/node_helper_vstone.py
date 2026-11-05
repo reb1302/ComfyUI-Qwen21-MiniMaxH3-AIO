@@ -3274,8 +3274,11 @@ svg{display:block}
 .drop svg{width:48px;height:48px}
 .stage.over{outline:2px dashed var(--paper);outline-offset:-6px}
 
-.pop{position:absolute;z-index:5;width:300px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;gap:10px;box-shadow:0 12px 32px #00000090}
-.types{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.capbox{position:absolute;pointer-events:none;outline:2px dashed #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px #00000066}
+.capture-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--paper);color:var(--paper-ink);border-radius:6px;font-weight:600;white-space:nowrap;box-shadow:0 8px 24px #00000080}
+.capture-hint button{background:transparent;border:1px solid var(--paper-ink);border-radius:4px;padding:2px 8px;color:inherit;font-weight:500;cursor:pointer}
+.pop{position:absolute;z-index:5;width:344px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;gap:10px;box-shadow:0 12px 32px #00000090}
+.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:4px}
 .type{display:grid;justify-items:center;align-content:start;gap:4px;padding:7px 1px 5px;background:transparent;border:1px solid transparent;border-radius:4px;color:var(--ink-2);font-size:10.5px;line-height:1.2;text-align:center;cursor:pointer}
 .type:hover{color:var(--ink)}
 .type[aria-pressed="true"]{background:var(--raised);border-color:var(--line);color:var(--ink)}
@@ -3329,8 +3332,8 @@ textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--fo
 .job-steps li[data-state="done"]::before{content:"✓ "}
 .job-steps li[data-state="now"]{color:var(--paper-ink);background:var(--paper);border-radius:3px;padding:0 5px;font-weight:600}
 @media (prefers-reduced-motion:reduce){.job-bar span{transition:none}}
-.status{font-size:12px;color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
-.status[data-kind="error"]{color:var(--warn)}
+.status{position:absolute;left:8px;bottom:8px;z-index:2;max-width:calc(100% - 16px);padding:3px 8px;font-size:12px;color:#fff;background:#000000b8;border-radius:3px;pointer-events:none;overflow-wrap:anywhere}
+.status:empty{display:none}
 .results{display:flex;gap:6px;overflow-x:auto;flex:none;padding-bottom:2px}
 .results button{flex:none;width:76px;height:76px;padding:0;background:var(--well);border:1px solid var(--line);border-radius:4px;cursor:pointer;overflow:hidden}
 .results button:hover{border-color:var(--paper)}
@@ -3398,6 +3401,7 @@ a.btn{color:inherit;text-decoration:none}
     <div class="stage" id="stage">
       <div class="frame" id="frame">
         <canvas id="view"></canvas>
+        <div class="capbox" id="capbox" hidden></div>
         <div class="imgedge" id="imgedge"></div>
         <span class="padtag" data-tag="left"></span>
         <span class="padtag" data-tag="right"></span>
@@ -3415,6 +3419,11 @@ a.btn{color:inherit;text-decoration:none}
         <span>Ảnh gốc</span>
         <input class="sr" id="baseFile2" type="file" accept="image/*" aria-label="Chọn ảnh gốc">
       </label>
+      <div class="status" id="status" role="status"></div>
+      <div class="capture-hint" id="captureHint" hidden>
+        <span>Kéo khung quanh vùng muốn clone</span>
+        <button id="captureCancel" type="button">Huỷ</button>
+      </div>
       <div class="job" id="job" role="status" aria-live="polite" hidden>
         <div class="job-head">
           <span class="job-title" id="jobTitle"></span>
@@ -3428,7 +3437,7 @@ a.btn{color:inherit;text-decoration:none}
       <div class="viewer" id="viewer" hidden>
         <img id="viewerImg" alt="Ảnh kết quả">
         <div class="viewer-actions">
-          <button class="btn" id="viewerUse" type="button">Dùng làm ảnh gốc</button>
+          <button class="btn" id="viewerUse" type="button">Sửa tiếp từ ảnh này</button>
           <a class="btn" id="viewerSave" download="concept_edit.png">Tải về</a>
           <button class="btn" id="viewerClose" type="button">Đóng</button>
         </div>
@@ -3478,7 +3487,6 @@ a.btn{color:inherit;text-decoration:none}
     </label>
     <span class="nums" id="readout"></span>
     <span class="warn" id="sizeNote"></span>
-    <span class="status" id="status" role="status"></span>
     <span class="grow"></span>
     <select class="field model" id="resolution" aria-label="Cỡ ảnh ra" title="Càng lớn càng chậm">
       <option value="1024">Ảnh ra 1 MP</option>
@@ -3505,6 +3513,8 @@ const ICONS = {
   close: 'M5 5l10 10M15 5L5 15',
   person: 'M10 3a3 3 0 110 6 3 3 0 010-6zM4 17c.8-3.6 3.2-5 6-5s5.2 1.4 6 5',
   add: 'M3 3h9v9H3zM14.5 12v6M11.5 15h6',
+  clone: 'M7 7h10v10H7zM13 7V3H3v10h4',
+  capture: 'M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4',
   remove: 'M3 3h9v9H3zM12 12l5.5 5.5M17.5 12L12 17.5',
   mountain: 'M2 16l5.5-9 3.5 5.5 2-3 5 6.5z',
   pencil: 'M4 16l1-4 8-8 3 3-8 8zM11.5 5.5l3 3',
@@ -3533,6 +3543,7 @@ const PAINT = Object.fromEntries(PALETTE.map(c => [c.id, c]));
 const TYPES = {
   character: { label: 'Nhân vật', icon: 'person', image: true, ph: 'Mô tả (tiếng Anh)' },
   add: { label: 'Thêm vật thể', icon: 'add', image: true, ph: 'Vật thể gì (tiếng Anh)' },
+  clone: { label: 'Clone', icon: 'clone', image: true, capture: true, ph: 'Mô tả (tiếng Anh)' },
   remove: { label: 'Xoá vật thể', icon: 'remove', image: false, ph: 'Vật thể gì (tiếng Anh)' },
   environment: { label: 'Môi trường', icon: 'mountain', image: true, ph: 'Mô tả (tiếng Anh)' },
   fix: { label: 'Sửa', icon: 'pencil', image: true, ph: 'Sửa gì (tiếng Anh)' },
@@ -3552,6 +3563,10 @@ const PROMPTS = {
   add: {
     en: (c, r, n) => `In <image1>, replace the ${c.en} area with the object from <image${r}>${n ? `, ${n}.` : ', preserve its shape and details.'}`,
     vi: (c, r, n) => `Trong <image1>, thay vùng ${c.area} bằng vật thể từ <image${r}>${n ? `, ${n}.` : ', giữ nguyên hình dáng và chi tiết.'}`,
+  },
+  clone: {
+    en: (c, r, n) => `In <image1>, replace the ${c.en} area with the object from <image${r}>${extra(n)}, adapting it to the lighting, shadows and perspective of <image1>.`,
+    vi: (c, r, n) => `Trong <image1>, thay vùng ${c.area} bằng vật thể từ <image${r}>${extra(n)}, chỉnh theo ánh sáng, bóng đổ và phối cảnh của <image1>.`,
   },
   addText: {
     en: (c, r, n) => `In <image1>, replace the ${c.en} area with ${n}.`,
@@ -3602,7 +3617,7 @@ function buildPasses({ marks, expanded, scene }) {
       else if (note) lines.push(line(isFix ? PROMPTS.fix : PROMPTS.addText, c, 0, note));
       else problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh hoặc mô tả` });
     } else if (m.hasRef) withRef(m, PROMPTS[m.type], c, note);
-    else problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh` });
+    else problems.push({ brush: m.brush, text: m.type === 'clone' ? `${c.vi}: chưa chụp vùng` : `${c.vi}: thiếu ảnh` });
   }
   const passes = [];
   if (expanded) {
@@ -3631,7 +3646,7 @@ const S = {
   pads: { left: 0, right: 0, top: 0, bottom: 0 },
   strokes: [], past: [], future: [],
   brushes: [], nextId: 1, active: null, editing: null, erase: false, size: 72,
-  padsPainted: false,
+  padsPainted: false, capture: null, baseFromResult: false,
   scene: '',
   overrides: { expand: null, marks: null },
 };
@@ -3642,6 +3657,7 @@ const isExpanded = () => S.pads.left + S.pads.right + S.pads.top + S.pads.bottom
 const needsOutpaint = () => isExpanded() && !S.padsPainted;
 const brushOf = id => S.brushes.find(b => b.id === id);
 const canPaint = () => !!S.base && (S.erase || !!brushOf(S.active));
+const viewCursor = () => (S.capture !== null ? 'crosshair' : canPaint() ? 'none' : 'default');
 
 function drawStroke(g, s) {
   const b = brushOf(s.brush);
@@ -3728,7 +3744,7 @@ function renderView() {
   view.height = Math.max(1, Math.round(ch * dpr));
   view.style.width = cw + 'px';
   view.style.height = ch + 'px';
-  view.style.cursor = canPaint() ? 'none' : 'default';
+  view.style.cursor = viewCursor();
   const g = view.getContext('2d');
   g.setTransform(view.width / W(), 0, 0, view.height / H(), 0, 0);
   g.imageSmoothingQuality = 'high';
@@ -3842,7 +3858,7 @@ function syncTools() {
     t.dataset.active = String(!S.erase && S.active === b.id);
     t.dataset.painted = String(b.cover > 0);
   });
-  view.style.cursor = canPaint() ? 'none' : 'default';
+  view.style.cursor = viewCursor();
 }
 
 function addBrush() {
@@ -3876,6 +3892,14 @@ function buildPop() {
     syncPop();
     renderTiles();
     renderPanel();
+    if (TYPES[b.type].capture && !b.ref) startCapture(b.id);
+  });
+  pop.querySelector('.imgpick').addEventListener('click', e => {
+    const b = brushOf(S.editing);
+    if (b && TYPES[b.type].capture) {
+      e.preventDefault();
+      startCapture(b.id);
+    }
   });
   $('popSwatches').innerHTML = PALETTE.map(c =>
     `<button class="sw" type="button" data-color="${c.id}" style="--c:${c.hex}" title="${c.vi}" aria-label="Màu ${c.vi}"></button>`).join('');
@@ -3918,7 +3942,9 @@ function syncPop() {
   pop.querySelectorAll('.type').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.type === b.type)));
   pop.querySelectorAll('.sw').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.color === b.color)));
   $('popImgWrap').dataset.off = String(!T.image);
-  $('popFile').disabled = !T.image;
+  $('popFile').disabled = !T.image || !!T.capture;
+  $('popImgPlus').innerHTML = icon(T.capture ? 'capture' : 'plus');
+  pop.querySelector('.imgpick').title = T.capture ? 'Chụp vùng trên ảnh' : 'Ảnh tham chiếu';
   $('popNote').value = b.note;
   $('popNote').placeholder = T.ph;
   const hasRef = !!b.ref;
@@ -4144,8 +4170,55 @@ function toImage(e) {
   const r = view.getBoundingClientRect();
   return { x: (e.clientX - r.left) / V.scale - S.pads.left, y: (e.clientY - r.top) / V.scale - S.pads.top };
 }
+let capDrag = null;
+function startCapture(id) {
+  if (!S.base) {
+    setStatus('Thêm ảnh gốc trước khi chụp vùng.');
+    return;
+  }
+  S.capture = id;
+  selectBrush(id);
+  closePop();
+  brushcur.hidden = true;
+  $('captureHint').hidden = false;
+  view.style.cursor = viewCursor();
+}
+function stopCapture() {
+  S.capture = null;
+  capDrag = null;
+  $('capbox').hidden = true;
+  $('captureHint').hidden = true;
+  view.style.cursor = viewCursor();
+}
+function drawCapBox(p) {
+  const x = Math.min(capDrag.x, p.x), y = Math.min(capDrag.y, p.y);
+  const box = $('capbox');
+  box.hidden = false;
+  box.style.left = (x + S.pads.left) * V.scale + 'px';
+  box.style.top = (y + S.pads.top) * V.scale + 'px';
+  box.style.width = Math.abs(p.x - capDrag.x) * V.scale + 'px';
+  box.style.height = Math.abs(p.y - capDrag.y) * V.scale + 'px';
+}
+// Chụp từ ảnh hiện tại, không lấy nét tô và không lấy vùng xám.
+function finishCapture(p) {
+  const b = brushOf(S.capture);
+  const x0 = Math.max(0, Math.round(Math.min(capDrag.x, p.x))), y0 = Math.max(0, Math.round(Math.min(capDrag.y, p.y)));
+  const x1 = Math.min(S.w, Math.round(Math.max(capDrag.x, p.x))), y1 = Math.min(S.h, Math.round(Math.max(capDrag.y, p.y)));
+  const w = x1 - x0, h = y1 - y0;
+  capDrag = null;
+  $('capbox').hidden = true;
+  if (w < 8 || h < 8 || !b) return;
+  const crop = newCanvas(w, h);
+  crop.getContext('2d').drawImage(S.base, x0, y0, w, h, 0, 0, w, h);
+  b.ref = crop;
+  b.refUrl = crop.toDataURL('image/png');
+  stopCapture();
+  renderTiles();
+  renderPanel();
+  setStatus('Đã chụp. Giờ tô vào vùng cần clone.');
+}
 function moveBrushCursor(e) {
-  if (!canPaint()) { brushcur.hidden = true; return; }
+  if (!canPaint() || S.capture !== null) { brushcur.hidden = true; return; }
   const r = stage.getBoundingClientRect();
   const d = S.size * V.scale;
   brushcur.hidden = false;
@@ -4156,6 +4229,11 @@ function moveBrushCursor(e) {
 }
 view.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.base) return;
+  if (S.capture !== null) {
+    view.setPointerCapture(e.pointerId);
+    capDrag = toImage(e);
+    return;
+  }
   if (!canPaint()) {
     const add = $('addBrush');
     add.classList.add('nudge');
@@ -4173,6 +4251,7 @@ view.addEventListener('pointerdown', e => {
 });
 view.addEventListener('pointermove', e => {
   moveBrushCursor(e);
+  if (capDrag) drawCapBox(toImage(e));
   if (!live) return;
   const p = toImage(e);
   const last = live.points[live.points.length - 1];
@@ -4188,8 +4267,15 @@ const endStroke = () => {
   live = null;
   afterChange();
 };
-view.addEventListener('pointerup', endStroke);
-view.addEventListener('pointercancel', endStroke);
+view.addEventListener('pointerup', e => {
+  if (capDrag) finishCapture(toImage(e));
+  endStroke();
+});
+view.addEventListener('pointercancel', () => {
+  capDrag = null;
+  $('capbox').hidden = true;
+  endStroke();
+});
 view.addEventListener('pointerleave', () => { if (!live) brushcur.hidden = true; });
 
 function loadFile(file, done) {
@@ -4198,8 +4284,10 @@ function loadFile(file, done) {
   img.onload = () => done(img, url);
   img.src = url;
 }
-function setBase(img, sample) {
+function setBase(img, sample, fromResult) {
+  stopCapture();
   S.base = img;
+  S.baseFromResult = !!fromResult;
   S.w = img.naturalWidth || img.width;
   S.h = img.naturalHeight || img.height;
   S.pads = { left: 0, right: 0, top: 0, bottom: 0 };
@@ -4243,6 +4331,8 @@ $('undo').addEventListener('click', () => restore(S.past, S.future));
 $('redo').addEventListener('click', () => restore(S.future, S.past));
 $('clearStrokes').addEventListener('click', () => { pushHistory(); S.strokes = []; afterChange(); });
 function clearBase() {
+  stopCapture();
+  S.baseFromResult = false;
   S.base = null; S.w = 0; S.h = 0;
   S.pads = { left: 0, right: 0, top: 0, bottom: 0 };
   S.strokes = []; S.past = []; S.future = []; S.scene = '';
@@ -4259,7 +4349,7 @@ function clearBase() {
 }
 $('sampleTag').addEventListener('click', clearBase);
 window.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closePop(); $('viewer').hidden = true; return; }
+  if (e.key === 'Escape') { closePop(); $('viewer').hidden = true; stopCapture(); return; }
   if (e.target.matches('input,textarea,select')) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
@@ -4406,9 +4496,8 @@ async function checkQueue(promptId) {
   }
 }
 
-function setStatus(text, kind) {
+function setStatus(text) {
   $('status').textContent = text || '';
-  $('status').dataset.kind = kind || '';
 }
 function syncGen() {
   const gen = $('gen');
@@ -4526,19 +4615,31 @@ function loadOutput(info) {
     img.src = url;
   });
 }
-function addResult(img, url) {
+function addResult(img, url, title) {
   const list = $('results');
   const thumb = document.createElement('button');
   thumb.type = 'button';
-  thumb.title = 'Xem ảnh';
+  thumb.title = title;
   const small = document.createElement('img');
   small.src = url;
-  small.alt = 'Ảnh kết quả';
+  small.alt = title;
   thumb.append(small);
   thumb.onclick = () => openViewer(img, url);
   list.prepend(thumb);
   list.hidden = false;
-  openViewer(img, url);
+}
+// Gen xong thì ảnh kết quả thành ảnh đang sửa. Đang tô dở trong lúc chạy thì giữ nguyên nét, chỉ mở ảnh ra xem.
+async function continueFrom(result, snap, strokesAtStart) {
+  const untouched = S.base === snap.base && S.strokes === strokesAtStart && S.pads.left === snap.pads.left && S.pads.right === snap.pads.right && S.pads.top === snap.pads.top && S.pads.bottom === snap.pads.bottom;
+  if (S.base === snap.base && !S.baseFromResult) {
+    const before = await canvasToResult(imageToCanvas(S.base));
+    addResult(before.img, before.url, 'Ảnh gốc');
+    S.baseFromResult = true;
+  }
+  addResult(result.img, result.url, 'Ảnh kết quả');
+  if (untouched) setBase(result.img, false, true);
+  else openViewer(result.img, result.url);
+  return untouched;
 }
 function openViewer(img, url) {
   shown = img;
@@ -4616,6 +4717,7 @@ async function generate() {
   const refCanvases = marks ? marks.slots.map(s => imageToCanvas(brushOf(s.brush).ref)) : [];
   const resolution = Number($('resolution').value);
   const stamp = Date.now().toString(36);
+  const strokesAtStart = S.strokes;
   run.active = true;
   run.cancelled = false;
   run.promptId = null;
@@ -4628,6 +4730,7 @@ async function generate() {
   syncGen();
   try {
     let current = snap.padded;
+    let finished = null;
     if (expand) {
       startPass(marks ? 'Lượt 1/2: Kéo rộng' : 'Kéo rộng');
       const name = await uploadCanvas(current, `${stamp}_outpaint.png`);
@@ -4636,10 +4739,7 @@ async function generate() {
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
       current = stitchOriginal(img, snap);
-      if (!marks) {
-        const done = await canvasToResult(current);
-        addResult(done.img, done.url);
-      }
+      if (!marks) finished = await canvasToResult(current);
     }
     if (marks) {
       run.promptId = null;
@@ -4654,11 +4754,11 @@ async function generate() {
       run.promptId = await queueGraph(buildApiPrompt({ image1, refs, text: marksText, resolution, seed: randomSeed(), lora: null }));
       advanceJob('queue');
       renderJob();
-      const { img, url } = await loadOutput(await waitForImage(run.promptId));
-      addResult(img, url);
+      finished = await loadOutput(await waitForImage(run.promptId));
     }
+    const continued = await continueFrom(finished, snap, strokesAtStart);
     hideJob();
-    setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
+    setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.${continued ? ' Đang sửa tiếp trên ảnh này.' : ''}`);
   } catch (e) {
     if (run.cancelled) {
       hideJob();
@@ -4691,8 +4791,9 @@ $('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; })
 $('viewerUse').addEventListener('click', () => {
   if (!shown) return;
   $('viewer').hidden = true;
-  setBase(shown, false);
+  setBase(shown, false, true);
 });
+$('captureCancel').addEventListener('click', stopCapture);
 
 function sampleScene() {
   const c = document.createElement('canvas');
