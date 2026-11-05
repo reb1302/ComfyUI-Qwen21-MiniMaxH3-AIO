@@ -164,6 +164,7 @@
   ],
   "workflows": [
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit_light.json",
     "workflows/video_wan_vace_outpainting.json",
     "workflows/wan_vace/video_wan_vace_outpainting.json",
     "workflows/ltx_2.5/LTX25_Cai_Dat_1_Click.json",
