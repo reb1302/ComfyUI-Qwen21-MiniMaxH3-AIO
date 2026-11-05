@@ -2425,64 +2425,432 @@ class stoneV_ScreenX_Cut:
 
 SCREENX_PAINT_MULTIPLE = 64  # LTX-2.5 cắt hình về bội số 64 ngay sau bước đệm, khung phải khớp sẵn để không mất hình
 
+HUY_SCREENX_EDITOR_JS = r"""
+import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
+
+const NODE_ID = "Huy_screenx_outpain_mask";
+const GRID = 64;
+const MAX_PAD = 8192;
+const EDGE_GRAB_PX = 9;
+const VIEW_MARGIN_PX = 14;
+const FOOTER_PX = 42;
+const EDITOR_MIN_HEIGHT = 280;
+const PLACEHOLDER_SIZE = { width: 1792, height: 1024 };
+const PAD_NAMES = ["left", "top", "right", "bottom"];
+
+const snap = (value) => Math.min(MAX_PAD, Math.max(0, Math.round(value / GRID) * GRID));
+
+// Giống _round_screenx_pad trong node Python.
+function roundPad(size, before, after) {
+    const total = size + before + after;
+    const extra = Math.ceil(total / GRID) * GRID - total;
+    return before > 0 && after === 0 ? [before + extra, after] : [before, after + extra];
+}
+
+function createEditor(node) {
+    const field = (name) => node.widgets.find((widget) => widget.name === name);
+    const readPad = () => Object.fromEntries(PAD_NAMES.map((name) => [name, Number(field(name).value) || 0]));
+
+    const canvas = document.createElement("canvas");
+    canvas.style.cssText = "width:100%;height:100%;display:block;touch-action:none;";
+    const domWidget = node.addDOMWidget("screenx_editor", "custom", canvas, {
+        serialize: false,
+        hideOnZoom: false,
+        getMinHeight: () => EDITOR_MIN_HEIGHT,
+    });
+    domWidget.serialize = false;
+
+    let frame = null;
+    let drag = null;
+
+    const frameSize = () => ({
+        width: node.properties?.frameWidth ?? PLACEHOLDER_SIZE.width,
+        height: node.properties?.frameHeight ?? PLACEHOLDER_SIZE.height,
+    });
+
+    function geometry(pad) {
+        const { width, height } = frameSize();
+        const [left, right] = roundPad(width, pad.left, pad.right);
+        const [top, bottom] = roundPad(height, pad.top, pad.bottom);
+        const canvasW = left + width + right;
+        const canvasH = top + height + bottom;
+        let scale, originX, originY;
+        if (drag) {
+            // Lúc kéo giữ nguyên tỉ lệ để hình không nhảy: kéo ảnh thì khung đứng yên, kéo mép thì ảnh đứng yên.
+            scale = drag.scale;
+            originX = drag.mode === "move" ? drag.originX : drag.imageX - left * scale;
+            originY = drag.mode === "move" ? drag.originY : drag.imageY - top * scale;
+        } else {
+            const viewW = canvas.clientWidth;
+            const viewH = canvas.clientHeight - FOOTER_PX;
+            scale = Math.max(0.001, Math.min((viewW - 2 * VIEW_MARGIN_PX) / canvasW, (viewH - 2 * VIEW_MARGIN_PX) / canvasH));
+            originX = (viewW - canvasW * scale) / 2;
+            originY = (viewH - canvasH * scale) / 2;
+        }
+        return {
+            left, right, top, bottom, width, height, canvasW, canvasH, scale, originX, originY,
+            imageX: originX + left * scale,
+            imageY: originY + top * scale,
+            imageW: width * scale,
+            imageH: height * scale,
+        };
+    }
+
+    function render() {
+        const viewW = canvas.clientWidth;
+        const viewH = canvas.clientHeight;
+        if (!viewW || !viewH) return;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.round(viewW * dpr);
+        canvas.height = Math.round(viewH * dpr);
+        const ctx = canvas.getContext("2d");
+        ctx.scale(dpr, dpr);
+        ctx.fillStyle = "#1e1e1e";
+        ctx.fillRect(0, 0, viewW, viewH);
+
+        const g = geometry(readPad());
+        const boxW = g.canvasW * g.scale;
+        const boxH = g.canvasH * g.scale;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, viewW, viewH - FOOTER_PX);
+        ctx.clip();
+        ctx.fillStyle = "#808080";
+        ctx.fillRect(g.originX, g.originY, boxW, boxH);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        if (frame) {
+            ctx.drawImage(frame, g.imageX, g.imageY, g.imageW, g.imageH);
+        } else {
+            ctx.fillStyle = "#3a3a3a";
+            ctx.fillRect(g.imageX, g.imageY, g.imageW, g.imageH);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "12px sans-serif";
+            ctx.fillText("Chạy node 1 lần để hiện ảnh thật", g.imageX + g.imageW / 2, g.imageY + g.imageH / 2);
+        }
+        ctx.strokeStyle = "#39a0ff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(g.imageX, g.imageY, g.imageW, g.imageH);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(g.originX, g.originY, boxW, boxH);
+
+        ctx.fillStyle = "#ffffff";
+        for (const [x, y] of [
+            [g.originX, g.originY + boxH / 2],
+            [g.originX + boxW, g.originY + boxH / 2],
+            [g.originX + boxW / 2, g.originY],
+            [g.originX + boxW / 2, g.originY + boxH],
+        ]) {
+            ctx.fillRect(x - 4, y - 4, 8, 8);
+        }
+
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#000000";
+        const label = (value, base, regionPx, x, y) => {
+            if (value > 0 && regionPx >= 34) ctx.fillText(`${value} px (${Math.round((100 * value) / base)}%)`, x, y);
+        };
+        const midY = g.imageY + g.imageH / 2;
+        const midX = g.imageX + g.imageW / 2;
+        label(g.left, g.width, g.left * g.scale, g.originX + (g.left * g.scale) / 2, midY);
+        label(g.right, g.width, g.right * g.scale, g.imageX + g.imageW + (g.right * g.scale) / 2, midY);
+        label(g.top, g.height, g.top * g.scale, midX, g.originY + (g.top * g.scale) / 2);
+        label(g.bottom, g.height, g.bottom * g.scale, midX, g.imageY + g.imageH + (g.bottom * g.scale) / 2);
+        ctx.restore();
+
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`Trái ${g.left}   Phải ${g.right}   Trên ${g.top}   Dưới ${g.bottom} px`, 8, viewH - 29);
+        if (g.left + g.right + g.top + g.bottom === 0) {
+            ctx.fillStyle = "#ff6b6b";
+            ctx.fillText("Không có vùng xám: LTX sẽ gen lại y hệt", 8, viewH - 11);
+        } else {
+            ctx.fillText(`Khung ${g.canvasW}×${g.canvasH}   Ảnh ${g.width}×${g.height}`, 8, viewH - 11);
+        }
+    }
+
+    function applyPad(next) {
+        for (const name of PAD_NAMES) {
+            const widget = field(name);
+            if (widget.value !== next[name]) {
+                widget.value = next[name];
+                widget.callback?.(next[name], app.canvas, node);
+            }
+        }
+        node.setDirtyCanvas?.(true, true);
+        render();
+    }
+
+    const pointerPosition = (event) => {
+        // Graph đang zoom thì canvas bị co giãn bằng CSS, phải quy về đơn vị của canvas.
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: ((event.clientX - rect.left) * canvas.clientWidth) / rect.width,
+            y: ((event.clientY - rect.top) * canvas.clientHeight) / rect.height,
+        };
+    };
+
+    function hitTest({ x, y }) {
+        const g = geometry(readPad());
+        const x0 = g.originX;
+        const y0 = g.originY;
+        const x1 = x0 + g.canvasW * g.scale;
+        const y1 = y0 + g.canvasH * g.scale;
+        const withinY = y >= y0 - EDGE_GRAB_PX && y <= y1 + EDGE_GRAB_PX;
+        const withinX = x >= x0 - EDGE_GRAB_PX && x <= x1 + EDGE_GRAB_PX;
+        const edges = {
+            left: withinY && Math.abs(x - x0) <= EDGE_GRAB_PX,
+            right: withinY && Math.abs(x - x1) <= EDGE_GRAB_PX,
+            top: withinX && Math.abs(y - y0) <= EDGE_GRAB_PX,
+            bottom: withinX && Math.abs(y - y1) <= EDGE_GRAB_PX,
+        };
+        if (edges.left || edges.right || edges.top || edges.bottom) return { mode: "edge", edges };
+        const insideImage = x >= g.imageX && x <= g.imageX + g.imageW && y >= g.imageY && y <= g.imageY + g.imageH;
+        return insideImage ? { mode: "move", edges } : null;
+    }
+
+    function cursorFor(hit) {
+        if (!hit) return "default";
+        if (hit.mode === "move") return drag ? "grabbing" : "grab";
+        const { left, right, top, bottom } = hit.edges;
+        if ((left && top) || (right && bottom)) return "nwse-resize";
+        if ((right && top) || (left && bottom)) return "nesw-resize";
+        return left || right ? "ew-resize" : "ns-resize";
+    }
+
+    canvas.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        const position = pointerPosition(event);
+        const hit = hitTest(position);
+        if (!hit) return;
+        event.stopPropagation();
+        event.preventDefault();
+        canvas.setPointerCapture(event.pointerId);
+        const g = geometry(readPad());
+        drag = {
+            ...hit,
+            startX: position.x,
+            startY: position.y,
+            startPad: { left: g.left, right: g.right, top: g.top, bottom: g.bottom },
+            scale: g.scale,
+            originX: g.originX,
+            originY: g.originY,
+            imageX: g.imageX,
+            imageY: g.imageY,
+        };
+        canvas.style.cursor = cursorFor(hit);
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+        const position = pointerPosition(event);
+        if (!drag) {
+            canvas.style.cursor = cursorFor(hitTest(position));
+            return;
+        }
+        event.stopPropagation();
+        event.preventDefault();
+        const dx = (position.x - drag.startX) / drag.scale;
+        const dy = (position.y - drag.startY) / drag.scale;
+        const start = drag.startPad;
+        const next = { ...start };
+        if (drag.mode === "move") {
+            const totalX = start.left + start.right;
+            const totalY = start.top + start.bottom;
+            next.left = Math.min(totalX, snap(start.left + dx));
+            next.right = totalX - next.left;
+            next.top = Math.min(totalY, snap(start.top + dy));
+            next.bottom = totalY - next.top;
+        } else {
+            if (drag.edges.left) next.left = snap(start.left - dx);
+            if (drag.edges.right) next.right = snap(start.right + dx);
+            if (drag.edges.top) next.top = snap(start.top - dy);
+            if (drag.edges.bottom) next.bottom = snap(start.bottom + dy);
+        }
+        applyPad(next);
+    });
+
+    const endDrag = (event) => {
+        if (!drag) return;
+        event.stopPropagation();
+        drag = null;
+        canvas.style.cursor = "default";
+        render();
+        node.graph?.change?.();
+    };
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+
+    for (const name of PAD_NAMES) {
+        const widget = field(name);
+        const callback = widget.callback;
+        widget.callback = function (...args) {
+            const result = callback?.apply(this, args);
+            render();
+            return result;
+        };
+    }
+
+    const swapButton = node.addWidget("button", "Đổi trái ↔ phải", null, () => {
+        const pad = readPad();
+        applyPad({ ...pad, left: pad.right, right: pad.left });
+        node.graph?.change?.();
+    }, { serialize: false });
+    swapButton.serialize = false;
+
+    const observer = new ResizeObserver(render);
+    observer.observe(canvas);
+
+    return {
+        render,
+        disconnect: () => observer.disconnect(),
+        setFrame(image, width, height) {
+            frame = image;
+            node.properties = node.properties ?? {};
+            node.properties.frameWidth = width;
+            node.properties.frameHeight = height;
+            render();
+        },
+    };
+}
+
+app.registerExtension({
+    name: "vstone.HuyScreenxOutpainMask",
+    async beforeRegisterNodeDef(nodeType, nodeData) {
+        if (nodeData.name !== NODE_ID) return;
+
+        const onNodeCreated = nodeType.prototype.onNodeCreated;
+        nodeType.prototype.onNodeCreated = function () {
+            const result = onNodeCreated?.apply(this, arguments);
+            this.screenxEditor = createEditor(this);
+            const [width, height] = this.computeSize();
+            this.setSize([Math.max(width, 480), Math.max(height, 480)]);
+            return result;
+        };
+
+        const onConfigure = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function () {
+            const result = onConfigure?.apply(this, arguments);
+            this.screenxEditor?.render();
+            return result;
+        };
+
+        const onRemoved = nodeType.prototype.onRemoved;
+        nodeType.prototype.onRemoved = function () {
+            this.screenxEditor?.disconnect();
+            return onRemoved?.apply(this, arguments);
+        };
+
+        const onExecuted = nodeType.prototype.onExecuted;
+        nodeType.prototype.onExecuted = function (message) {
+            onExecuted?.apply(this, arguments);
+            const info = message?.huy_preview?.[0];
+            if (!info) return;
+            const image = new Image();
+            image.onload = () => this.screenxEditor?.setFrame(image, info.width, info.height);
+            const query = new URLSearchParams({ filename: info.filename, subfolder: info.subfolder, type: info.type, rand: String(Math.random()) });
+            image.src = api.apiURL(`/view?${query}`);
+        };
+    },
+});
+"""
+
+
+def _install_screenx_editor_js() -> None:
+    """Hot-reload không thêm được route mới, nhưng ComfyUI luôn phục vụ thư mục extensions của frontend, nên chỉ cần F5."""
+    try:
+        import server
+        web_root = server.PromptServer.instance.web_root
+    except Exception:
+        return  # không chạy trong ComfyUI
+    path = os.path.join(web_root, "extensions", "vstone", "huy_screenx_outpain_mask.js")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as js_file:
+            js_file.write(HUY_SCREENX_EDITOR_JS)
+    except OSError as e:
+        print(f"[VStone] Không ghi được khung đồ họa Huy_screenx vào {path}: {e}", flush=True)
+
+
+_install_screenx_editor_js()
+
+
+def _round_screenx_pad(size: int, before: int, after: int) -> tuple[int, int]:
+    """Làm tròn tổng kích thước lên bội số 64, phần dư cộng vào cạnh đang nới."""
+    total = size + before + after
+    extra = math.ceil(total / SCREENX_PAINT_MULTIPLE) * SCREENX_PAINT_MULTIPLE - total
+    return (before + extra, after) if before > 0 and after == 0 else (before, after + extra)
+
+
+def _save_screenx_preview(frame: torch.Tensor) -> dict[str, Any]:
+    """Lưu frame đầu vào thư mục temp để khung đồ họa trên node hiển thị."""
+    import folder_paths
+    from PIL import Image
+
+    pixels = (frame[:, :, :3].cpu().numpy().clip(0.0, 1.0) * 255.0).astype("uint8")
+    preview = Image.fromarray(pixels)
+    width, height = preview.size
+    preview.thumbnail((1024, 1024))
+    temp_dir = folder_paths.get_temp_directory()
+    os.makedirs(temp_dir, exist_ok=True)
+    filename = f"huy_screenx_preview_{time.time_ns()}.png"
+    preview.save(os.path.join(temp_dir, filename), compress_level=1)
+    return {"filename": filename, "subfolder": "", "type": "temp", "width": width, "height": height}
+
 
 class Huy_screenx_outpain_mask:
     """
-    Chuẩn bị vùng paint, không gen gì: nới khung về 1 bên của ảnh/video và trả mask vùng cần vẽ.
+    Chuẩn bị vùng paint, không gen gì: nới khung quanh ảnh/video và trả mask vùng cần vẽ.
     Ảnh gốc giữ nguyên, vùng mới tô xám 0.5. Mask = 1 ở vùng cần vẽ, = 0 ở ảnh gốc.
+    Khung đồ họa trên node (HUY_SCREENX_EDITOR_JS) cho kéo ảnh và kéo mép vùng xám, rồi ghi số vào left, top, right, bottom.
     Mask giống nhau ở mọi frame nên chỉ tính 1 lần rồi nhân đủ số frame, vì blend của LTX cắt video theo số frame của mask.
     Tổng chiều rộng và chiều cao tự làm tròn lên bội số 64.
     """
 
     @classmethod
     def INPUT_TYPES(cls):
+        pad_input = {"min": 0, "max": 8192, "step": SCREENX_PAINT_MULTIPLE}
         return {
             "required": {
                 "image": ("IMAGE",),
-                "side": (["left", "right"], {
-                    "default": "left",
-                    "tooltip": "left = vẽ thêm cánh trái, right = vẽ thêm cánh phải.",
-                }),
-                "wing_width": ("INT", {
-                    "default": 1024,
-                    "min": 64,
-                    "max": 8192,
-                    "step": 64,
-                    "tooltip": "Độ rộng cánh, tính bằng px của ảnh đưa vào node.",
-                }),
-                "extra_height": ("INT", {
-                    "default": 0,
-                    "min": 0,
-                    "max": 4096,
-                    "step": 32,
-                    "tooltip": "Phần nới thêm ở MỖI cạnh trên và dưới, tính bằng px. 0 = giữ nguyên chiều cao.",
-                }),
+                "left": ("INT", {"default": 1024, **pad_input}),
+                "top": ("INT", {"default": 0, **pad_input}),
+                "right": ("INT", {"default": 0, **pad_input}),
+                "bottom": ("INT", {"default": 0, **pad_input}),
             }
         }
 
     RETURN_TYPES = ("IMAGE", "MASK")
     RETURN_NAMES = ("image", "mask")
     FUNCTION = "prepare"
+    OUTPUT_NODE = True  # để chạy riêng node này, hiện ảnh thật trên khung đồ họa mà không phải gen cả workflow
     CATEGORY = "stoneV"
 
     def prepare(
         self,
         image: torch.Tensor,
-        side: str = "left",
-        wing_width: int = 1024,
-        extra_height: int = 0,
+        left: int = 1024,
+        top: int = 0,
+        right: int = 0,
+        bottom: int = 0,
     ):
         frames, height, width, channels = image.shape
-        canvas_w = math.ceil((width + wing_width) / SCREENX_PAINT_MULTIPLE) * SCREENX_PAINT_MULTIPLE
-        canvas_h = math.ceil((height + 2 * extra_height) / SCREENX_PAINT_MULTIPLE) * SCREENX_PAINT_MULTIPLE
-        left = canvas_w - width if side == "left" else 0
-        top = (canvas_h - height) // 2
+        left, right = _round_screenx_pad(width, left, right)
+        top, bottom = _round_screenx_pad(height, top, bottom)
+        canvas_h = top + height + bottom
+        canvas_w = left + width + right
 
         canvas = image.new_full((frames, canvas_h, canvas_w, channels), 0.5)
         canvas[:, top : top + height, left : left + width, :] = image
         mask = image.new_ones((canvas_h, canvas_w))
         mask[top : top + height, left : left + width] = 0.0
-        return (canvas, mask.repeat(frames, 1, 1))
+        return {
+            "ui": {"huy_preview": [_save_screenx_preview(image[0])]},
+            "result": (canvas, mask.repeat(frames, 1, 1)),
+        }
 
 
 # ==============================================================================
