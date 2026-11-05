@@ -3300,7 +3300,7 @@ svg{display:block}
 .capture-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--paper);color:var(--paper-ink);border-radius:6px;font-weight:600;white-space:nowrap;box-shadow:0 8px 24px #00000080}
 .capture-hint button{background:transparent;border:1px solid var(--paper-ink);border-radius:4px;padding:2px 8px;color:inherit;font-weight:500;cursor:pointer}
 .pop{position:absolute;z-index:5;width:390px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;gap:10px;box-shadow:0 12px 32px #00000090}
-.types{display:grid;grid-template-columns:repeat(auto-fit,minmax(48px,1fr));gap:4px}
+.types{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
 .type{display:grid;justify-items:center;align-content:start;gap:4px;padding:7px 1px 5px;background:transparent;border:1px solid transparent;border-radius:4px;color:var(--ink-2);font-size:10.5px;line-height:1.2;text-align:center;cursor:pointer}
 .type:hover{color:var(--ink)}
 .type[aria-pressed="true"]{background:var(--raised);border-color:var(--line);color:var(--ink)}
@@ -3556,6 +3556,7 @@ const ICONS = {
   add: 'M3 3h9v9H3zM14.5 12v6M11.5 15h6',
   personAdd: 'M8 3a3 3 0 110 6 3 3 0 010-6zM2 17c.8-3.6 3-5 6-5 1.800 0 3.300.5 4.400 1.700M15.500 6v6M12.500 9h6',
   clone: 'M7 7h10v10H7zM13 7V3H3v10h4',
+  guide: 'M10 3a7 7 0 1 1 0 14a7 7 0 1 1 0-14M10 8a2 2 0 1 1 0 4a2 2 0 1 1 0-4',
   capture: 'M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4',
   remove: 'M3 3h9v9H3zM12 12l5.5 5.5M17.5 12L12 17.5',
   mountain: 'M2 16l5.5-9 3.5 5.5 2-3 5 6.5z',
@@ -3583,6 +3584,7 @@ const PALETTE = [
 const PAINT = Object.fromEntries(PALETTE.map(c => [c.id, c]));
 
 const TYPES = {
+  guide: { label: 'Guide', icon: 'guide', image: true, ph: 'Chi tiết gì, nếu cần (tiếng Anh)' },
   character: { label: 'Thay nhân vật', icon: 'person', image: true, ph: 'Người nào, mô tả thêm (tiếng Anh)' },
   addChar: { label: 'Thêm nhân vật', icon: 'personAdd', image: true, ph: 'Mô tả (tiếng Anh)' },
   add: { label: 'Thêm vật thể', icon: 'add', image: true, ph: 'Vật thể gì (tiếng Anh)' },
@@ -3640,6 +3642,18 @@ const PROMPTS = {
     en: (w, r, n) => (n ? `${upper(n)}${w.en}, using <image${r}> as the reference.` : `Change this part${w.en} to match <image${r}>.`),
     vi: (w, r, n) => (n ? `${upper(n)}${w.vi}, lấy <image${r}> làm tham chiếu.` : `Đổi phần này${w.vi} cho giống <image${r}>.`),
   },
+  guide: {
+    en: (c, r) => `The ${c.en} outline in <image1> marks where the content of <image${r}> goes.`,
+    vi: (c, r) => `Viền ${c.area} trên <image1> là chỗ đặt nội dung của <image${r}>.`,
+  },
+  guideNote: {
+    en: (c, n) => `Inside the ${c.en} outline: ${n}.`,
+    vi: (c, n) => `Trong viền ${c.area}: ${n}.`,
+  },
+  guideTail: [
+    { en: 'Keep it inside the outline, matching the lighting, shadows and perspective of <image1>. Remove the outline.', vi: 'Giữ nó trong viền, khớp ánh sáng, bóng đổ và phối cảnh của <image1>. Xoá viền đi.' },
+    { en: 'Keep each one inside its outline, matching the lighting, shadows and perspective of <image1>. Remove the outlines.', vi: 'Giữ mỗi thứ trong viền của nó, khớp ánh sáng, bóng đổ và phối cảnh của <image1>. Xoá các viền đi.' },
+  ],
   tail: [
     { en: 'Match the lighting and perspective of <image1>.', vi: 'Khớp ánh sáng và phối cảnh của <image1>.' },
     { en: 'Keep everything else exactly the same.', vi: 'Giữ nguyên mọi thứ còn lại.' },
@@ -3648,7 +3662,30 @@ const PROMPTS = {
 };
 const line = (p, w, r, n) => ({ en: p.en(w, r, n), vi: p.vi(w, r, n) });
 
-// Mỗi cọ đã tô là một lượt riêng với khung cắt và prompt riêng, ảnh tham chiếu của lượt đó luôn là image_2.
+// Mọi cọ Guide gom vào một lượt trên cả shot. Màu chỉ để nhận diện, ý nghĩa nằm trong hộp của cọ.
+function buildGuidePass(guides, problems) {
+  const lines = [], slots = [], brushes = [];
+  for (const m of guides) {
+    const c = PAINT[m.color];
+    const note = m.note.trim().replace(/[.\s]+$/, '');
+    if (!m.hasRef && !note) {
+      problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh hoặc mô tả` });
+      continue;
+    }
+    if (m.hasRef) {
+      const n = slots.length + 2;
+      lines.push(line(PROMPTS.guide, c, n));
+      slots.push({ brush: m.brush, n });
+    }
+    if (note) lines.push(line(PROMPTS.guideNote, c, note));
+    brushes.push(m.brush);
+  }
+  if (!brushes.length) return null;
+  lines.push(PROMPTS.guideTail[brushes.length > 1 ? 1 : 0], PROMPTS.tail[1]);
+  return { kind: 'guide', name: TYPES.guide.label, lines, slots, brushes };
+}
+
+// Các cọ còn lại, mỗi cọ đã tô là một lượt riêng với khung cắt và prompt riêng, ảnh tham chiếu của lượt đó luôn là image_2.
 function buildPasses({ marks, expanded, scene }) {
   const problems = [];
   const passes = [];
@@ -3658,8 +3695,10 @@ function buildPasses({ marks, expanded, scene }) {
     if (s) out.push({ en: PROMPTS.scene.en(s), vi: PROMPTS.scene.vi(s) });
     passes.push({ kind: 'expand', name: 'Kéo rộng', lines: out, slots: [] });
   }
+  const guide = buildGuidePass(marks.filter(m => m.type === 'guide' && m.cover), problems);
+  if (guide) passes.push(guide);
   for (const m of marks) {
-    if (!m.cover) continue;
+    if (!m.cover || m.type === 'guide') continue;
     const c = PAINT[m.color];
     const note = m.note.trim().replace(/[.\s]+$/, '');
     const w = m.locate ? { en: ` inside the ${c.en} outline`, vi: ` trong viền ${c.area}` } : { en: '', vi: '' };
@@ -3932,7 +3971,8 @@ function syncTools() {
 function addBrush() {
   const free = PALETTE.find(c => !S.brushes.some(b => b.color === c.id));
   if (!free) return;
-  const b = { id: S.nextId++, color: free.id, type: 'character', ref: null, refUrl: '', note: '', cover: 0 };
+  const last = S.brushes[S.brushes.length - 1];
+  const b = { id: S.nextId++, color: free.id, type: last && last.type === 'guide' ? 'guide' : 'character', ref: null, refUrl: '', note: '', cover: 0 };
   S.brushes.push(b);
   renderTiles();
   selectBrush(b.id);
@@ -4017,6 +4057,7 @@ function syncPop() {
   pop.querySelectorAll('.type').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.type === b.type)));
   pop.querySelectorAll('.sw').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.color === b.color)));
   $('popLocate').setAttribute('aria-pressed', String(!!b.locate));
+  $('popLocate').hidden = b.type === 'guide';
   $('popImgWrap').dataset.off = String(!T.image);
   $('popFile').disabled = !T.image || !!T.capture;
   $('popImgPlus').innerHTML = icon(T.capture ? 'capture' : 'plus');
@@ -4083,6 +4124,23 @@ function paintCropThumb(cv, b) {
   g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
   g.globalAlpha = 0.5;
   g.drawImage(brushMask(b), 0, 0);
+}
+function paintGuideThumb(cv, ids) {
+  const crop = planCrop([0, 0, W(), H()], W(), H(), 0.25);
+  const clean = newCanvas(crop.outW, crop.outH);
+  const c = clean.getContext('2d');
+  c.setTransform(crop.outW / W(), 0, 0, crop.outH / H(), 0, 0);
+  c.imageSmoothingQuality = 'high';
+  c.fillStyle = PAD_GRAY;
+  c.fillRect(0, 0, W(), H());
+  c.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
+  const marks = ids.map(id => {
+    const b = brushOf(id);
+    return { mask: brushMask(b), hex: PAINT[b.color].hex };
+  });
+  cv.width = 144;
+  cv.height = Math.max(1, Math.round(H() * 144 / W()));
+  cv.getContext('2d').drawImage(guideImage(clean, marks, crop), 0, 0, cv.width, cv.height);
 }
 function slotFigure(label, title, paint) {
   const fig = document.createElement('figure');
@@ -4164,7 +4222,8 @@ function renderPanel() {
     } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv)));
     } else {
-      slots.append(slotFigure('image_1', 'Khung cắt, ảnh gửi đi không có màu tô', cv => paintCropThumb(cv, brushOf(pass.brush))));
+      if (pass.kind === 'guide') slots.append(slotFigure('image_1', 'Cả shot, model thấy viền mỏng thay cho nét tô', cv => paintGuideThumb(cv, pass.brushes)));
+      else slots.append(slotFigure('image_1', 'Khung cắt, ảnh gửi đi không có màu tô', cv => paintCropThumb(cv, brushOf(pass.brush))));
       for (const s of pass.slots) {
         const b = brushOf(s.brush);
         slots.append(slotFigure(`image_${s.n}`, TYPES[b.type].label, cv => {
@@ -4869,6 +4928,9 @@ function locatorImage(clean, mask, crop, hex) {
   g.drawImage(ring, 0, 0);
   return out;
 }
+function guideImage(clean, marks, crop) {
+  return marks.reduce((image, m) => locatorImage(image, m.mask, crop, m.hex), clean);
+}
 function pasteCrop(current, result, crop, mask) {
   const scale = crop.outW / crop.w;
   const w = current.width, h = current.height;
@@ -4892,9 +4954,9 @@ function pasteCrop(current, result, crop, mask) {
   return out;
 }
 // Ảnh tham chiếu lớn làm mọi bước chậm đi, nên đưa về khoảng 1 MP trước khi gửi.
-function fitReference(img) {
+function fitReference(img, megapixels = 1) {
   const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-  const s = Math.min(1, Math.sqrt(1e6 / (w * h)));
+  const s = Math.min(1, Math.sqrt(megapixels * 1e6 / (w * h)));
   const c = newCanvas(Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)));
   const g = c.getContext('2d');
   g.imageSmoothingQuality = 'high';
@@ -5056,6 +5118,23 @@ function connectProgress() {
     setTimeout(connectProgress, 4000);
   };
 }
+// Lượt Guide chia nhau 2 MP cho ảnh tham chiếu, để nhiều màu không làm lượt chạy quá nặng.
+const GUIDE_REF_MP = 2;
+function stepOf(pass) {
+  if (pass.kind === 'guide') {
+    const marks = pass.brushes.map(id => {
+      const b = brushOf(id);
+      return { mask: brushMask(b), hex: PAINT[b.color].hex };
+    });
+    const area = newCanvas(W(), H());
+    for (const m of marks) area.getContext('2d').drawImage(m.mask, 0, 0);
+    const refMp = Math.min(1, GUIDE_REF_MP / pass.slots.length);
+    return { name: pass.name, text: promptFor(pass), box: [0, 0, W(), H()], whole: true, locate: true, marks, area, refs: pass.slots.map(s => fitReference(brushOf(s.brush).ref, refMp)) };
+  }
+  const b = brushOf(pass.brush);
+  const mask = brushMask(b);
+  return { name: pass.name, text: promptFor(pass), box: b.box, whole: false, locate: !!b.locate, marks: [{ mask, hex: PAINT[b.color].hex }], area: mask, refs: pass.slots.length ? [fitReference(b.ref)] : [] };
+}
 async function generate() {
   if (run.active) {
     run.cancelled = true;
@@ -5074,10 +5153,7 @@ async function generate() {
   const expand = S.passes.find(p => p.kind === 'expand');
   const snap = takeRunSnapshot();
   const expandText = expand && promptFor(expand);
-  const steps = S.passes.filter(p => p.brush !== undefined).map(pass => {
-    const b = brushOf(pass.brush);
-    return { name: pass.name, text: promptFor(pass), box: b.box, locate: !!b.locate, hex: PAINT[b.color].hex, mask: brushMask(b), ref: pass.slots.length ? fitReference(b.ref) : null };
-  });
+  const steps = S.passes.filter(p => p.kind !== 'expand').map(pass => stepOf(pass));
   const megapixels = Number($('resolution').value);
   const total = steps.length + (expand ? 1 : 0);
   const passLabel = (index, name) => (total > 1 ? `Lượt ${index}/${total}: ${name}` : name);
@@ -5100,18 +5176,20 @@ async function generate() {
       if (run.cancelled) throw new Error('Đã dừng.');
       run.promptId = null;
       startPass(passLabel(i + (expand ? 2 : 1), step.name));
-      const crop = planCrop(step.box, snap.w, snap.h, megapixels);
+      // Cả shot đã nhỏ hơn mức MP đã chọn thì giữ cỡ gốc: phóng lên chỉ tốn thêm, dán lại vẫn về cỡ cũ.
+      const crop = planCrop(step.box, snap.w, snap.h, step.whole && snap.w * snap.h <= megapixels * 1e6 ? 0 : megapixels);
       const clean = cropCanvas(current, crop);
       const prefix = `${stamp}_${i + 1}`;
       const cropName = await uploadCanvas(clean, `${prefix}_crop.png`);
-      const maskName = await uploadCanvas(modelMask(step.mask, crop), `${prefix}_mask.png`);
-      const locator = step.locate ? await uploadCanvas(locatorImage(clean, step.mask, crop, step.hex), `${prefix}_locator.png`) : null;
-      const refs = step.ref ? [await uploadCanvas(step.ref, `${prefix}_ref.png`)] : [];
+      const maskName = await uploadCanvas(modelMask(step.area, crop), `${prefix}_mask.png`);
+      const locator = step.locate ? await uploadCanvas(guideImage(clean, step.marks, crop), `${prefix}_locator.png`) : null;
+      const refs = [];
+      for (let k = 0; k < step.refs.length; k++) refs.push(await uploadCanvas(step.refs[k], `${prefix}_ref${k + 1}.png`));
       run.promptId = await queueGraph(buildInpaintPrompt({ crop: cropName, locator, mask: maskName, refs, text: step.text, seed: randomSeed() }));
       advanceJob('queue');
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
-      current = pasteCrop(current, img, crop, step.mask);
+      current = pasteCrop(current, img, crop, step.area);
     }
     const finished = await canvasToResult(current);
     const continued = await continueFrom(finished, snap, strokesAtStart);
