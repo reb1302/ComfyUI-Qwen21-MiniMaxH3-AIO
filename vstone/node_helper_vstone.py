@@ -3311,6 +3311,24 @@ textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--fo
 #gen{min-width:150px;padding:8px 18px;background:var(--paper);color:var(--paper-ink);font-weight:600;border:0;border-radius:4px}
 #gen:disabled{opacity:.4;cursor:not-allowed}
 
+.job{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;width:min(460px,calc(100% - 20px));display:grid;gap:6px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px #00000080}
+.job[data-kind="error"]{border-color:var(--warn)}
+.job[data-kind="error"] .job-title{color:var(--warn)}
+.job-head{display:flex;align-items:baseline;gap:10px}
+.job-title{font-size:14px;font-weight:600;flex:1;min-width:0}
+.job-time{font:500 13px var(--font-data);font-variant-numeric:tabular-nums}
+.job-close{align-self:center;width:24px;height:24px;padding:0;background:transparent;border:0;border-radius:3px;cursor:pointer;display:grid;place-items:center}
+.job-close:hover{background:var(--raised)}
+.job-close svg{width:13px;height:13px}
+.job-sub{font-size:12px;color:var(--ink-2);overflow-wrap:anywhere}
+.job-sub:empty{display:none}
+.job-bar{height:6px;background:var(--well);border-radius:3px;overflow:hidden}
+.job-bar span{display:block;height:100%;width:0;background:var(--paper);border-radius:3px;transition:width .3s linear}
+.job-steps{display:flex;flex-wrap:wrap;gap:4px 12px;list-style:none;margin:0;padding:0;font-size:11px;color:var(--ink-2)}
+.job-steps li[data-state="done"]{color:var(--ink)}
+.job-steps li[data-state="done"]::before{content:"✓ "}
+.job-steps li[data-state="now"]{color:var(--paper-ink);background:var(--paper);border-radius:3px;padding:0 5px;font-weight:600}
+@media (prefers-reduced-motion:reduce){.job-bar span{transition:none}}
 .status{font-size:12px;color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
 .status[data-kind="error"]{color:var(--warn)}
 .results{display:flex;gap:6px;overflow-x:auto;flex:none;padding-bottom:2px}
@@ -3397,6 +3415,16 @@ a.btn{color:inherit;text-decoration:none}
         <span>Ảnh gốc</span>
         <input class="sr" id="baseFile2" type="file" accept="image/*" aria-label="Chọn ảnh gốc">
       </label>
+      <div class="job" id="job" role="status" aria-live="polite" hidden>
+        <div class="job-head">
+          <span class="job-title" id="jobTitle"></span>
+          <span class="job-time" id="jobTime"></span>
+          <button class="job-close" id="jobClose" type="button" title="Đóng" aria-label="Đóng thông báo" data-icon="close" hidden></button>
+        </div>
+        <div class="job-sub" id="jobSub"></div>
+        <div class="job-bar" id="jobBarWrap"><span id="jobBar"></span></div>
+        <ol class="job-steps" id="jobSteps"></ol>
+      </div>
       <div class="viewer" id="viewer" hidden>
         <img id="viewerImg" alt="Ảnh kết quả">
         <div class="viewer-actions">
@@ -4284,8 +4312,99 @@ function buildApiPrompt({ image1, refs, text, resolution, seed, lora }) {
 }
 
 const CLIENT_ID = 'concept-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
-const run = { active: false, cancelled: false, promptId: null, label: '' };
+const run = { active: false, cancelled: false, promptId: null };
 let shown = null;
+
+const BASE_TITLE = document.title;
+const JOB_STEPS = [['upload', 'Tải ảnh'], ['queue', 'Hàng đợi'], ['load', 'Nạp model'], ['read', 'Đọc ảnh, prompt'], ['sample', 'Vẽ'], ['save', 'Lưu']];
+const JOB_ORDER = JOB_STEPS.map(s => s[0]);
+// Số node trong EDIT_GRAPH. Ảnh tham chiếu dùng id từ 20 trở đi.
+const NODE_STAGE = { 1: 'load', 2: 'load', 3: 'load', 15: 'load', 4: 'read', 7: 'read', 8: 'sample', 9: 'save', 6: 'save' };
+const job = { stage: 'upload', ahead: 0, value: 0, max: 0, firstValue: 0, firstAt: 0, startedAt: 0, started: false, pass: '', cancelling: false, timer: 0 };
+let socketOpen = false;
+
+function clock(ms) {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+function jobHeadline() {
+  if (job.cancelling) return 'Đang dừng...';
+  if (job.stage === 'upload') return 'Đang tải ảnh lên ComfyUI';
+  if (job.stage === 'queue') return job.ahead ? `Đang xếp hàng: ${job.ahead} việc phía trước` : 'Đang vào hàng đợi';
+  if (!socketOpen) return 'ComfyUI đang chạy việc này';
+  if (job.stage === 'load') return 'Đang nạp model';
+  if (job.stage === 'read') return 'Đang đọc ảnh và prompt';
+  if (job.stage === 'save') return 'Đang giải mã và lưu ảnh';
+  return job.max ? `Đang vẽ bước ${job.value}/${job.max}` : 'Đang nạp model vào GPU';
+}
+function jobRemaining() {
+  if (job.stage !== 'sample' || job.value - job.firstValue < 2) return '';
+  const perStep = (Date.now() - job.firstAt) / (job.value - job.firstValue);
+  return `còn khoảng ${clock(perStep * (job.max - job.value))}`;
+}
+function jobPercent() {
+  if (job.stage === 'sample') return job.max ? 25 + 65 * job.value / job.max : 25;
+  return { upload: 3, queue: 6, load: 12, read: 20, save: 95 }[job.stage];
+}
+function renderJob() {
+  if (!run.active) return;
+  const at = JOB_ORDER.indexOf(job.stage);
+  const box = $('job');
+  box.hidden = false;
+  box.dataset.kind = '';
+  $('jobClose').hidden = true;
+  $('jobTitle').textContent = jobHeadline();
+  $('jobTime').textContent = clock(Date.now() - job.startedAt);
+  $('jobSub').textContent = [job.pass, jobRemaining()].filter(Boolean).join(' · ');
+  $('jobBarWrap').hidden = false;
+  $('jobBar').style.width = jobPercent() + '%';
+  $('jobSteps').hidden = false;
+  $('jobSteps').innerHTML = JOB_STEPS.map(([, label], i) => `<li data-state="${i < at ? 'done' : i === at ? 'now' : 'todo'}">${label}</li>`).join('');
+  const short = job.stage === 'sample' && job.max ? `${job.value}/${job.max}` : job.stage === 'queue' ? 'Xếp hàng' : 'Đang chạy';
+  document.title = `${short} · ${BASE_TITLE}`;
+}
+function advanceJob(stage) {
+  if (JOB_ORDER.indexOf(stage) > JOB_ORDER.indexOf(job.stage)) job.stage = stage;
+}
+function startPass(name) {
+  Object.assign(job, { stage: 'upload', ahead: 0, value: 0, max: 0, firstValue: 0, firstAt: 0, started: false, pass: name });
+  renderJob();
+}
+function hideJob() {
+  clearInterval(job.timer);
+  $('job').hidden = true;
+  document.title = BASE_TITLE;
+}
+function showJobError(message) {
+  clearInterval(job.timer);
+  document.title = BASE_TITLE;
+  const box = $('job');
+  box.hidden = false;
+  box.dataset.kind = 'error';
+  $('jobTitle').textContent = 'Không chạy được';
+  $('jobTime').textContent = '';
+  $('jobSub').textContent = message;
+  $('jobBarWrap').hidden = true;
+  $('jobSteps').hidden = true;
+  $('jobClose').hidden = false;
+}
+async function checkQueue(promptId) {
+  try {
+    const queue = await (await fetch('/api/queue')).json();
+    const running = queue.queue_running || [];
+    const pending = queue.queue_pending || [];
+    if (running.some(item => item[1] === promptId)) {
+      job.started = true;
+      advanceJob('load');
+    } else {
+      const mine = pending.find(item => item[1] === promptId);
+      if (mine) job.ahead = running.length + pending.filter(item => item[0] < mine[0]).length;
+    }
+    renderJob();
+  } catch (e) {
+    // Không đọc được hàng đợi thì vẫn chờ kết quả, chỉ thiếu số việc phía trước.
+  }
+}
 
 function setStatus(text, kind) {
   $('status').textContent = text || '';
@@ -4380,6 +4499,7 @@ async function queueGraph(graph) {
 async function waitForImage(promptId) {
   for (;;) {
     if (run.cancelled) throw new Error('Đã dừng.');
+    if (!job.started) await checkQueue(promptId);
     const res = await fetch(`/api/history/${promptId}`);
     const entry = res.ok ? (await res.json())[promptId] : null;
     if (entry) {
@@ -4437,10 +4557,28 @@ function canvasToResult(canvas) {
 function randomSeed() {
   return Math.floor(Math.random() * 2 ** 48);
 }
-function setRunLabel(text) {
-  run.label = text;
-  $('gen').textContent = 'Dừng';
-  setStatus(text);
+function handleSocketMessage({ type, data }) {
+  if (!run.active || !data) return;
+  if (data.prompt_id && run.promptId && data.prompt_id !== run.promptId) return;
+  if (type === 'execution_start') {
+    job.started = true;
+    advanceJob('load');
+  } else if (type === 'executing' && data.node !== null && data.node !== undefined) {
+    job.started = true;
+    advanceJob(NODE_STAGE[data.node] || 'read');
+  } else if (type === 'progress' && String(data.node) === '8') {
+    job.started = true;
+    advanceJob('sample');
+    job.value = data.value;
+    job.max = data.max;
+    if (!job.firstAt) {
+      job.firstAt = Date.now();
+      job.firstValue = data.value;
+    }
+  } else {
+    return;
+  }
+  renderJob();
 }
 function connectProgress() {
   let socket;
@@ -4449,17 +4587,21 @@ function connectProgress() {
   } catch (e) {
     return;
   }
+  socket.onopen = () => { socketOpen = true; renderJob(); };
   socket.onmessage = e => {
-    if (typeof e.data !== 'string' || !run.active) return;
-    const message = JSON.parse(e.data);
-    if (message.type === 'progress' && message.data.prompt_id === run.promptId) setStatus(`${run.label} ${message.data.value}/${message.data.max}`);
+    if (typeof e.data === 'string') handleSocketMessage(JSON.parse(e.data));
   };
-  socket.onclose = () => setTimeout(connectProgress, 4000);
+  socket.onclose = () => {
+    socketOpen = false;
+    renderJob();
+    setTimeout(connectProgress, 4000);
+  };
 }
 async function generate() {
   if (run.active) {
     run.cancelled = true;
-    setStatus('Đang dừng...');
+    job.cancelling = true;
+    renderJob();
     if (run.promptId) {
       fetch('/api/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delete: [run.promptId] }) });
       fetch('/api/interrupt', { method: 'POST' });
@@ -4477,13 +4619,21 @@ async function generate() {
   run.active = true;
   run.cancelled = false;
   run.promptId = null;
+  job.startedAt = Date.now();
+  job.cancelling = false;
+  setStatus('');
+  $('gen').textContent = 'Dừng';
+  clearInterval(job.timer);
+  job.timer = setInterval(renderJob, 1000);
   syncGen();
   try {
     let current = snap.padded;
     if (expand) {
-      setRunLabel(marks ? 'Lượt 1: kéo rộng' : 'Kéo rộng');
+      startPass(marks ? 'Lượt 1/2: Kéo rộng' : 'Kéo rộng');
       const name = await uploadCanvas(current, `${stamp}_outpaint.png`);
       run.promptId = await queueGraph(buildApiPrompt({ image1: name, refs: [], text: expandText, resolution: 0, seed: randomSeed(), lora: OUTPAINT_LORA }));
+      advanceJob('queue');
+      renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
       current = stitchOriginal(img, snap);
       if (!marks) {
@@ -4492,7 +4642,8 @@ async function generate() {
       }
     }
     if (marks) {
-      setRunLabel(expand ? 'Lượt 2: vùng tô' : 'Đang gen');
+      run.promptId = null;
+      startPass(expand ? 'Lượt 2/2: Vùng tô' : '');
       const marked = newCanvas(snap.w, snap.h);
       const g = marked.getContext('2d');
       g.drawImage(current, 0, 0);
@@ -4501,12 +4652,20 @@ async function generate() {
       const refs = [];
       for (let i = 0; i < refCanvases.length; i++) refs.push(await uploadCanvas(refCanvases[i], `${stamp}_ref${i + 2}.png`));
       run.promptId = await queueGraph(buildApiPrompt({ image1, refs, text: marksText, resolution, seed: randomSeed(), lora: null }));
+      advanceJob('queue');
+      renderJob();
       const { img, url } = await loadOutput(await waitForImage(run.promptId));
       addResult(img, url);
     }
-    setStatus('Xong.');
+    hideJob();
+    setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
   } catch (e) {
-    setStatus(e.message || String(e), 'error');
+    if (run.cancelled) {
+      hideJob();
+      setStatus('Đã dừng.');
+    } else {
+      showJobError(e.message || String(e));
+    }
   } finally {
     run.active = false;
     run.promptId = null;
@@ -4527,6 +4686,7 @@ function copyText(text) {
   return Promise.resolve(ok);
 }
 $('gen').addEventListener('click', generate);
+$('jobClose').addEventListener('click', () => { $('job').hidden = true; });
 $('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; });
 $('viewerUse').addEventListener('click', () => {
   if (!shown) return;
