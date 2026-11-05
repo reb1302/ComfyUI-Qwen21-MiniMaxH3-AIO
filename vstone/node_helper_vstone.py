@@ -1131,12 +1131,19 @@ LTX25_CUSTOM_NODE_PACKS: list[dict[str, Any]] = [
         "node_ids": ["ImagePadForOutpaintTargetSize"],
     },
 ]
-LTX25_RESTARTED_ENV = "VSTONE_LTX25_RESTARTED"
+LTX25_RESTARTED_ENV = "VSTONE_LTX25_PACK_RESTARTED"
 
 
 def _missing_node_ids(node_ids: list[str]) -> list[str]:
+    """Chỉ tính node của pack gốc. Bản chép cũ trong helper còn nằm trong RAM cho tới lần khởi động lại sau."""
     import nodes
-    return [node_id for node_id in node_ids if node_id not in nodes.NODE_CLASS_MAPPINGS]
+    missing: list[str] = []
+    for node_id in node_ids:
+        node_cls = nodes.NODE_CLASS_MAPPINGS.get(node_id)
+        origin = f"{getattr(node_cls, '__module__', '')} {getattr(node_cls, 'RELATIVE_PYTHON_MODULE', '')}".lower()
+        if node_cls is None or "vstone" in origin:
+            missing.append(node_id)
+    return missing
 
 
 def _run_install_cmd(cmd: list[str], timeout: int) -> tuple[bool, str]:
@@ -1186,11 +1193,23 @@ def _pip_install_requirements(pack_dir: str) -> list[str]:
     return failed
 
 
+def _stop_download_processes() -> None:
+    """aria2c/curl sống sót qua os.execv và sẽ ghi chồng file .part với lượt tải sau khởi động lại. Cả hai đều tải tiếp được."""
+    try:
+        import psutil
+        for child in psutil.Process().children(recursive=True):
+            if child.name() in ("aria2c", "curl"):
+                child.terminate()
+    except Exception as e:
+        print(f"[VStone] Không dừng được tiến trình tải: {e}", flush=True)
+
+
 def _restart_comfyui_after(delay_sec: float) -> None:
     """Khởi động lại ComfyUI với đúng tham số đang chạy (giữ nguyên port), cùng cách ComfyUI-Manager dùng."""
     def _restart() -> None:
         time.sleep(delay_sec)
         print("[VStone] Khởi động lại ComfyUI để nạp pack LTX-2.5...", flush=True)
+        _stop_download_processes()
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     threading.Thread(target=_restart, name="VStoneRestart", daemon=True).start()
@@ -1207,7 +1226,7 @@ def _wait_for_background_downloads(unique_id: Any) -> None:
 
 
 def install_ltx25_one_click(unique_id: Any = None) -> str:
-    """Cài pack và model LTX-2.5 còn thiếu, khởi động lại nếu cần. Dòng đầu của báo cáo là kết luận."""
+    """Cài pack rồi khởi động lại ngay để hết báo thiếu node, lần Queue sau mới tải model. Dòng đầu của báo cáo là kết luận."""
     root = _get_comfy_root()
     if not root:
         return "❌ Không tìm thấy thư mục ComfyUI."
@@ -1229,6 +1248,16 @@ def install_ltx25_one_click(unique_id: Any = None) -> str:
         fetch_failed = fetch_failed or not os.path.isdir(pack_dir)
         for failure in _pip_install_requirements(pack_dir):
             details.append(f"Pack {pack['dir']}: LỖI pip {failure}")
+
+    missing_ids = _missing_node_ids([node_id for pack in LTX25_CUSTOM_NODE_PACKS for node_id in pack["node_ids"]])
+    if missing_ids:
+        if not fetch_failed and os.environ.get(LTX25_RESTARTED_ENV) != "1":
+            os.environ[LTX25_RESTARTED_ENV] = "1"
+            _restart_comfyui_after(5.0)
+            summary = "🔄 Đã cài pack, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để tải model."
+            return "\n".join([summary] + details)
+        details.append("Thiếu node: " + ", ".join(missing_ids) + ". Xem log khởi động, dòng IMPORT FAILED.")
+        return "\n".join(["❌ Chưa cài xong pack LTX-2.5."] + details)
 
     _wait_for_background_downloads(unique_id)
 
@@ -1252,20 +1281,8 @@ def install_ltx25_one_click(unique_id: Any = None) -> str:
 
     if models_missing:
         details.append("Model chưa có: " + ", ".join(models_missing) + ". Bấm Queue lần nữa để tải tiếp.")
-
-    missing_ids = _missing_node_ids([node_id for pack in LTX25_CUSTOM_NODE_PACKS for node_id in pack["node_ids"]])
-    if missing_ids and not fetch_failed and os.environ.get(LTX25_RESTARTED_ENV) != "1":
-        os.environ[LTX25_RESTARTED_ENV] = "1"
-        _restart_comfyui_after(5.0)
-        summary = "🔄 ComfyUI đang khởi động lại để nạp pack. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để xem kết quả."
-    elif missing_ids:
-        details.append("Thiếu node: " + ", ".join(missing_ids) + ". Xem log khởi động, dòng IMPORT FAILED.")
-        summary = "❌ Chưa cài xong pack LTX-2.5."
-    elif models_missing:
-        summary = "❌ Pack đã đủ, còn thiếu model."
-    else:
-        summary = "✅ LTX-2.5 đã đủ pack và model. Mở workflow ltx_2.5/LTX25_Outpaint_Official."
-    return "\n".join([summary] + details)
+        return "\n".join(["❌ Pack đã đủ, còn thiếu model."] + details)
+    return "\n".join(["✅ LTX-2.5 đã đủ pack và model. Mở workflow ltx_2.5/LTX25_Outpaint_Official."] + details)
 
 
 def _start_background_sync_daemon(interval_sec: int = 30):
@@ -5249,32 +5266,11 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
     "VStone_Panorama_Stitch2": stoneV_Panorama_Stitch2,
     "stoneV_LTX25_Outpaint_Loader": stoneV_LTX25_Outpaint_Loader,
-    "ImagePadForOutpaintMasked": ImagePadForOutpaintMasked,
-    "ImagePadForOutpaintTargetSize": ImagePadForOutpaintTargetSize,
-    "LTXICLoRALoaderModelOnly": LTXICLoRALoaderModelOnly,
-    "LTXVDilateLatent": LTXVDilateLatent,
-    "LTXAddVideoICLoRAGuide": LTXAddVideoICLoRAGuide,
-    "LTXAddVideoICLoRAGuideAdvanced": LTXAddVideoICLoRAGuideAdvanced,
-    "LTXVImgToVideoConditionOnly": LTXVImgToVideoConditionOnly,
-    "LTXVInpaintPreprocess": LTXVInpaintPreprocess,
-    "LTXVDilateVideoMask": LTXVDilateVideoMask,
-    "LTXVLaplacianPyramidBlend": LTXVLaplacianPyramidBlend,
-    "LTXVSetAudioRefTokens": LTXVSetAudioRefTokens,
+    # Không đăng ký node trùng tên với ComfyUI-LTXVideo / ComfyUI-KJNodes: hot-reload sẽ đè lên node của pack gốc.
 }
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "stoneV_LTX25_Outpaint_Loader": "stoneV LTX-2.5 Outpaint All-in-One Model Loader (Auto-Download)",
-    "ImagePadForOutpaintMasked": "Pad Image For Outpaint Masked",
-    "ImagePadForOutpaintTargetSize": "Pad Image For Outpaint Target Size",
-    "LTXICLoRALoaderModelOnly": "🅛🅣🅧 IC-LoRA Loader Model Only",
-    "LTXVDilateLatent": "🅛🅣🅧 Dilate Latent",
-    "LTXAddVideoICLoRAGuide": "🅛🅣🅧 Add Video IC-LoRA Guide",
-    "LTXAddVideoICLoRAGuideAdvanced": "🅛🅣🅧 Add Video IC-LoRA Guide Advanced",
-    "LTXVImgToVideoConditionOnly": "🅛🅣🅧 Img To Video Condition Only",
-    "LTXVInpaintPreprocess": "🅛🅣🅧 Inpaint Preprocess (#66FF00)",
-    "LTXVDilateVideoMask": "🅛🅣🅧 Dilate Video Mask",
-    "LTXVLaplacianPyramidBlend": "🅛🅣🅧 Laplacian Pyramid Blend",
-    "LTXVSetAudioRefTokens": "🅛🅣🅧 Set Audio Ref Tokens",
     "RTXVideoSuperResolution": "RTX Video Super Resolution Pro (4K/16K)",
     "stoneV_RTX_VSR_Pro_16K": "stoneV RTX VSR Pro & UltraSharp 16K",
     "VStone_RTX_VSR_Pro_16K": "stoneV RTX VSR Pro & UltraSharp 16K",

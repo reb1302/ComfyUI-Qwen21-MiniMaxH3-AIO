@@ -55,7 +55,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "# Cài LTX-2.5\n\n1. Bấm Queue một lần. Node tự cài pack và tải khoảng 82 GB model còn thiếu, dòng trạng thái hiện ngay trên node.\n2. Trong lúc chạy đừng xếp job khác, vì cuối cùng ComfyUI sẽ tự khởi động lại.\n3. Chờ 1-2 phút sau khi khởi động lại, F5, rồi bấm Queue lần nữa để xem kết quả.\n4. Thấy ✅ thì mở workflow ltx_2.5/LTX25_Outpaint_Official."
+        "# Cài LTX-2.5\n\n1. Bấm Queue. Node cài pack rồi ComfyUI tự khởi động lại, nên đừng để job nào khác đang chạy hoặc đang xếp hàng.\n2. Chờ 1-2 phút, F5, mở lại workflow này rồi bấm Queue lần nữa. Node tải model còn thiếu, tối đa khoảng 83 GB, trạng thái hiện ngay trên node.\n3. Thấy ✅ thì mở workflow ltx_2.5/LTX25_Outpaint_Official."
       ]
     }
   ],
