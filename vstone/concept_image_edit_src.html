@@ -1,0 +1,1390 @@
+<title>Concept Image Edit</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Bàn vẽ tối trung tính: ảnh chiếm gần hết màn hình, màu duy nhất là màu cọ. Bấm cọ mở hộp tuỳ chỉnh ngay cạnh cọ. */
+:root{
+  color-scheme:dark;
+  --bench:#212226;
+  --well:#17181B;
+  --surface:#2B2C31;
+  --raised:#3A3B42;
+  --line:#4B4C54;
+  --ink:#EFEDE6;
+  --ink-2:#B7B5AD;
+  --paper:#EFEDE6;
+  --paper-ink:#1B1C1F;
+  --warn:#F2B14A;
+  --font-ui:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-data:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bench);color:var(--ink);font:400 13px/1.45 var(--font-ui)}
+[hidden]{display:none!important}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
+h1,h2,h3,p{margin:0}
+svg{display:block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+.app{height:100%;display:flex;flex-direction:column;gap:8px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:10px}
+.main{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;min-height:0;flex:1}
+
+.strip{width:64px;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:0;overflow-y:auto;scrollbar-width:none}
+.tiles{display:grid;gap:10px;padding:5px}
+.tiles:empty{display:none}
+.tile{position:relative;width:48px;height:48px;padding:4px;border:0;border-radius:6px;background:var(--c);color:var(--on);cursor:pointer;display:grid;place-items:center}
+.tile img{width:100%;height:100%;object-fit:cover;display:block;border-radius:3px}
+.tile[data-painted="false"]{opacity:.55}
+.tile[data-active="true"]{opacity:1;box-shadow:0 0 0 2px var(--bench),0 0 0 4px var(--paper)}
+.bang{position:absolute;right:-5px;top:-5px;width:17px;height:17px;border-radius:50%;background:var(--warn);color:#111;font:600 11px/17px var(--font-ui);text-align:center}
+.more{position:absolute;right:-5px;bottom:-5px;width:18px;height:18px;border-radius:50%;background:var(--paper);color:var(--paper-ink);display:none;place-items:center}
+.more svg{width:11px;height:11px}
+.tile[data-active="true"] .more{display:grid}
+.add{width:48px;height:48px;flex:none;margin-block:5px;padding:0;background:transparent;border:1.5px dashed var(--ink-2);border-radius:6px;color:var(--ink);cursor:pointer;display:grid;place-items:center}
+.add:hover{border-style:solid;background:var(--surface)}
+.add.nudge{border-color:var(--paper);background:var(--raised)}
+.strip hr{width:36px;border:0;border-top:1px solid var(--line);margin:4px 0;flex:none}
+.ibtn{width:48px;height:36px;flex:none;padding:0;background:transparent;border:0;border-radius:4px;color:var(--ink);cursor:pointer;display:grid;place-items:center}
+.ibtn:hover:not(:disabled){background:var(--surface)}
+.ibtn[aria-pressed="true"]{background:var(--paper);color:var(--paper-ink)}
+.ibtn:disabled{opacity:.35;cursor:default}
+.ibtn:focus-within{outline:2px solid var(--paper);outline-offset:2px}
+
+.stage{position:relative;overflow:hidden;background:var(--well);border-radius:4px;min-height:260px;min-width:0}
+.frame{position:absolute;left:0;top:0}
+#view{display:block;touch-action:none}
+.imgedge{position:absolute;pointer-events:none;outline:1px dashed #ffffffb0}
+.padtag{position:absolute;pointer-events:none;transform:translate(-50%,-50%);font:400 11px var(--font-data);color:#fff;background:#000000a8;padding:1px 5px;border-radius:2px;white-space:nowrap}
+.edge{position:absolute;display:grid;place-items:center;touch-action:none}
+.edge::after{content:"";background:var(--paper);border-radius:3px;box-shadow:0 0 0 1px #000}
+.edge:hover::after{background:#fff}
+.edge[data-side="left"],.edge[data-side="right"]{top:0;bottom:0;width:22px;cursor:ew-resize}
+.edge[data-side="left"]{left:-22px}
+.edge[data-side="right"]{right:-22px}
+.edge[data-side="left"]::after,.edge[data-side="right"]::after{width:6px;height:56px}
+.edge[data-side="top"],.edge[data-side="bottom"]{left:0;right:0;height:22px;cursor:ns-resize}
+.edge[data-side="top"]{top:-22px}
+.edge[data-side="bottom"]{bottom:-22px}
+.edge[data-side="top"]::after,.edge[data-side="bottom"]::after{width:56px;height:6px}
+.brushcur{position:absolute;left:0;top:0;pointer-events:none;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px #000}
+.tag{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:5px;font:400 11px var(--font-data);background:#000000a8;color:#fff;padding:3px 6px;border:0;border-radius:3px;cursor:pointer}
+.tag svg{width:11px;height:11px}
+.drop{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:8px;cursor:pointer;color:var(--ink-2)}
+.drop:hover{color:var(--ink)}
+.drop svg{width:48px;height:48px}
+.stage.over{outline:2px dashed var(--paper);outline-offset:-6px}
+
+.pop{position:absolute;z-index:5;width:300px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px;display:grid;gap:10px;box-shadow:0 12px 32px #00000090}
+.types{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.type{display:grid;justify-items:center;align-content:start;gap:4px;padding:7px 1px 5px;background:transparent;border:1px solid transparent;border-radius:4px;color:var(--ink-2);font-size:10.5px;line-height:1.2;text-align:center;cursor:pointer}
+.type:hover{color:var(--ink)}
+.type[aria-pressed="true"]{background:var(--raised);border-color:var(--line);color:var(--ink)}
+.detail{display:grid;grid-template-columns:76px minmax(0,1fr);gap:8px}
+.imgwrap{position:relative;height:76px}
+.imgwrap[data-off="true"]{opacity:.28}
+.imgwrap[data-off="true"] .imgpick{cursor:default;border-style:dashed}
+.imgpick{position:absolute;inset:0;display:grid;place-items:center;border:1.5px dashed var(--ink-2);border-radius:4px;cursor:pointer;overflow:hidden}
+.imgpick:hover{border-style:solid}
+.imgpick:focus-within{outline:2px solid var(--paper);outline-offset:2px}
+.imgpick img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.imgx{position:absolute;right:3px;top:3px;width:20px;height:20px;padding:0;background:var(--well);border:1px solid var(--line);border-radius:3px;cursor:pointer;display:grid;place-items:center}
+.imgx svg{width:11px;height:11px}
+.field{background:var(--well);border:1px solid var(--line);border-radius:4px;padding:6px 8px;width:100%;min-width:0}
+textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--font-data)}
+.popfoot{display:flex;align-items:center;gap:8px}
+.sw{width:24px;height:24px;padding:0;border:0;border-radius:50%;background:var(--c);cursor:pointer}
+.sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--paper)}
+.popfoot .ibtn{margin-left:auto;width:36px;height:30px}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.size{display:flex;align-items:center;gap:7px}
+.size input{width:150px;accent-color:var(--paper)}
+.size span{display:block;background:var(--ink-2);border-radius:50%}
+.nums{font:400 12px var(--font-data);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.warn{color:var(--warn);font-size:12px}
+.grow{flex:1}
+.model{width:auto;height:36px;padding-block:0}
+.btn{display:inline-flex;align-items:center;gap:6px;background:var(--raised);border:1px solid var(--line);border-radius:4px;padding:7px 12px;cursor:pointer}
+.btn:hover{border-color:var(--ink-2)}
+.btn[aria-expanded="true"]{background:var(--paper);color:var(--paper-ink);border-color:var(--paper)}
+.dotwarn{width:8px;height:8px;border-radius:50%;background:var(--warn)}
+#gen{min-width:150px;padding:8px 18px;background:var(--paper);color:var(--paper-ink);font-weight:600;border:0;border-radius:4px}
+#gen:disabled{opacity:.4;cursor:not-allowed}
+
+.status{font-size:12px;color:var(--ink-2);min-width:0;overflow-wrap:anywhere}
+.status[data-kind="error"]{color:var(--warn)}
+.results{display:flex;gap:6px;overflow-x:auto;flex:none;padding-bottom:2px}
+.results button{flex:none;width:76px;height:76px;padding:0;background:var(--well);border:1px solid var(--line);border-radius:4px;cursor:pointer;overflow:hidden}
+.results button:hover{border-color:var(--paper)}
+.results img{width:100%;height:100%;object-fit:cover;display:block}
+.viewer{position:absolute;inset:0;z-index:4;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;padding:8px;background:var(--well)}
+.viewer img{width:100%;height:100%;min-height:0;object-fit:contain;display:block}
+.viewer-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+a.btn{color:inherit;text-decoration:none}
+
+.drawer{width:392px;display:grid;grid-template-rows:auto minmax(0,1fr);background:var(--surface);border-radius:4px;min-height:0}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:6px 6px 6px 12px}
+.drawer-head h2{font-size:13px;font-weight:600}
+.drawer-head .ibtn{width:32px;height:28px}
+.drawer-body{overflow:auto;padding:0 12px 12px;min-height:0;display:grid;gap:10px;align-content:start}
+.problems{display:grid;gap:3px;margin:0;padding:6px 9px;list-style:none;border:1px solid var(--warn);border-radius:4px;color:var(--warn);font-size:12px}
+.problems:empty{display:none}
+.none{color:var(--ink-2)}
+.pass{display:grid;gap:8px;border-top:1px solid var(--line);padding-top:10px}
+.pass-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.pass h3{font-size:13px;font-weight:600}
+.pass-actions{display:flex;gap:2px}
+.pass-actions .ibtn{width:30px;height:26px}
+.pass-actions .ibtn svg{width:16px;height:16px}
+.slots{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
+.slots figure{margin:0;flex:none;width:72px}
+.slots canvas{display:block;width:72px;height:48px;object-fit:contain;background:var(--well);border:1px solid var(--line)}
+.slots figcaption{font:500 11px var(--font-data);margin-top:3px}
+.lines{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+.en{font:400 12px/1.5 var(--font-data);overflow-wrap:anywhere}
+.vi{color:var(--ink-2);font-size:12px;margin-top:2px;overflow-wrap:anywhere}
+.tok{background:var(--raised);border-radius:2px;padding:0 3px}
+.area{box-shadow:inset 0 -3px 0 var(--c)}
+.pass textarea.field{height:136px;resize:vertical}
+
+@media (max-width:1100px){
+  .drawer{position:absolute;right:0;top:0;bottom:0;width:min(392px,100%);z-index:6;box-shadow:0 12px 32px #00000090}
+}
+@media (max-width:780px){
+  .main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .strip{width:auto;flex-direction:row;flex-wrap:wrap;overflow:visible;align-items:center;gap:2px}
+  .tiles{display:flex;gap:8px;padding:4px}
+  .tile,.add{width:42px;height:42px;margin-block:0}
+  .strip hr{display:none}
+  .ibtn{width:38px}
+  .pop{width:min(100%,320px)}
+  .size input{width:110px}
+  #gen{flex:1}
+}
+</style>
+
+<div class="app">
+  <h1 class="sr">Concept Image Edit</h1>
+  <div class="main" id="main">
+    <nav class="strip" aria-label="Cọ và công cụ">
+      <div class="tiles" id="tiles"></div>
+      <button class="add" id="addBrush" type="button" title="Thêm cọ (+)" aria-label="Thêm cọ" data-icon="plus"></button>
+      <hr>
+      <button class="ibtn" id="erase" type="button" title="Tẩy nét (E)" aria-label="Tẩy nét" aria-pressed="false" data-icon="eraser"></button>
+      <button class="ibtn" id="undo" type="button" title="Hoàn tác (Ctrl+Z)" aria-label="Hoàn tác" data-icon="undo"></button>
+      <button class="ibtn" id="redo" type="button" title="Làm lại (Ctrl+Y)" aria-label="Làm lại" data-icon="redo"></button>
+      <button class="ibtn" id="clearStrokes" type="button" title="Xoá hết nét" aria-label="Xoá hết nét" data-icon="trash"></button>
+      <label class="ibtn" title="Đổi ảnh gốc"><span data-icon="image"></span><input class="sr" id="baseFile" type="file" accept="image/*" aria-label="Đổi ảnh gốc"></label>
+    </nav>
+
+    <div class="stage" id="stage">
+      <div class="frame" id="frame">
+        <canvas id="view"></canvas>
+        <div class="imgedge" id="imgedge"></div>
+        <span class="padtag" data-tag="left"></span>
+        <span class="padtag" data-tag="right"></span>
+        <span class="padtag" data-tag="top"></span>
+        <span class="padtag" data-tag="bottom"></span>
+        <div class="edge" data-side="left" title="Kéo để nới"></div>
+        <div class="edge" data-side="right" title="Kéo để nới"></div>
+        <div class="edge" data-side="top" title="Kéo để nới"></div>
+        <div class="edge" data-side="bottom" title="Kéo để nới"></div>
+      </div>
+      <div class="brushcur" id="brushcur" hidden></div>
+      <button class="tag" id="sampleTag" type="button" title="Xoá ảnh mẫu">Ảnh mẫu <span data-icon="close"></span></button>
+      <label class="drop" id="drop" hidden>
+        <span data-icon="plus"></span>
+        <span>Ảnh gốc</span>
+        <input class="sr" id="baseFile2" type="file" accept="image/*" aria-label="Chọn ảnh gốc">
+      </label>
+      <div class="viewer" id="viewer" hidden>
+        <img id="viewerImg" alt="Ảnh kết quả">
+        <div class="viewer-actions">
+          <button class="btn" id="viewerUse" type="button">Dùng làm ảnh gốc</button>
+          <a class="btn" id="viewerSave" download="concept_edit.png">Tải về</a>
+          <button class="btn" id="viewerClose" type="button">Đóng</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="drawer" id="drawer" aria-label="Prompt" hidden>
+      <div class="drawer-head">
+        <h2>Prompt</h2>
+        <button class="ibtn" id="drawerClose" type="button" title="Đóng" aria-label="Đóng" data-icon="close"></button>
+      </div>
+      <div class="drawer-body">
+        <ul class="problems" id="problems"></ul>
+        <input class="field" id="scene" type="text" placeholder="Scene (phần nới, tuỳ chọn)" aria-label="Mô tả cảnh cho phần nới" hidden>
+        <p class="none" id="noPrompt">Tô hoặc kéo rộng để tạo prompt.</p>
+        <div class="lines" id="passes"></div>
+      </div>
+    </aside>
+
+    <div class="pop" id="pop" role="dialog" aria-label="Tuỳ chỉnh cọ" hidden>
+      <div class="types" id="popTypes"></div>
+      <div class="detail" id="popDetail">
+        <div class="imgwrap" id="popImgWrap">
+          <label class="imgpick" title="Ảnh tham chiếu">
+            <span data-icon="plus" id="popImgPlus"></span>
+            <img id="popImg" alt="" hidden>
+            <input class="sr" id="popFile" type="file" accept="image/*" aria-label="Ảnh tham chiếu">
+          </label>
+          <button class="imgx" id="popImgClear" type="button" title="Bỏ ảnh" aria-label="Bỏ ảnh" data-icon="close" hidden></button>
+        </div>
+        <textarea class="field" id="popNote" aria-label="Mô tả"></textarea>
+      </div>
+      <div class="popfoot">
+        <div class="popfoot" id="popSwatches"></div>
+        <button class="ibtn" id="popDelete" type="button" title="Xoá cọ này" aria-label="Xoá cọ này" data-icon="trash"></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="results" id="results" aria-label="Kết quả" hidden></div>
+
+  <div class="bar">
+    <label class="size" title="Cỡ cọ ([ ])">
+      <span style="width:6px;height:6px"></span>
+      <input id="size" type="range" min="8" max="400" value="72" aria-label="Cỡ cọ">
+      <span style="width:14px;height:14px"></span>
+    </label>
+    <span class="nums" id="readout"></span>
+    <span class="warn" id="sizeNote"></span>
+    <span class="status" id="status" role="status"></span>
+    <span class="grow"></span>
+    <select class="field model" id="resolution" aria-label="Cỡ ảnh ra" title="Càng lớn càng chậm">
+      <option value="1024">Ảnh ra 1 MP</option>
+      <option value="2048">Ảnh ra 4 MP</option>
+      <option value="0">Giữ cỡ ảnh gốc</option>
+    </select>
+    <select class="field model" id="model" aria-label="Model">
+      <option>Qwen 2.1</option>
+      <option disabled>Flux 2 (chưa có model)</option>
+    </select>
+    <button class="btn" id="promptBtn" type="button" aria-expanded="false" aria-controls="drawer"><span data-icon="lines"></span>Prompt<span class="dotwarn" id="promptDot" hidden></span></button>
+    <button id="gen" type="button" disabled title="Chưa nối ComfyUI">Gen</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+const GRID = 32;
+const PAD_GRAY = '#808080';
+const MAX_PAD = 8192;
+
+const ICONS = {
+  plus: 'M10 4v12M4 10h12',
+  close: 'M5 5l10 10M15 5L5 15',
+  person: 'M10 3a3 3 0 110 6 3 3 0 010-6zM4 17c.8-3.6 3.2-5 6-5s5.2 1.4 6 5',
+  add: 'M3 3h9v9H3zM14.5 12v6M11.5 15h6',
+  remove: 'M3 3h9v9H3zM12 12l5.5 5.5M17.5 12L12 17.5',
+  mountain: 'M2 16l5.5-9 3.5 5.5 2-3 5 6.5z',
+  pencil: 'M4 16l1-4 8-8 3 3-8 8zM11.5 5.5l3 3',
+  eraser: 'M8 16l-4-4 7.5-7.5a1.4 1.4 0 012 0l3.5 3.5a1.4 1.4 0 010 2L11 16zM6 16h10',
+  undo: 'M7 5L3.5 8.5 7 12M3.5 8.5H12a4.5 4.5 0 010 9H8',
+  redo: 'M13 5l3.5 3.5L13 12M16.5 8.5H8a4.5 4.5 0 000 9h4',
+  trash: 'M4 6h12M8 6V4h4v2M6 6l.8 10.5h6.4L14 6',
+  image: 'M3 4h14v12H3zM3 13l4-4 3 3 3-2 4 4M13 6.3a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z',
+  lines: 'M4 5h12M4 10h12M4 15h8',
+  copy: 'M7 7h9v10H7zM4 13V3h9',
+  check: 'M4 10l4 4 8-9',
+};
+const icon = name => `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
+document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); });
+
+const PALETTE = [
+  { id: 'red', vi: 'Đỏ', area: 'đỏ', en: 'red', hex: '#FF1E1E', on: '#111' },
+  { id: 'blue', vi: 'Xanh', area: 'xanh', en: 'blue', hex: '#1464FF', on: '#fff' },
+  { id: 'purple', vi: 'Tím', area: 'tím', en: 'purple', hex: '#A21EFF', on: '#fff' },
+  { id: 'yellow', vi: 'Vàng', area: 'vàng', en: 'yellow', hex: '#FFE500', on: '#111' },
+  { id: 'green', vi: 'Xanh lá', area: 'xanh lá', en: 'green', hex: '#00B84A', on: '#111' },
+  { id: 'orange', vi: 'Cam', area: 'cam', en: 'orange', hex: '#FF8A00', on: '#111' },
+];
+const PAINT = Object.fromEntries(PALETTE.map(c => [c.id, c]));
+
+const TYPES = {
+  character: { label: 'Nhân vật', icon: 'person', image: true, ph: 'Mô tả (tiếng Anh)' },
+  add: { label: 'Thêm vật thể', icon: 'add', image: true, ph: 'Vật thể gì (tiếng Anh)' },
+  remove: { label: 'Xoá vật thể', icon: 'remove', image: false, ph: 'Vật thể gì (tiếng Anh)' },
+  environment: { label: 'Môi trường', icon: 'mountain', image: true, ph: 'Mô tả (tiếng Anh)' },
+  fix: { label: 'Sửa', icon: 'pencil', image: true, ph: 'Sửa gì (tiếng Anh)' },
+};
+
+const extra = n => (n ? `, ${n}` : '');
+const PROMPTS = {
+  outpaint: {
+    en: 'Outpaint the image: replace the solid gray areas with a seamless continuation of the scene, keeping the existing picture unchanged.',
+    vi: 'Nới rộng ảnh: thay các vùng xám đặc bằng phần cảnh nối liền, giữ nguyên phần ảnh đang có.',
+  },
+  scene: { en: t => `Scene: ${t}.`, vi: t => `Mô tả cảnh: ${t}.` },
+  character: {
+    en: (c, r, n) => `In <image1>, replace the ${c.en} area with the character from <image${r}>${n ? `, ${n}, preserve the character's facial features.` : ", preserve the character's facial features, hair, body shape and outfit."}`,
+    vi: (c, r, n) => `Trong <image1>, thay vùng ${c.area} bằng nhân vật từ <image${r}>${n ? `, ${n}, giữ nguyên nét mặt của nhân vật.` : ', giữ nguyên nét mặt, tóc, vóc dáng và trang phục của nhân vật.'}`,
+  },
+  add: {
+    en: (c, r, n) => `In <image1>, replace the ${c.en} area with the object from <image${r}>${n ? `, ${n}.` : ', preserve its shape and details.'}`,
+    vi: (c, r, n) => `Trong <image1>, thay vùng ${c.area} bằng vật thể từ <image${r}>${n ? `, ${n}.` : ', giữ nguyên hình dáng và chi tiết.'}`,
+  },
+  addText: {
+    en: (c, r, n) => `In <image1>, replace the ${c.en} area with ${n}.`,
+    vi: (c, r, n) => `Trong <image1>, thay vùng ${c.area} bằng ${n}.`,
+  },
+  remove: {
+    en: (c, r, n) => `In <image1>, remove ${n || 'the object'} in the ${c.en} area and fill it with the surrounding background.`,
+    vi: (c, r, n) => `Trong <image1>, xoá ${n || 'vật thể'} ở vùng ${c.area} và lấp bằng nền xung quanh.`,
+  },
+  environment: {
+    en: (c, r, n) => `In <image1>, replace the ${c.en} area with the environment from <image${r}>${extra(n)}.`,
+    vi: (c, r, n) => `Trong <image1>, thay vùng ${c.area} bằng môi trường từ <image${r}>${extra(n)}.`,
+  },
+  fix: {
+    en: (c, r, n) => `In <image1>, ${n} in the ${c.en} area.`,
+    vi: (c, r, n) => `Trong <image1>, ${n} ở vùng ${c.area}.`,
+  },
+  fixRef: {
+    en: (c, r, n) => (n ? `In <image1>, ${n} in the ${c.en} area, using <image${r}> as the reference.` : `In <image1>, change the ${c.en} area to match <image${r}>.`),
+    vi: (c, r, n) => (n ? `Trong <image1>, ${n} ở vùng ${c.area}, lấy <image${r}> làm tham chiếu.` : `Trong <image1>, đổi vùng ${c.area} cho giống <image${r}>.`),
+  },
+  tail: [
+    { en: 'Match the lighting and perspective of <image1>.', vi: 'Khớp ánh sáng và phối cảnh của <image1>.' },
+    { en: 'Keep everything outside the colored areas unchanged.', vi: 'Giữ nguyên mọi thứ ngoài các vùng màu.' },
+  ],
+};
+const line = (p, c, r, n) => ({ en: p.en(c, r, n), vi: p.vi(c, r, n) });
+
+// marks: [{ brush, color, type, hasRef, note, cover }] theo thứ tự cọ. Chỉ cọ đã tô mới vào prompt và mới chiếm số image.
+function buildPasses({ marks, expanded, scene }) {
+  const problems = [];
+  const lines = [];
+  const slots = [];
+  let next = 2;
+  const withRef = (m, p, c, note) => {
+    const n = next++;
+    slots.push({ brush: m.brush, n });
+    lines.push(line(p, c, n, note));
+  };
+  for (const m of marks) {
+    if (!m.cover) continue;
+    const c = PAINT[m.color];
+    const note = m.note.trim().replace(/[.\s]+$/, '');
+    if (m.type === 'remove') lines.push(line(PROMPTS.remove, c, 0, note));
+    else if (m.type === 'fix' || m.type === 'add') {
+      const isFix = m.type === 'fix';
+      if (m.hasRef) withRef(m, isFix ? PROMPTS.fixRef : PROMPTS.add, c, note);
+      else if (note) lines.push(line(isFix ? PROMPTS.fix : PROMPTS.addText, c, 0, note));
+      else problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh hoặc mô tả` });
+    } else if (m.hasRef) withRef(m, PROMPTS[m.type], c, note);
+    else problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh` });
+  }
+  const passes = [];
+  if (expanded) {
+    const out = [{ ...PROMPTS.outpaint }];
+    const s = scene.trim().replace(/[.\s]+$/, '');
+    if (s) out.push({ en: PROMPTS.scene.en(s), vi: PROMPTS.scene.vi(s) });
+    passes.push({ kind: 'expand', name: 'Kéo rộng', lines: out, slots: [] });
+  }
+  if (lines.length) passes.push({ kind: 'marks', name: 'Vùng tô', lines: [...lines, ...PROMPTS.tail], slots });
+  return { passes, problems };
+}
+
+function snapPad(size, raw, other) {
+  const value = Math.max(0, Math.min(MAX_PAD, raw));
+  if (value < GRID / 2 && other === 0) return 0;
+  const total = Math.round((size + other + value) / GRID) * GRID;
+  return Math.max(0, total - size - other);
+}
+
+const $ = id => document.getElementById(id);
+const stage = $('stage'), frame = $('frame'), view = $('view'), imgedge = $('imgedge'), brushcur = $('brushcur'), pop = $('pop');
+const layer = document.createElement('canvas');
+
+const S = {
+  base: null, w: 0, h: 0,
+  pads: { left: 0, right: 0, top: 0, bottom: 0 },
+  strokes: [], past: [], future: [],
+  brushes: [], nextId: 1, active: null, editing: null, erase: false, size: 72,
+  padsPainted: false,
+  scene: '',
+  overrides: { expand: null, marks: null },
+};
+const V = { scale: 1, x: 0, y: 0 };
+const W = () => S.w + S.pads.left + S.pads.right;
+const H = () => S.h + S.pads.top + S.pads.bottom;
+const isExpanded = () => S.pads.left + S.pads.right + S.pads.top + S.pads.bottom > 0;
+const needsOutpaint = () => isExpanded() && !S.padsPainted;
+const brushOf = id => S.brushes.find(b => b.id === id);
+const canPaint = () => !!S.base && (S.erase || !!brushOf(S.active));
+
+function drawStroke(g, s) {
+  const b = brushOf(s.brush);
+  if (!s.erase && !b) return;
+  g.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
+  g.strokeStyle = s.erase ? '#000' : PAINT[b.color].hex;
+  g.lineWidth = s.size;
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.beginPath();
+  g.moveTo(s.points[0].x, s.points[0].y);
+  if (s.points.length === 1) g.lineTo(s.points[0].x + 0.01, s.points[0].y);
+  for (const p of s.points.slice(1)) g.lineTo(p.x, p.y);
+  g.stroke();
+  g.globalCompositeOperation = 'source-over';
+}
+
+function rebuildLayer() {
+  layer.width = Math.max(1, W());
+  layer.height = Math.max(1, H());
+  const g = layer.getContext('2d');
+  g.setTransform(1, 0, 0, 1, S.pads.left, S.pads.top);
+  for (const s of S.strokes) drawStroke(g, s);
+}
+
+// Nét tô phủ hết vùng nới thì không còn điểm xám nào cho lượt kéo rộng.
+function padsFullyPainted() {
+  if (!isExpanded()) return false;
+  const p = S.pads;
+  const g = layer.getContext('2d');
+  const strips = [
+    [0, 0, p.left, H()],
+    [W() - p.right, 0, p.right, H()],
+    [p.left, 0, S.w, p.top],
+    [p.left, H() - p.bottom, S.w, p.bottom],
+  ];
+  for (const [x, y, w, h] of strips) {
+    if (!w || !h) continue;
+    const alpha = g.getImageData(x, y, w, h).data;
+    for (let i = 3; i < alpha.length; i += 4) {
+      if (alpha[i] < 250) return false;
+    }
+  }
+  return true;
+}
+
+function measureCover() {
+  for (const b of S.brushes) b.cover = 0;
+  if (!S.base || !S.brushes.length) return;
+  const k = Math.min(1, 512 / Math.max(W(), H()));
+  const w = Math.max(1, Math.ceil(W() * k)), h = Math.max(1, Math.ceil(H() * k));
+  const small = document.createElement('canvas');
+  small.width = w; small.height = h;
+  const g = small.getContext('2d', { willReadFrequently: true });
+  g.drawImage(layer, 0, 0, w, h);
+  const data = g.getImageData(0, 0, w, h).data;
+  const rgb = S.brushes.map(b => {
+    const hex = PAINT[b.color].hex;
+    return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
+  });
+  const counts = S.brushes.map(() => 0);
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 64) continue;
+    let best = 0, bestD = Infinity;
+    rgb.forEach((v, n) => {
+      const d = (data[i] - v[0]) ** 2 + (data[i + 1] - v[1]) ** 2 + (data[i + 2] - v[2]) ** 2;
+      if (d < bestD) { bestD = d; best = n; }
+    });
+    counts[best]++;
+  }
+  S.brushes.forEach((b, n) => { b.cover = counts[n] / (w * h); });
+}
+
+let raf = 0;
+function schedule() {
+  if (raf) return;
+  raf = requestAnimationFrame(() => { raf = 0; renderView(); });
+}
+function renderView() {
+  if (!S.base) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cw = W() * V.scale, ch = H() * V.scale;
+  view.width = Math.max(1, Math.round(cw * dpr));
+  view.height = Math.max(1, Math.round(ch * dpr));
+  view.style.width = cw + 'px';
+  view.style.height = ch + 'px';
+  view.style.cursor = canPaint() ? 'none' : 'default';
+  const g = view.getContext('2d');
+  g.setTransform(view.width / W(), 0, 0, view.height / H(), 0, 0);
+  g.imageSmoothingQuality = 'high';
+  g.fillStyle = PAD_GRAY;
+  g.fillRect(0, 0, W(), H());
+  g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
+  g.drawImage(layer, 0, 0);
+}
+
+function place() {
+  if (!S.base) return;
+  const s = V.scale, p = S.pads;
+  frame.style.transform = `translate(${V.x}px,${V.y}px)`;
+  frame.style.width = W() * s + 'px';
+  frame.style.height = H() * s + 'px';
+  imgedge.hidden = !isExpanded();
+  imgedge.style.left = p.left * s + 'px';
+  imgedge.style.top = p.top * s + 'px';
+  imgedge.style.width = S.w * s + 'px';
+  imgedge.style.height = S.h * s + 'px';
+  const midX = (p.left + S.w / 2) * s, midY = (p.top + S.h / 2) * s;
+  const spots = {
+    left: [p.left * s / 2, midY, p.left],
+    right: [(W() - p.right / 2) * s, midY, p.right],
+    top: [midX, p.top * s / 2, p.top],
+    bottom: [midX, (H() - p.bottom / 2) * s, p.bottom],
+  };
+  for (const side in spots) {
+    const tag = frame.querySelector(`[data-tag="${side}"]`);
+    const [x, y, v] = spots[side];
+    const roomy = (side === 'left' || side === 'right') ? v * s >= 44 : v * s >= 20;
+    tag.hidden = !v || !roomy;
+    tag.textContent = '+' + v;
+    tag.style.left = x + 'px';
+    tag.style.top = y + 'px';
+  }
+  renderView();
+}
+
+function fit() {
+  if (!S.base) return;
+  const r = stage.getBoundingClientRect();
+  const margin = 34;
+  V.scale = Math.max(0.02, Math.min((r.width - 2 * margin) / W(), (r.height - 2 * margin) / H(), 1.5));
+  V.x = (r.width - W() * V.scale) / 2;
+  V.y = (r.height - H() * V.scale) / 2;
+  place();
+}
+
+function snapshot() { return { strokes: S.strokes.slice(), pads: { ...S.pads }, brushes: S.brushes.slice() }; }
+function pushHistory() {
+  S.past.push(snapshot());
+  if (S.past.length > 60) S.past.shift();
+  S.future = [];
+}
+function restore(from, to) {
+  if (!from.length) return;
+  to.push(snapshot());
+  const snap = from.pop();
+  S.strokes = snap.strokes;
+  S.pads = snap.pads;
+  for (const b of snap.brushes) {
+    if (brushOf(b.id) || S.brushes.length >= PALETTE.length) continue;
+    if (S.brushes.some(o => o.color === b.color)) b.color = PALETTE.find(c => !S.brushes.some(o => o.color === c.id)).id;
+    S.brushes.push(b);
+  }
+  S.brushes.sort((a, b) => a.id - b.id);
+  renderTiles();
+  afterChange();
+  fit();
+}
+
+function renderTiles() {
+  const wrap = $('tiles');
+  wrap.replaceChildren();
+  S.brushes.forEach((b, i) => {
+    const c = PAINT[b.color], T = TYPES[b.type];
+    const t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'tile';
+    t.dataset.id = b.id;
+    t.style.setProperty('--c', c.hex);
+    t.style.setProperty('--on', c.on);
+    t.title = `${T.label} (${i + 1})`;
+    t.setAttribute('aria-label', `${T.label}, màu ${c.vi}`);
+    t.innerHTML = (T.image && b.ref ? `<img src="${b.refUrl}" alt="">` : icon(T.icon)) +
+      `<span class="bang" hidden>!</span><span class="more">${icon('pencil')}</span>`;
+    t.addEventListener('click', () => {
+      if (S.editing === b.id) { closePop(); return; }
+      selectBrush(b.id);
+      openPop(b.id);
+    });
+    wrap.append(t);
+  });
+  $('addBrush').hidden = S.brushes.length >= PALETTE.length;
+}
+
+function selectBrush(id) {
+  S.active = id;
+  S.erase = false;
+  syncTools();
+}
+function syncTools() {
+  $('erase').setAttribute('aria-pressed', String(S.erase));
+  $('size').value = S.size;
+  $('undo').disabled = !S.past.length;
+  $('redo').disabled = !S.future.length;
+  $('clearStrokes').disabled = !S.strokes.length;
+  document.querySelectorAll('.tile').forEach(t => {
+    const b = brushOf(Number(t.dataset.id));
+    t.dataset.active = String(!S.erase && S.active === b.id);
+    t.dataset.painted = String(b.cover > 0);
+  });
+  view.style.cursor = canPaint() ? 'none' : 'default';
+}
+
+function addBrush() {
+  const free = PALETTE.find(c => !S.brushes.some(b => b.color === c.id));
+  if (!free) return;
+  const b = { id: S.nextId++, color: free.id, type: 'character', ref: null, refUrl: '', note: '', cover: 0 };
+  S.brushes.push(b);
+  renderTiles();
+  selectBrush(b.id);
+  renderPanel();
+  openPop(b.id);
+}
+function deleteBrush(id) {
+  pushHistory();
+  S.brushes = S.brushes.filter(b => b.id !== id);
+  S.strokes = S.strokes.filter(s => s.brush !== id);
+  if (S.active === id) S.active = S.brushes.length ? S.brushes[S.brushes.length - 1].id : null;
+  closePop();
+  renderTiles();
+  afterChange();
+}
+
+function buildPop() {
+  $('popTypes').innerHTML = Object.entries(TYPES).map(([k, t]) =>
+    `<button class="type" type="button" data-type="${k}" aria-pressed="false">${icon(t.icon)}<span>${t.label}</span></button>`).join('');
+  $('popTypes').addEventListener('click', e => {
+    const btn = e.target.closest('.type');
+    const b = brushOf(S.editing);
+    if (!btn || !b) return;
+    b.type = btn.dataset.type;
+    syncPop();
+    renderTiles();
+    renderPanel();
+  });
+  $('popSwatches').innerHTML = PALETTE.map(c =>
+    `<button class="sw" type="button" data-color="${c.id}" style="--c:${c.hex}" title="${c.vi}" aria-label="Màu ${c.vi}"></button>`).join('');
+  $('popSwatches').addEventListener('click', e => {
+    const sw = e.target.closest('.sw');
+    const b = brushOf(S.editing);
+    if (!sw || !b) return;
+    const other = S.brushes.find(o => o.color === sw.dataset.color);
+    if (other && other !== b) other.color = b.color;
+    b.color = sw.dataset.color;
+    syncPop();
+    renderTiles();
+    afterChange();
+  });
+  $('popNote').addEventListener('input', e => {
+    const b = brushOf(S.editing);
+    if (b) { b.note = e.target.value; renderPanel(); }
+  });
+  $('popFile').addEventListener('change', e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    const b = brushOf(S.editing);
+    if (file && b) loadFile(file, (img, url) => { b.ref = img; b.refUrl = url; syncPop(); renderTiles(); renderPanel(); });
+  });
+  $('popImgClear').addEventListener('click', () => {
+    const b = brushOf(S.editing);
+    if (!b) return;
+    b.ref = null;
+    b.refUrl = '';
+    syncPop();
+    renderTiles();
+    renderPanel();
+  });
+  $('popDelete').addEventListener('click', () => { if (S.editing !== null) deleteBrush(S.editing); });
+}
+function syncPop() {
+  const b = brushOf(S.editing);
+  if (!b) return;
+  const T = TYPES[b.type];
+  pop.querySelectorAll('.type').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.type === b.type)));
+  pop.querySelectorAll('.sw').forEach(el => el.setAttribute('aria-pressed', String(el.dataset.color === b.color)));
+  $('popImgWrap').dataset.off = String(!T.image);
+  $('popFile').disabled = !T.image;
+  $('popNote').value = b.note;
+  $('popNote').placeholder = T.ph;
+  const hasRef = !!b.ref;
+  $('popImg').hidden = !hasRef;
+  if (hasRef) $('popImg').src = b.refUrl;
+  $('popImgPlus').hidden = hasRef;
+  $('popImgClear').hidden = !hasRef || !T.image;
+}
+function openPop(id) {
+  S.editing = id;
+  pop.hidden = false;
+  syncPop();
+  const tile = document.querySelector(`.tile[data-id="${id}"]`);
+  const box = $('main').getBoundingClientRect(), t = tile.getBoundingClientRect();
+  if (window.matchMedia('(max-width:780px)').matches) {
+    pop.style.left = '0px';
+    pop.style.top = t.bottom - box.top + 8 + 'px';
+  } else {
+    pop.style.left = t.right - box.left + 14 + 'px';
+    pop.style.top = Math.max(0, Math.min(t.top - box.top, box.height - pop.offsetHeight)) + 'px';
+  }
+}
+function closePop() {
+  S.editing = null;
+  pop.hidden = true;
+}
+document.addEventListener('pointerdown', e => {
+  if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.tile') && !e.target.closest('.add')) closePop();
+});
+
+const esc = s => String(s).replace(/[&<>"]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+function markup(text) {
+  return esc(text)
+    .replace(/&lt;image(\d+)&gt;/g, '<span class="tok">&lt;image$1&gt;</span>')
+    .replace(/\b(red|blue|purple|yellow|green|orange) area\b/g, (m, n) => `<span class="area" style="--c:${PAINT[n].hex}">${m}</span>`)
+    .replace(/vùng (đỏ|xanh lá|xanh|tím|vàng|cam)/g, (m, n) => `<span class="area" style="--c:${PALETTE.find(c => c.area === n).hex}">${m}</span>`);
+}
+
+function paintThumb(cv, withMarks) {
+  const k = 144 / W();
+  cv.width = 144;
+  cv.height = Math.max(1, Math.round(H() * k));
+  const g = cv.getContext('2d');
+  g.setTransform(k, 0, 0, k, 0, 0);
+  g.imageSmoothingQuality = 'high';
+  g.fillStyle = PAD_GRAY;
+  g.fillRect(0, 0, W(), H());
+  g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
+  if (withMarks) g.drawImage(layer, 0, 0);
+}
+function slotFigure(label, title, paint) {
+  const fig = document.createElement('figure');
+  fig.title = title;
+  const cv = document.createElement('canvas');
+  paint(cv);
+  const cap = document.createElement('figcaption');
+  cap.textContent = label;
+  fig.append(cv, cap);
+  return fig;
+}
+function iconButton(name, title, onclick) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'ibtn';
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.innerHTML = icon(name);
+  b.onclick = onclick;
+  return b;
+}
+
+function renderPanel() {
+  const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
+  const { passes, problems } = S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene }) : { passes: [], problems: [] };
+
+  document.querySelectorAll('.tile').forEach(t => {
+    t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
+  });
+  $('promptDot').hidden = !problems.length;
+  $('problems').replaceChildren(...problems.map(p => { const li = document.createElement('li'); li.textContent = p.text; return li; }));
+  $('scene').hidden = !needsOutpaint() || !S.base;
+  $('noPrompt').hidden = passes.length > 0 || problems.length > 0;
+  S.passes = passes;
+  S.problems = problems;
+  syncGen();
+
+  const wrap = $('passes');
+  wrap.replaceChildren();
+  passes.forEach((pass, i) => {
+    const sec = document.createElement('section');
+    sec.className = 'pass';
+    const auto = pass.lines.map(l => l.en).join(' ');
+    const override = S.overrides[pass.kind];
+
+    const head = document.createElement('div');
+    head.className = 'pass-head';
+    const h = document.createElement('h3');
+    h.textContent = passes.length > 1 ? `${i + 1}. ${pass.name}` : pass.name;
+    const actions = document.createElement('div');
+    actions.className = 'pass-actions';
+    if (override === null) {
+      actions.append(iconButton('pencil', 'Sửa tay', () => { S.overrides[pass.kind] = auto; renderPanel(); }));
+    } else {
+      actions.append(iconButton('undo', 'Dùng lại prompt tự động', () => { S.overrides[pass.kind] = null; renderPanel(); }));
+    }
+    const copy = iconButton('copy', 'Chép prompt', () => {
+      copyText(S.overrides[pass.kind] ?? auto).then(ok => {
+        if (ok) { copy.innerHTML = icon('check'); setTimeout(() => { copy.innerHTML = icon('copy'); }, 1200); }
+        else copy.title = 'Không chép được, hãy bôi đen';
+      });
+    });
+    actions.append(copy);
+    head.append(h, actions);
+    sec.append(head);
+
+    const slots = document.createElement('div');
+    slots.className = 'slots';
+    if (pass.kind === 'expand') {
+      slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv, false)));
+    } else {
+      slots.append(slotFigure('image_1', needsOutpaint() ? 'Kết quả lượt 1 + nét tô' : 'Ảnh đã tô', cv => paintThumb(cv, true)));
+      for (const s of pass.slots) {
+        const b = brushOf(s.brush);
+        slots.append(slotFigure(`image_${s.n}`, TYPES[b.type].label, cv => {
+          const rw = b.ref.naturalWidth || b.ref.width, rh = b.ref.naturalHeight || b.ref.height;
+          cv.width = 144;
+          cv.height = Math.max(1, Math.round(rh * 144 / rw));
+          cv.getContext('2d').drawImage(b.ref, 0, 0, cv.width, cv.height);
+        }));
+      }
+    }
+    sec.append(slots);
+
+    if (override === null) {
+      const ol = document.createElement('ol');
+      ol.className = 'lines';
+      for (const l of pass.lines) {
+        const li = document.createElement('li');
+        li.innerHTML = `<p class="en">${markup(l.en)}</p><p class="vi">${markup(l.vi)}</p>`;
+        ol.append(li);
+      }
+      sec.append(ol);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.className = 'field';
+      ta.id = 'override-' + pass.kind;
+      ta.value = override;
+      ta.setAttribute('aria-label', 'Prompt sửa tay');
+      ta.addEventListener('input', () => { S.overrides[pass.kind] = ta.value; });
+      sec.append(ta);
+    }
+    wrap.append(sec);
+  });
+  syncTools();
+}
+
+function syncBar() {
+  const has = !!S.base;
+  const mp = W() * H() / 1e6;
+  $('readout').textContent = has ? `${W()} × ${H()} · ${mp.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} MP` : '';
+  let note = '';
+  if (has && W() * H() > 2048 * 2048) note = 'Vượt 2048 × 2048';
+  else if (has && needsOutpaint() && mp > 2) note = 'Quá 2 MP cho LoRA v2';
+  $('sizeNote').textContent = note;
+}
+
+function afterChange() {
+  rebuildLayer();
+  measureCover();
+  S.padsPainted = padsFullyPainted();
+  place();
+  syncBar();
+  renderPanel();
+}
+
+function setPad(side, raw) {
+  const opposite = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[side];
+  const size = side === 'left' || side === 'right' ? S.w : S.h;
+  S.pads[side] = snapPad(size, raw, S.pads[opposite]);
+}
+
+let drag = null;
+frame.querySelectorAll('.edge').forEach(edge => {
+  edge.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    edge.setPointerCapture(e.pointerId);
+    drag = {
+      side: edge.dataset.side, startPad: S.pads[edge.dataset.side], sx: e.clientX, sy: e.clientY,
+      ix: V.x + S.pads.left * V.scale, iy: V.y + S.pads.top * V.scale, pushed: false,
+    };
+  });
+  edge.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    const delta = { left: -dx, right: dx, top: -dy, bottom: dy }[drag.side] / V.scale;
+    const before = S.pads[drag.side];
+    const undoState = snapshot();
+    setPad(drag.side, drag.startPad + delta);
+    if (S.pads[drag.side] === before) return;
+    if (!drag.pushed) {
+      S.past.push(undoState);
+      S.future = [];
+      drag.pushed = true;
+    }
+    V.x = drag.ix - S.pads.left * V.scale;
+    V.y = drag.iy - S.pads.top * V.scale;
+    rebuildLayer();
+    place();
+    syncBar();
+  });
+  const end = () => {
+    if (!drag) return;
+    drag = null;
+    afterChange();
+    fit();
+  };
+  edge.addEventListener('pointerup', end);
+  edge.addEventListener('pointercancel', end);
+});
+
+let live = null;
+function toImage(e) {
+  const r = view.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / V.scale - S.pads.left, y: (e.clientY - r.top) / V.scale - S.pads.top };
+}
+function moveBrushCursor(e) {
+  if (!canPaint()) { brushcur.hidden = true; return; }
+  const r = stage.getBoundingClientRect();
+  const d = S.size * V.scale;
+  brushcur.hidden = false;
+  brushcur.style.width = d + 'px';
+  brushcur.style.height = d + 'px';
+  brushcur.style.transform = `translate(${e.clientX - r.left - d / 2}px,${e.clientY - r.top - d / 2}px)`;
+  brushcur.style.borderColor = S.erase ? '#fff' : PAINT[brushOf(S.active).color].hex;
+}
+view.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || !S.base) return;
+  if (!canPaint()) {
+    const add = $('addBrush');
+    add.classList.add('nudge');
+    setTimeout(() => add.classList.remove('nudge'), 500);
+    return;
+  }
+  view.setPointerCapture(e.pointerId);
+  pushHistory();
+  live = { brush: S.erase ? null : S.active, erase: S.erase, size: S.size, points: [toImage(e)] };
+  S.strokes = [...S.strokes, live];
+  const g = layer.getContext('2d');
+  g.setTransform(1, 0, 0, 1, S.pads.left, S.pads.top);
+  drawStroke(g, live);
+  schedule();
+});
+view.addEventListener('pointermove', e => {
+  moveBrushCursor(e);
+  if (!live) return;
+  const p = toImage(e);
+  const last = live.points[live.points.length - 1];
+  if (Math.hypot(p.x - last.x, p.y - last.y) < 1) return;
+  live.points.push(p);
+  const g = layer.getContext('2d');
+  g.setTransform(1, 0, 0, 1, S.pads.left, S.pads.top);
+  drawStroke(g, { ...live, points: [last, p] });
+  schedule();
+});
+const endStroke = () => {
+  if (!live) return;
+  live = null;
+  afterChange();
+};
+view.addEventListener('pointerup', endStroke);
+view.addEventListener('pointercancel', endStroke);
+view.addEventListener('pointerleave', () => { if (!live) brushcur.hidden = true; });
+
+function loadFile(file, done) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => done(img, url);
+  img.src = url;
+}
+function setBase(img, sample) {
+  S.base = img;
+  S.w = img.naturalWidth || img.width;
+  S.h = img.naturalHeight || img.height;
+  S.pads = { left: 0, right: 0, top: 0, bottom: 0 };
+  S.strokes = [];
+  S.past = [];
+  S.future = [];
+  S.overrides = { expand: null, marks: null };
+  frame.hidden = false;
+  $('drop').hidden = true;
+  $('sampleTag').hidden = !sample;
+  afterChange();
+  fit();
+}
+function takeBase(file) {
+  if (file && file.type.startsWith('image/')) loadFile(file, img => setBase(img, false));
+}
+['baseFile', 'baseFile2'].forEach(id => $(id).addEventListener('change', e => {
+  takeBase(e.target.files[0]);
+  e.target.value = '';
+}));
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+stage.addEventListener('dragover', () => stage.classList.add('over'));
+stage.addEventListener('dragleave', () => stage.classList.remove('over'));
+stage.addEventListener('drop', e => {
+  stage.classList.remove('over');
+  takeBase(e.dataTransfer.files[0]);
+});
+
+function toggleDrawer(open) {
+  $('drawer').hidden = !open;
+  $('promptBtn').setAttribute('aria-expanded', String(open));
+}
+$('promptBtn').addEventListener('click', () => toggleDrawer($('drawer').hidden));
+$('drawerClose').addEventListener('click', () => toggleDrawer(false));
+$('addBrush').addEventListener('click', addBrush);
+$('scene').addEventListener('input', e => { S.scene = e.target.value; renderPanel(); });
+$('size').addEventListener('input', e => { S.size = Number(e.target.value); });
+$('erase').addEventListener('click', () => { S.erase = !S.erase; syncTools(); });
+$('undo').addEventListener('click', () => restore(S.past, S.future));
+$('redo').addEventListener('click', () => restore(S.future, S.past));
+$('clearStrokes').addEventListener('click', () => { pushHistory(); S.strokes = []; afterChange(); });
+function clearBase() {
+  S.base = null; S.w = 0; S.h = 0;
+  S.pads = { left: 0, right: 0, top: 0, bottom: 0 };
+  S.strokes = []; S.past = []; S.future = []; S.scene = '';
+  S.overrides = { expand: null, marks: null };
+  $('scene').value = '';
+  closePop();
+  frame.hidden = true;
+  $('sampleTag').hidden = true;
+  $('drop').hidden = false;
+  rebuildLayer();
+  measureCover();
+  syncBar();
+  renderPanel();
+}
+$('sampleTag').addEventListener('click', clearBase);
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closePop(); $('viewer').hidden = true; return; }
+  if (e.target.matches('input,textarea,select')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) restore(S.future, S.past); else restore(S.past, S.future);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); restore(S.future, S.past); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const n = Number(e.key);
+  if (n >= 1 && n <= S.brushes.length) { selectBrush(S.brushes[n - 1].id); closePop(); }
+  else if (e.key === '+') addBrush();
+  else if (e.key.toLowerCase() === 'e') { S.erase = !S.erase; syncTools(); }
+  else if (e.key === '[') { S.size = Math.max(8, S.size - 8); syncTools(); }
+  else if (e.key === ']') { S.size = Math.min(400, S.size + 8); syncTools(); }
+});
+
+// Chỉ khi trang được phục vụ từ chính ComfyUI (/extensions/vstone/...) nút Gen mới chạy. Không gọi địa chỉ nào khác.
+const ON_COMFY = location.pathname.includes('/extensions/vstone/');
+const OUTPAINT_LORA = 'qwen-image-2.1-outpaint-v2.safetensors';
+const STITCH_FEATHER = 32;
+// Do giao diện ComfyUI xuất từ workflow image_qwen_image_2_1_image_edit_light, bản đã chạy trên H200.
+const EDIT_GRAPH = {
+  1: { class_type: 'UNETLoader', inputs: { unet_name: 'qwen_image_2.1_int8_convrot.safetensors', weight_dtype: 'default' } },
+  2: { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3vl_8b_int8_convrot.safetensors', type: 'qwen_image', device: 'default' } },
+  3: { class_type: 'VAELoader', inputs: { vae_name: 'qwen_image_2.1_vae_bf16.safetensors' } },
+  4: { class_type: 'LoadImage', inputs: { image: '' } },
+  6: { class_type: 'SaveImage', inputs: { filename_prefix: 'Concept_edit', images: ['9', 0] } },
+  7: { class_type: 'TextEncodeQwenImage21', inputs: { clip: ['2', 0], 'images.image_1': ['4', 0], vae: ['3', 0], prompt: '', negative_prompt: '', resolution: 1024 } },
+  8: { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['7', 0], negative: ['7', 1], latent_image: ['7', 2], seed: 0, steps: 25, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
+  9: { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
+};
+
+function buildApiPrompt({ image1, refs, text, resolution, seed, lora }) {
+  const graph = JSON.parse(JSON.stringify(EDIT_GRAPH));
+  const encoder = graph[7].inputs;
+  graph[4].inputs.image = image1;
+  encoder.prompt = text;
+  encoder.resolution = resolution;
+  graph[8].inputs.seed = seed;
+  refs.forEach((name, i) => {
+    const id = String(20 + i);
+    graph[id] = { class_type: 'LoadImage', inputs: { image: name } };
+    encoder[`images.image_${i + 2}`] = [id, 0];
+  });
+  if (lora) {
+    graph[15] = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: lora, strength_model: 1 } };
+    graph[8].inputs.model = ['15', 0];
+  }
+  return graph;
+}
+
+const CLIENT_ID = 'concept-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+const run = { active: false, cancelled: false, promptId: null, label: '' };
+let shown = null;
+
+function setStatus(text, kind) {
+  $('status').textContent = text || '';
+  $('status').dataset.kind = kind || '';
+}
+function syncGen() {
+  const gen = $('gen');
+  if (!ON_COMFY) { gen.disabled = true; gen.title = 'Chưa nối ComfyUI'; return; }
+  gen.title = '';
+  if (run.active) { gen.disabled = false; return; }
+  gen.textContent = 'Gen';
+  gen.disabled = !S.passes || !S.passes.length || S.problems.length > 0;
+}
+function promptFor(pass) {
+  return S.overrides[pass.kind] ?? pass.lines.map(l => l.en).join(' ');
+}
+function newCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  return c;
+}
+function imageToCanvas(img) {
+  const c = newCanvas(img.naturalWidth || img.width, img.naturalHeight || img.height);
+  c.getContext('2d').drawImage(img, 0, 0);
+  return c;
+}
+function takeRunSnapshot() {
+  const padded = newCanvas(W(), H());
+  const g = padded.getContext('2d');
+  g.fillStyle = PAD_GRAY;
+  g.fillRect(0, 0, W(), H());
+  g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
+  const marks = newCanvas(W(), H());
+  marks.getContext('2d').drawImage(layer, 0, 0);
+  return { w: W(), h: H(), pads: { ...S.pads }, base: S.base, baseW: S.w, baseH: S.h, padded, marks };
+}
+// Bước 4 trong hướng dẫn của LoRA outpaint: dán lại điểm ảnh gốc, làm mờ 32 px ở các cạnh được nới.
+function stitchOriginal(result, snap) {
+  const out = newCanvas(snap.w, snap.h);
+  const g = out.getContext('2d');
+  g.drawImage(result, 0, 0, snap.w, snap.h);
+  const original = newCanvas(snap.baseW, snap.baseH);
+  const o = original.getContext('2d');
+  o.drawImage(snap.base, 0, 0, snap.baseW, snap.baseH);
+  o.globalCompositeOperation = 'destination-out';
+  const fade = (x0, y0, x1, y1, rx, ry, rw, rh) => {
+    const grad = o.createLinearGradient(x0, y0, x1, y1);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    o.fillStyle = grad;
+    o.fillRect(rx, ry, rw, rh);
+  };
+  const f = STITCH_FEATHER, bw = snap.baseW, bh = snap.baseH;
+  if (snap.pads.left) fade(0, 0, f, 0, 0, 0, f, bh);
+  if (snap.pads.right) fade(bw, 0, bw - f, 0, bw - f, 0, f, bh);
+  if (snap.pads.top) fade(0, 0, 0, f, 0, 0, bw, f);
+  if (snap.pads.bottom) fade(0, bh, 0, bh - f, 0, bh - f, bw, f);
+  g.drawImage(original, snap.pads.left, snap.pads.top);
+  return out;
+}
+
+async function uploadCanvas(canvas, name) {
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  const form = new FormData();
+  form.append('image', blob, name);
+  form.append('type', 'input');
+  form.append('subfolder', 'concept_edit');
+  form.append('overwrite', 'true');
+  const res = await fetch('/api/upload/image', { method: 'POST', body: form });
+  if (!res.ok) throw new Error(`Không tải được ảnh lên ComfyUI (lỗi ${res.status}).`);
+  const data = await res.json();
+  return data.subfolder ? `${data.subfolder}/${data.name}` : data.name;
+}
+function promptErrorText(data) {
+  const parts = [];
+  for (const node of Object.values(data.node_errors || {})) {
+    for (const err of node.errors || []) parts.push(`${node.class_type}: ${err.message}${err.details ? ` (${err.details})` : ''}`);
+  }
+  return parts.join(' · ') || (data.error && data.error.message) || 'ComfyUI từ chối lệnh.';
+}
+async function queueGraph(graph) {
+  const res = await fetch('/api/prompt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: graph, client_id: CLIENT_ID }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(promptErrorText(data));
+  return data.prompt_id;
+}
+async function waitForImage(promptId) {
+  for (;;) {
+    if (run.cancelled) throw new Error('Đã dừng.');
+    const res = await fetch(`/api/history/${promptId}`);
+    const entry = res.ok ? (await res.json())[promptId] : null;
+    if (entry) {
+      const status = entry.status || {};
+      if (status.status_str === 'error') {
+        const failed = (status.messages || []).find(m => m[0] === 'execution_error');
+        const interrupted = (status.messages || []).some(m => m[0] === 'execution_interrupted');
+        if (interrupted) throw new Error('Đã dừng.');
+        throw new Error(failed ? `${failed[1].node_type}: ${failed[1].exception_message}` : 'ComfyUI chạy lỗi.');
+      }
+      const images = Object.values(entry.outputs || {}).flatMap(o => o.images || []).filter(i => i.type === 'output');
+      if (images.length) return images[0];
+      if (status.completed) throw new Error('ComfyUI chạy xong nhưng không có ảnh ra.');
+    }
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+}
+function loadOutput(info) {
+  const url = `/api/view?filename=${encodeURIComponent(info.filename)}&subfolder=${encodeURIComponent(info.subfolder || '')}&type=${encodeURIComponent(info.type)}`;
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
+    img.onerror = () => reject(new Error('Không tải được ảnh kết quả.'));
+    img.src = url;
+  });
+}
+function addResult(img, url) {
+  const list = $('results');
+  const thumb = document.createElement('button');
+  thumb.type = 'button';
+  thumb.title = 'Xem ảnh';
+  const small = document.createElement('img');
+  small.src = url;
+  small.alt = 'Ảnh kết quả';
+  thumb.append(small);
+  thumb.onclick = () => openViewer(img, url);
+  list.prepend(thumb);
+  list.hidden = false;
+  openViewer(img, url);
+}
+function openViewer(img, url) {
+  shown = img;
+  $('viewerImg').src = url;
+  $('viewerSave').href = url;
+  $('viewer').hidden = false;
+}
+function canvasToResult(canvas) {
+  return new Promise(resolve => canvas.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
+    img.src = url;
+  }, 'image/png'));
+}
+function randomSeed() {
+  return Math.floor(Math.random() * 2 ** 48);
+}
+function setRunLabel(text) {
+  run.label = text;
+  $('gen').textContent = 'Dừng';
+  setStatus(text);
+}
+function connectProgress() {
+  let socket;
+  try {
+    socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?clientId=${CLIENT_ID}`);
+  } catch (e) {
+    return;
+  }
+  socket.onmessage = e => {
+    if (typeof e.data !== 'string' || !run.active) return;
+    const message = JSON.parse(e.data);
+    if (message.type === 'progress' && message.data.prompt_id === run.promptId) setStatus(`${run.label} ${message.data.value}/${message.data.max}`);
+  };
+  socket.onclose = () => setTimeout(connectProgress, 4000);
+}
+async function generate() {
+  if (run.active) {
+    run.cancelled = true;
+    setStatus('Đang dừng...');
+    if (run.promptId) {
+      fetch('/api/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delete: [run.promptId] }) });
+      fetch('/api/interrupt', { method: 'POST' });
+    }
+    return;
+  }
+  const expand = S.passes.find(p => p.kind === 'expand');
+  const marks = S.passes.find(p => p.kind === 'marks');
+  const snap = takeRunSnapshot();
+  const expandText = expand && promptFor(expand);
+  const marksText = marks && promptFor(marks);
+  const refCanvases = marks ? marks.slots.map(s => imageToCanvas(brushOf(s.brush).ref)) : [];
+  const resolution = Number($('resolution').value);
+  const stamp = Date.now().toString(36);
+  run.active = true;
+  run.cancelled = false;
+  run.promptId = null;
+  syncGen();
+  try {
+    let current = snap.padded;
+    if (expand) {
+      setRunLabel(marks ? 'Lượt 1: kéo rộng' : 'Kéo rộng');
+      const name = await uploadCanvas(current, `${stamp}_outpaint.png`);
+      run.promptId = await queueGraph(buildApiPrompt({ image1: name, refs: [], text: expandText, resolution: 0, seed: randomSeed(), lora: OUTPAINT_LORA }));
+      const { img } = await loadOutput(await waitForImage(run.promptId));
+      current = stitchOriginal(img, snap);
+      if (!marks) {
+        const done = await canvasToResult(current);
+        addResult(done.img, done.url);
+      }
+    }
+    if (marks) {
+      setRunLabel(expand ? 'Lượt 2: vùng tô' : 'Đang gen');
+      const marked = newCanvas(snap.w, snap.h);
+      const g = marked.getContext('2d');
+      g.drawImage(current, 0, 0);
+      g.drawImage(snap.marks, 0, 0);
+      const image1 = await uploadCanvas(marked, `${stamp}_image1.png`);
+      const refs = [];
+      for (let i = 0; i < refCanvases.length; i++) refs.push(await uploadCanvas(refCanvases[i], `${stamp}_ref${i + 2}.png`));
+      run.promptId = await queueGraph(buildApiPrompt({ image1, refs, text: marksText, resolution, seed: randomSeed(), lora: null }));
+      const { img, url } = await loadOutput(await waitForImage(run.promptId));
+      addResult(img, url);
+    }
+    setStatus('Xong.');
+  } catch (e) {
+    setStatus(e.message || String(e), 'error');
+  } finally {
+    run.active = false;
+    run.promptId = null;
+    syncGen();
+  }
+}
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).then(() => true, () => false);
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.append(area);
+  area.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  area.remove();
+  return Promise.resolve(ok);
+}
+$('gen').addEventListener('click', generate);
+$('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; });
+$('viewerUse').addEventListener('click', () => {
+  if (!shown) return;
+  $('viewer').hidden = true;
+  setBase(shown, false);
+});
+
+function sampleScene() {
+  const c = document.createElement('canvas');
+  c.width = 1344; c.height = 768;
+  const g = c.getContext('2d');
+  const sky = g.createLinearGradient(0, 0, 0, 560);
+  sky.addColorStop(0, '#2C4A5E'); sky.addColorStop(0.55, '#7F9190'); sky.addColorStop(1, '#E8BC8E');
+  g.fillStyle = sky; g.fillRect(0, 0, 1344, 768);
+  const sun = g.createRadialGradient(880, 420, 10, 880, 420, 300);
+  sun.addColorStop(0, 'rgba(255,226,180,.95)'); sun.addColorStop(1, 'rgba(255,226,180,0)');
+  g.fillStyle = sun; g.fillRect(0, 0, 1344, 768);
+  const ridges = [[440, 42, '#71848B', 0.7], [490, 58, '#526873', 1.3], [550, 66, '#37525C', 2.1], [620, 44, '#233A41', 3.4]];
+  for (const [base, amp, color, seed] of ridges) {
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(0, 768);
+    for (let x = 0; x <= 1344; x += 8) {
+      const y = base + amp * (Math.sin(x * 0.006 + seed) + 0.5 * Math.sin(x * 0.017 + seed * 2) + 0.22 * Math.sin(x * 0.051 + seed * 3));
+      g.lineTo(x, y);
+    }
+    g.lineTo(1344, 768);
+    g.closePath();
+    g.fill();
+  }
+  g.fillStyle = '#26383E';
+  g.fillRect(286, 412, 26, 120);
+  g.beginPath(); g.moveTo(278, 412); g.lineTo(299, 372); g.lineTo(320, 412); g.closePath(); g.fill();
+  const ground = g.createLinearGradient(0, 640, 0, 768);
+  ground.addColorStop(0, '#1C2C30'); ground.addColorStop(1, '#10191B');
+  g.fillStyle = ground;
+  g.beginPath();
+  g.moveTo(0, 768);
+  for (let x = 0; x <= 1344; x += 16) g.lineTo(x, 672 + 16 * Math.sin(x * 0.008));
+  g.lineTo(1344, 768);
+  g.closePath();
+  g.fill();
+  return c;
+}
+
+buildPop();
+renderTiles();
+if (ON_COMFY) {
+  clearBase();
+  connectProgress();
+} else {
+  setBase(sampleScene(), true);
+}
+new ResizeObserver(() => { if (!drag && !live) fit(); }).observe(stage);
+</script>
