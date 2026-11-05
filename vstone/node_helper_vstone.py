@@ -10,6 +10,7 @@ Tích hợp 2 chức năng cốt lõi:
 """
 from __future__ import annotations
 
+import importlib.util
 import io
 import json
 import math
@@ -1682,6 +1683,75 @@ def install_ausboss_outpaint(unique_id: Any = None) -> str:
     return "🔄 Đã cài pack AusBoss, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."
 
 
+# ------------------------------------------------------------------------------
+# Cài pack AnyAngle Studio T8 để xoay vật thể, model đi theo sync_manifest.json
+# ------------------------------------------------------------------------------
+ANYANGLE_PACK: dict[str, Any] = {
+    "dir": "Comfyui-Qwen-Image-2.1-MultiAngle-T8",
+    "repo": "T8mars/Comfyui-Qwen-Image-2.1-MultiAngle-T8",
+    "branch": "main",
+    "node_ids": ["AnyAngleStudioT8", "AnyAngleOptionalLoRAT8", "AnyAngleReconstructionOutputT8"],
+}
+# requirements.txt của pack. Chỉ cài gói còn thiếu, để không nâng cấp thư viện các pack khác đang dùng.
+ANYANGLE_PIP: dict[str, str] = {
+    "onnxruntime": "onnxruntime>=1.18,<2",
+    "cv2": "opencv-python-headless>=4.8,<5",
+    "huggingface_hub": "huggingface_hub>=0.26",
+}
+ANYANGLE_MODELS: list[tuple[str, str]] = [
+    ("diffusion_models", "triposplat_fp16.safetensors"),
+    ("vae", "triposplat_vae_decoder_fp16.safetensors"),
+    ("vae", "flux2-vae.safetensors"),
+    ("clip_vision", "dino_v3_vit_h.safetensors"),
+    ("background_removal", "birefnet.safetensors"),
+    ("loras", "QI2.1_AnyAngle.safetensors"),
+]
+ANYANGLE_RESTARTED_ENV = "VSTONE_ANYANGLE_PACK_RESTARTED"
+ANYANGLE_WORKFLOW = "anyangle_studio/AnyAngle-Studio-Qwen21"
+
+
+def install_anyangle_studio(unique_id: Any = None) -> str:
+    """Cài pack rồi khởi động lại. Lần Queue sau xác nhận node và model. Dòng đầu của báo cáo là kết luận."""
+    root = _get_comfy_root()
+    if not root:
+        return "❌ Không tìm thấy thư mục ComfyUI."
+    missing = _missing_node_ids(ANYANGLE_PACK["node_ids"])
+    if not missing:
+        waiting = [name for folder, name in ANYANGLE_MODELS if not os.path.isfile(os.path.join(root, "models", folder, name))]
+        if waiting:
+            return "\n".join([
+                "⏳ Pack AnyAngle Studio đã đủ node, model còn đang tải ngầm. Bấm Queue lần nữa để kiểm tra lại.",
+                "Chưa có: " + ", ".join(waiting),
+            ])
+        return f"✅ AnyAngle Studio đã đủ node và model. Mở workflow {ANYANGLE_WORKFLOW}."
+    if os.environ.get(ANYANGLE_RESTARTED_ENV) == "1":
+        return "\n".join([
+            "❌ Đã khởi động lại nhưng vẫn thiếu node AnyAngle Studio. Xem log khởi động, dòng IMPORT FAILED.",
+            "Thiếu node: " + ", ".join(missing),
+        ])
+
+    custom_nodes = os.path.join(root, "custom_nodes")
+    os.makedirs(custom_nodes, exist_ok=True)
+    installed_dirs = {name.lower(): name for name in os.listdir(custom_nodes)}
+    pack_dir = os.path.join(custom_nodes, installed_dirs.get(ANYANGLE_PACK["dir"].lower(), ANYANGLE_PACK["dir"]))
+
+    _vstone_ui_status(unique_id, f"Đang cài pack {ANYANGLE_PACK['dir']}, khoảng 100 MB...")
+    ok, tail = _fetch_node_pack(ANYANGLE_PACK, pack_dir)
+    if not ok or not os.path.isfile(os.path.join(pack_dir, "__init__.py")):
+        return f"❌ Không tải được pack AnyAngle Studio, chưa khởi động lại. {tail}"
+
+    details: list[str] = []
+    for module, spec in ANYANGLE_PIP.items():
+        if importlib.util.find_spec(module) is None:
+            _vstone_ui_status(unique_id, f"Đang cài thư viện {spec}...")
+            pip_ok, pip_tail = _run_install_cmd([sys.executable, "-m", "pip", "install", spec], 900)
+            details.append(f"Thư viện {spec}: " + ("đã cài." if pip_ok else f"LỖI {pip_tail}"))
+
+    os.environ[ANYANGLE_RESTARTED_ENV] = "1"
+    _restart_comfyui_after(5.0)
+    return "\n".join(["🔄 Đã cài pack AnyAngle Studio, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."] + details)
+
+
 def _start_background_sync_daemon(interval_sec: int = 30):
     """Chạy ngầm kiểm tra GitHub mỗi 30 giây khi đang chạy trong ComfyUI trên máy H200."""
     try:
@@ -2553,6 +2623,7 @@ class stoneV_CloudSyncHub:
                     "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)",
                     "2. Download Selected Model / LoRA (Tải Model/LoRA đã chọn bên dưới)",
                     "4. Cài pack AusBoss cho outpaint Qwen (tự khởi động lại)",
+                    "5. Cài AnyAngle Studio để xoay vật thể (tự khởi động lại)",
                 ], {
                     "default": "3. Pull Code + Download Model (Cập nhật tất cả)"
                 }),
@@ -2611,6 +2682,11 @@ class stoneV_CloudSyncHub:
 
         if action.startswith("4."):
             report = install_ausboss_outpaint(unique_id)
+            _vstone_ui_status(unique_id, report)
+            return {"ui": {"text": [report]}, "result": (report,)}
+
+        if action.startswith("5."):
+            report = install_anyangle_studio(unique_id)
             _vstone_ui_status(unique_id, report)
             return {"ui": {"text": [report]}, "result": (report,)}
 

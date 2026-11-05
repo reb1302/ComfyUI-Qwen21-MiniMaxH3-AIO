@@ -32,6 +32,36 @@
       "folder": "loras"
     },
     {
+      "filename": "QI2.1_AnyAngle.safetensors",
+      "url": "https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "triposplat_fp16.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/diffusion_models/triposplat_fp16.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "triposplat_vae_decoder_fp16.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/triposplat_vae_decoder_fp16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "flux2-vae.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/flux2-vae.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "dino_v3_vit_h.safetensors",
+      "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/clip_vision/dino_v3_vit_h.safetensors",
+      "folder": "clip_vision"
+    },
+    {
+      "filename": "birefnet.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
+      "folder": "background_removal"
+    },
+    {
       "filename": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "folder": "text_encoders"
@@ -168,6 +198,7 @@
     }
   ],
   "workflows": [
+    "workflows/anyangle_studio/AnyAngle-Studio-Qwen21.json",
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit_light.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_image_edit_light.json",
