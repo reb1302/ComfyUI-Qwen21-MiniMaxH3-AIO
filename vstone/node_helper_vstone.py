@@ -3377,6 +3377,26 @@ svg{display:block}
 .viewchip[aria-pressed="true"]{background:var(--paper);color:var(--paper-ink);border-color:var(--paper)}
 .sheetpanel textarea.field{height:64px}
 .sheet-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:16px;color:var(--ink-2)}
+.rotslots .sheetwrap:first-child{grid-column:1/-1}
+.rotslots .sheetwrap:first-child .sheetbox{height:180px}
+.rotslots .sheetbox{height:96px}
+.rot{position:absolute;inset:0;z-index:1;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;padding:8px}
+.rotview{position:relative;min-height:0;overflow:hidden;border-radius:4px;cursor:grab;touch-action:none;user-select:none}
+.rotview.dragging{cursor:grabbing}
+.rotview canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.rotframe{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);outline:1px dashed #ffffffb0;box-shadow:0 0 0 1px #00000080;pointer-events:none}
+.rotread{position:absolute;left:8px;top:8px;padding:3px 8px;font:400 12px var(--font-data);color:#fff;background:#000000a8;border-radius:3px;pointer-events:none}
+.rotnote{position:absolute;right:8px;top:8px;padding:3px 8px;font-size:12px;color:var(--paper-ink);background:var(--warn);border-radius:3px;pointer-events:none}
+.rotmsg{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;text-align:center;padding:16px;color:var(--ink-2);pointer-events:none}
+.rotmsg .bar-track{width:220px;height:4px;background:var(--raised);border-radius:2px;overflow:hidden}
+.rotmsg .bar-fill{display:block;height:100%;width:0;background:var(--paper);transition:width .1s linear}
+.rotctl{display:grid;justify-items:center;gap:6px}
+.rotrow{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 6px}
+.rotrow .viewchip{padding:3px 10px;font-size:12px}
+.rotsep{align-self:stretch;width:1px;background:var(--line);margin:2px 4px}
+.rotslider{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
+.rotslider input{width:220px;accent-color:var(--paper)}
+.rotslider output{width:42px;font:400 12px var(--font-data);color:var(--ink);text-align:right}
 .capbox{position:absolute;pointer-events:none;outline:2px dashed #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px #00000066}
 .capture-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--paper);color:var(--paper-ink);border-radius:6px;font-weight:600;white-space:nowrap;box-shadow:0 8px 24px #00000080}
 .capture-hint button{background:transparent;border:1px solid var(--paper-ink);border-radius:4px;padding:2px 8px;color:inherit;font-weight:500;cursor:pointer}
@@ -3497,6 +3517,7 @@ a.btn{color:inherit;text-decoration:none}
   <div class="tabs" role="tablist" aria-label="Chế độ">
     <button class="tab" id="tabEdit" type="button" role="tab" aria-selected="true">Sửa ảnh</button>
     <button class="tab" id="tabSheet" type="button" role="tab" aria-selected="false">Char sheet</button>
+    <button class="tab" id="tabRotate" type="button" role="tab" aria-selected="false">Xoay</button>
   </div>
   <div class="main" id="main">
     <nav class="strip" id="strip" aria-label="Cọ và công cụ">
@@ -3523,8 +3544,45 @@ a.btn{color:inherit;text-decoration:none}
       </select>
     </section>
 
+    <section class="sheetpanel" id="rotatePanel" aria-label="Xoay vật thể" hidden>
+      <div class="viewchips" id="rotMode" role="group" aria-label="Cách xoay">
+        <button class="viewchip" type="button" data-mode="dummy" aria-pressed="true" title="Khối giả để biết hướng, xoay theo 8 hướng">Dummy</button>
+        <button class="viewchip" type="button" data-mode="splat" aria-pressed="false" title="Dựng khối 3D từ ảnh, xoay góc tuỳ ý">Splat</button>
+      </div>
+      <div class="sheetslots rotslots" id="rotateSlots"></div>
+      <p class="envhint" id="rotHint"></p>
+    </section>
+
     <div class="stage" id="stage">
       <div class="sheet-empty" id="sheetEmpty" hidden>Bảng nhân vật sẽ hiện ở đây</div>
+      <div class="rot" id="rot" hidden>
+        <div class="rotview" id="rotView" title="Kéo để xoay">
+          <canvas id="rotCanvas"></canvas>
+          <div class="rotframe" id="rotFrame" hidden></div>
+          <div class="rotread" id="rotRead"></div>
+          <div class="rotnote" id="rotNote" hidden>Giả lập để xem giao diện, chưa phải splat thật</div>
+          <div class="rotmsg" id="rotMsg" hidden>
+            <span id="rotMsgText"></span>
+            <span class="bar-track" id="rotMsgBar" hidden><span class="bar-fill" id="rotMsgFill"></span></span>
+          </div>
+        </div>
+        <div class="rotctl" id="rotDummyCtl">
+          <div class="rotrow" id="rotAz" role="group" aria-label="Hướng nhìn"></div>
+          <div class="rotrow">
+            <div class="rotrow" id="rotEl" role="group" aria-label="Độ cao"></div>
+            <span class="rotsep"></span>
+            <div class="rotrow" id="rotDist" role="group" aria-label="Cự ly"></div>
+          </div>
+        </div>
+        <div class="rotctl" id="rotSplatCtl" hidden>
+          <div class="rotrow">
+            <label class="rotslider">Ngang <input id="rotAzRange" type="range" min="-180" max="180" step="1" value="0" aria-label="Góc ngang"><output id="rotAzOut">0°</output></label>
+            <label class="rotslider">Dọc <input id="rotElRange" type="range" min="-80" max="80" step="1" value="0" aria-label="Góc dọc"><output id="rotElOut">0°</output></label>
+            <button class="viewchip" id="rotReset" type="button">Chính diện</button>
+            <button class="viewchip" id="rotRetry" type="button" hidden>Dựng lại</button>
+          </div>
+        </div>
+      </div>
       <div class="frame" id="frame">
         <canvas id="view"></canvas>
         <div class="capbox" id="capbox" hidden></div>
@@ -4201,7 +4259,7 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
@@ -4209,7 +4267,7 @@ function renderPanel() {
   $('promptDot').hidden = !problems.length;
   $('problems').replaceChildren(...problems.map(p => { const li = document.createElement('li'); li.textContent = p.text; return li; }));
   $('noPrompt').hidden = passes.length > 0 || problems.length > 0;
-  $('noPrompt').textContent = S.tab === 'sheet' ? 'Thêm ảnh nhân vật để tạo prompt.' : 'Tô hoặc kéo rộng để tạo prompt.';
+  $('noPrompt').textContent = { sheet: 'Thêm ảnh nhân vật để tạo prompt.', rotate: 'Thêm ảnh chính để tạo prompt.' }[S.tab] || 'Tô hoặc kéo rộng để tạo prompt.';
   S.passes = passes;
   S.problems = problems;
   syncGen();
@@ -4248,6 +4306,13 @@ function renderPanel() {
     if (pass.kind === 'sheet') {
       Sheet.slots.filter(s => s.ref).forEach((slot, n) => {
         slots.append(slotFigure(`image_${n + 1}`, slot.label, cv => paintRefThumb(cv, slot.ref)));
+      });
+    } else if (pass.kind === 'rotate') {
+      slots.append(slotFigure('image_1', 'Ảnh chính', cv => paintRefThumb(cv, Rotate.slots[0].ref)));
+      let n = 2;
+      if (Rotate.mode === 'splat') slots.append(slotFigure(`image_${n++}`, 'Ảnh render từ splat ở góc đang chọn', cv => RotateView.paintThumb(cv)));
+      Rotate.slots.slice(1).filter(s => s.ref).forEach(slot => {
+        slots.append(slotFigure(`image_${n++}`, slot.label, cv => paintRefThumb(cv, slot.ref)));
       });
     } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv)));
@@ -4486,11 +4551,12 @@ function setBase(img, sample, fromResult) {
   fit();
 }
 function syncStage() {
-  const sheet = S.tab === 'sheet';
-  frame.hidden = sheet || !S.base;
-  $('drop').hidden = sheet || !!S.base;
-  $('sampleTag').hidden = sheet || !S.base || !S.isSample;
-  $('sheetEmpty').hidden = !sheet;
+  const edit = S.tab === 'edit';
+  frame.hidden = !edit || !S.base;
+  $('drop').hidden = !edit || !!S.base;
+  $('sampleTag').hidden = !edit || !S.base || !S.isSample;
+  $('sheetEmpty').hidden = S.tab !== 'sheet';
+  $('rot').hidden = S.tab !== 'rotate';
 }
 function takeBase(file) {
   if (file && file.type.startsWith('image/')) loadFile(file, img => setBase(img, false));
@@ -4506,6 +4572,7 @@ stage.addEventListener('dragleave', () => stage.classList.remove('over'));
 stage.addEventListener('drop', e => {
   stage.classList.remove('over');
   if (S.tab === 'sheet') takeSheetFiles(e.dataTransfer.files, Math.max(0, Sheet.slots.findIndex(s => !s.ref)));
+  else if (S.tab === 'rotate') takeRotateFiles(e.dataTransfer.files, 0);
   else takeBase(e.dataTransfer.files[0]);
 });
 
@@ -4543,6 +4610,7 @@ function clearBase() {
 $('sampleTag').addEventListener('click', clearBase);
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closePop(); $('viewer').hidden = true; stopCapture(); return; }
+  if (S.tab === 'rotate' && !e.target.matches('input,textarea,select') && nudgeRotate(e.key)) { e.preventDefault(); return; }
   if (e.target.matches('input,textarea,select') || S.tab !== 'edit') return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
@@ -4624,9 +4692,9 @@ function buildSheetPasses() {
   if (note) lines.push({ en: `${note}.`, vi: `${note}.` });
   return { passes: [{ kind: 'sheet', name: 'Char sheet', lines, slots: [] }], problems: [] };
 }
-function syncSheetSlots() {
-  document.querySelectorAll('#sheetSlots .sheetwrap').forEach((wrap, i) => {
-    const slot = Sheet.slots[i];
+function syncSlotBoxes(containerId, slots) {
+  document.querySelectorAll(`#${containerId} .sheetwrap`).forEach((wrap, i) => {
+    const slot = slots[i];
     const has = !!slot.ref;
     const img = wrap.querySelector('img');
     img.hidden = !has;
@@ -4635,6 +4703,9 @@ function syncSheetSlots() {
     wrap.querySelector('.slotlabel').hidden = !has;
     wrap.querySelector('.sheetx').hidden = !has;
   });
+}
+function syncSheetSlots() {
+  syncSlotBoxes('sheetSlots', Sheet.slots);
 }
 // Ảnh đầu vào ô được chọn, các ảnh sau vào lần lượt những ô còn trống.
 function takeFilesInto(slots, fileList, start, sync) {
@@ -4704,8 +4775,8 @@ function buildEnvBox() {
   });
   $('envBtn').addEventListener('click', () => toggleEnv($('envPop').hidden));
 }
-function buildSheetSlots() {
-  $('sheetSlots').innerHTML = Sheet.slots.map(slot => `
+function buildSlotBoxes(containerId, slots, take, sync) {
+  $(containerId).innerHTML = slots.map(slot => `
     <div class="sheetwrap">
       <label class="sheetbox" title="${slot.label}">
         <span class="sheetempty-box">${icon('plus')}<span>${slot.label}</span></span>
@@ -4715,16 +4786,16 @@ function buildSheetSlots() {
       </label>
       <button class="sheetx" type="button" title="Bỏ ảnh" aria-label="Bỏ ảnh ${slot.label}" hidden>${icon('close')}</button>
     </div>`).join('');
-  document.querySelectorAll('#sheetSlots .sheetwrap').forEach((wrap, i) => {
+  document.querySelectorAll(`#${containerId} .sheetwrap`).forEach((wrap, i) => {
     const box = wrap.querySelector('.sheetbox');
     wrap.querySelector('input').addEventListener('change', e => {
-      takeSheetFiles(e.target.files, i);
+      take(e.target.files, i);
       e.target.value = '';
     });
     wrap.querySelector('.sheetx').addEventListener('click', () => {
-      Sheet.slots[i].ref = null;
-      Sheet.slots[i].refUrl = '';
-      syncSheetSlots();
+      slots[i].ref = null;
+      slots[i].refUrl = '';
+      sync();
       renderPanel();
     });
     box.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); box.classList.add('over'); });
@@ -4733,9 +4804,760 @@ function buildSheetSlots() {
       e.preventDefault();
       e.stopPropagation();
       box.classList.remove('over');
-      takeSheetFiles(e.dataTransfer.files, i);
+      take(e.dataTransfer.files, i);
     });
   });
+}
+function buildSheetSlots() {
+  buildSlotBoxes('sheetSlots', Sheet.slots, takeSheetFiles, syncSheetSlots);
+}
+
+// Tab Xoay. Dummy: con mèo giả để biết hướng, 8 hướng theo LoRA QMA. Splat: khối dựng từ ảnh, xoay góc tuỳ ý theo LoRA AnyAngle.
+const ROTATE_AZ = [
+  { en: 'front view', vi: 'Trước' },
+  { en: 'front-right quarter view', vi: 'Trước phải' },
+  { en: 'right side view', vi: 'Phải' },
+  { en: 'back-right quarter view', vi: 'Sau phải' },
+  { en: 'back view', vi: 'Sau' },
+  { en: 'back-left quarter view', vi: 'Sau trái' },
+  { en: 'left side view', vi: 'Trái' },
+  { en: 'front-left quarter view', vi: 'Trước trái' },
+];
+const ROTATE_EL = [
+  { en: 'low-angle shot', vi: 'Từ dưới', deg: -30 },
+  { en: 'eye-level shot', vi: 'Ngang', deg: 0 },
+  { en: 'elevated shot', vi: 'Hơi cao', deg: 30 },
+  { en: 'high-angle shot', vi: 'Từ trên', deg: 60 },
+];
+const ROTATE_DIST = [
+  { en: 'wide shot', vi: 'Xa', z: 9 },
+  { en: 'medium shot', vi: 'Vừa', z: 6.6 },
+  { en: 'close-up', vi: 'Gần', z: 4.6 },
+];
+const Rotate = {
+  slots: [
+    { label: 'Ảnh chính' },
+    { label: 'Bên phải', en: 'the right side', vi: 'bên phải' },
+    { label: 'Bên trái', en: 'the left side', vi: 'bên trái' },
+    { label: 'Phía sau', en: 'the back', vi: 'phía sau' },
+    { label: 'Phía trên', en: 'the top', vi: 'phía trên' },
+  ].map(slot => ({ ...slot, ref: null, refUrl: '' })),
+  mode: 'dummy',
+  az: 0,
+  el: 0,
+  dist: 1,
+  splatZoom: 1,
+  splat: null,
+  builtFrom: null,
+  buildTimer: 0,
+  mainCanvas: null,
+};
+const rotateAzIndex = () => ((Math.round(Rotate.az / 45) % 8) + 8) % 8;
+const rotateElIndex = () => ROTATE_EL.reduce((best, e, i) => (Math.abs(e.deg - Rotate.el) < Math.abs(ROTATE_EL[best].deg - Rotate.el) ? i : best), 0);
+const wrapDegrees = d => (((d % 360) + 540) % 360) - 180;
+
+function buildRotatePasses() {
+  if (!Rotate.slots[0].ref) return { passes: [], problems: [] };
+  if (Rotate.mode === 'splat' && Rotate.splat !== 'ready') return { passes: [], problems: [] };
+  const extras = Rotate.slots.slice(1).filter(s => s.ref);
+  const first = Rotate.mode === 'splat' ? 3 : 2;
+  const lines = [];
+  if (Rotate.mode === 'splat') {
+    lines.push({ en: 'Change the camera angle from <image2> to <image1>.', vi: 'Đổi góc máy theo <image2>, giữ nội dung và phong cách của <image1>.' });
+  } else {
+    const az = ROTATE_AZ[rotateAzIndex()], el = ROTATE_EL[rotateElIndex()], dist = ROTATE_DIST[Rotate.dist];
+    lines.push({ en: `<qma> ${az.en} ${el.en} ${dist.en}${extras.length ? '.' : ''}`, vi: `Xoay tới: ${az.vi}, ${el.vi}, ${dist.vi}.` });
+  }
+  if (extras.length) {
+    lines.push({
+      en: `${joinList(extras.map((s, i) => `<image${i + first}> shows ${s.en} of the same subject`), 'and')}. Use ${extras.length > 1 ? 'them' : 'it'} only for details that <image1> does not show, and keep the design, colors and materials of <image1>.`,
+      vi: `${joinList(extras.map((s, i) => `<image${i + first}> là ${s.vi} của cùng vật đó`), 'và')}. Chỉ dùng chúng cho chi tiết mà <image1> không có, giữ thiết kế, màu và chất liệu của <image1>.`,
+    });
+  }
+  return { passes: [{ kind: 'rotate', name: Rotate.mode === 'splat' ? 'Xoay bằng splat' : 'Xoay', lines, slots: [] }], problems: [] };
+}
+
+// Con mèo ghép từ các khối, mặt ở phía trước, đuôi ở phía sau, để nhìn là biết đang xem hướng nào.
+function buildCatMesh() {
+  const out = [];
+  const unit = v => { const l = Math.hypot(...v) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  const push = (p, n, c) => out.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2]);
+  const quad = (a, b, c, d, col) => {
+    for (const q of [a, b, c, a, c, d]) push(q.p, q.n, col);
+  };
+  const ellipsoid = (c, r, col, lat = 20, lon = 32) => {
+    const at = (i, j) => {
+      const t = Math.PI * i / lat, f = 2 * Math.PI * j / lon;
+      const s = [Math.sin(t) * Math.cos(f), Math.cos(t), Math.sin(t) * Math.sin(f)];
+      return { p: [c[0] + r[0] * s[0], c[1] + r[1] * s[1], c[2] + r[2] * s[2]], n: unit([s[0] / r[0], s[1] / r[1], s[2] / r[2]]) };
+    };
+    for (let i = 0; i < lat; i++) for (let j = 0; j < lon; j++) quad(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1), col);
+  };
+  const cone = (base, rx, rz, tip, col, seg = 20) => {
+    for (let j = 0; j < seg; j++) {
+      const f0 = 2 * Math.PI * j / seg, f1 = 2 * Math.PI * (j + 1) / seg;
+      const a = [base[0] + rx * Math.cos(f0), base[1], base[2] + rz * Math.sin(f0)];
+      const b = [base[0] + rx * Math.cos(f1), base[1], base[2] + rz * Math.sin(f1)];
+      const na = unit([Math.cos(f0), 0.35, Math.sin(f0)]), nb = unit([Math.cos(f1), 0.35, Math.sin(f1)]);
+      push(a, na, col); push(b, nb, col); push(tip, unit([Math.cos((f0 + f1) / 2), 0.35, Math.sin((f0 + f1) / 2)]), col);
+    }
+  };
+  const ring = (y, R, r, col, seg = 72, side = 6) => {
+    const at = (i, j) => {
+      const f = 2 * Math.PI * i / seg, t = 2 * Math.PI * j / side;
+      const n = [Math.cos(f) * Math.cos(t), Math.sin(t), Math.sin(f) * Math.cos(t)];
+      return { p: [(R + r * Math.cos(t)) * Math.cos(f), y + r * Math.sin(t), (R + r * Math.cos(t)) * Math.sin(f)], n };
+    };
+    for (let i = 0; i < seg; i++) for (let j = 0; j < side; j++) quad(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1), col);
+  };
+  const fur = [0.83, 0.56, 0.30], cream = [0.96, 0.89, 0.76], stripe = [0.56, 0.34, 0.16], dark = [0.09, 0.08, 0.09], pink = [0.93, 0.52, 0.58], white = [0.96, 0.96, 0.94], gray = [0.42, 0.43, 0.48];
+  ellipsoid([0, -0.42, -0.25], [0.58, 0.68, 0.78], fur);
+  ellipsoid([0, -0.5, 0.26], [0.4, 0.5, 0.3], cream);
+  ellipsoid([0, 0.58, 0.32], [0.64, 0.54, 0.52], fur);
+  ellipsoid([0, 0.43, 0.72], [0.25, 0.16, 0.14], cream);
+  for (const s of [-1, 1]) {
+    cone([s * 0.38, 0.92, 0.3], 0.21, 0.15, [s * 0.5, 1.46, 0.28], fur);
+    cone([s * 0.38, 0.95, 0.38], 0.12, 0.05, [s * 0.48, 1.32, 0.38], pink);
+    ellipsoid([s * 0.25, 0.66, 0.74], [0.115, 0.135, 0.07], dark);
+    ellipsoid([s * 0.21, 0.71, 0.8], [0.035, 0.04, 0.02], white);
+    ellipsoid([s * 0.25, -1.04, 0.42], [0.17, 0.1, 0.24], cream);
+    ellipsoid([s * 0.48, -1.03, -0.5], [0.2, 0.11, 0.3], fur);
+  }
+  ellipsoid([0, 0.5, 0.86], [0.065, 0.045, 0.035], pink);
+  for (const y of [0.96, 0.76, 0.56]) ellipsoid([0, y, -0.14], [0.26, 0.05, 0.07], stripe);
+  for (const y of [0.0, -0.3, -0.6]) ellipsoid([0, y, -0.98], [0.34, 0.06, 0.06], stripe);
+  for (let i = 0; i <= 14; i++) {
+    const t = i / 14;
+    ellipsoid([0.42 * Math.sin(t * 2.4), -0.98 + 1.5 * t, -1.0 - 0.45 * Math.sin(t * Math.PI)], [0.12, 0.12, 0.12], i > 11 ? stripe : fur, 10, 14);
+  }
+  ring(-1.16, 1.75, 0.012, gray);
+  ROTATE_AZ.forEach((_, i) => {
+    const f = i * Math.PI / 4;
+    ellipsoid([1.75 * Math.sin(f), -1.16, 1.75 * Math.cos(f)], i === 0 ? [0.075, 0.075, 0.075] : [0.04, 0.04, 0.04], i === 0 ? white : gray, 10, 14);
+  });
+  return new Float32Array(out);
+}
+
+// Splat đã đổi về hệ trục Y hướng lên: vị trí, ma trận hiệp phương sai và màu của từng điểm.
+function emptyGaussians(n) {
+  return { n, pos: new Float32Array(n * 3), cov: new Float32Array(n * 6), col: new Uint8Array(n * 4) };
+}
+// Đọc file .spz (Niantic v2) do node SplatToFile3D ghi. Công thức giải mã theo _parse_spz_gaussian của ComfyUI.
+const SPZ_COLOR_SCALE = 0.28209479177387814 / 0.15;
+async function parseSpz(buffer) {
+  const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+  const raw = new Uint8Array(await new Response(stream).arrayBuffer());
+  const head = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+  if (head.getUint32(0, true) !== 0x5053474E || head.getUint32(4, true) !== 2) throw new Error('File splat không đúng định dạng.');
+  const n = head.getUint32(8, true);
+  const unit = 1 / (1 << raw[13]);
+  const offA = 16 + n * 9, offC = offA + n, offS = offC + n * 3, offQ = offS + n * 3;
+  const g = emptyGaussians(n);
+  let m = 0;
+  for (let i = 0; i < n; i++) {
+    if (raw[offA + i] < 4) continue;
+    const axis = k => {
+      const p = 16 + i * 9 + k * 3;
+      const v = raw[p] | (raw[p + 1] << 8) | (raw[p + 2] << 16);
+      return (v & 0x800000 ? v - 0x1000000 : v) * unit;
+    };
+    // Splat gốc là Y xuống, Z tới; đổi về Y lên bằng phép quay 180 độ quanh trục X, giống RenderSplat của ComfyUI.
+    g.pos[m * 3] = axis(0);
+    g.pos[m * 3 + 1] = -axis(1);
+    g.pos[m * 3 + 2] = -axis(2);
+    for (let k = 0; k < 3; k++) {
+      const v = ((raw[offC + i * 3 + k] / 255 - 0.5) * SPZ_COLOR_SCALE + 0.5) * 255;
+      g.col[m * 4 + k] = Math.max(0, Math.min(255, v));
+    }
+    g.col[m * 4 + 3] = raw[offA + i];
+    const s0 = Math.exp(2 * (raw[offS + i * 3] / 16 - 10)), s1 = Math.exp(2 * (raw[offS + i * 3 + 1] / 16 - 10)), s2 = Math.exp(2 * (raw[offS + i * 3 + 2] / 16 - 10));
+    const x = raw[offQ + i * 3] / 127.5 - 1, y = raw[offQ + i * 3 + 1] / 127.5 - 1, z = raw[offQ + i * 3 + 2] / 127.5 - 1;
+    const w = Math.sqrt(Math.max(0, 1 - x * x - y * y - z * z));
+    const len = Math.hypot(x, y, z, w) || 1;
+    const qx = x / len, qy = y / len, qz = z / len, qw = w / len;
+    const r00 = 1 - 2 * (qy * qy + qz * qz), r01 = 2 * (qx * qy - qw * qz), r02 = 2 * (qx * qz + qw * qy);
+    const r10 = 2 * (qx * qy + qw * qz), r11 = 1 - 2 * (qx * qx + qz * qz), r12 = 2 * (qy * qz - qw * qx);
+    const r20 = 2 * (qx * qz - qw * qy), r21 = 2 * (qy * qz + qw * qx), r22 = 1 - 2 * (qx * qx + qy * qy);
+    g.cov[m * 6] = r00 * r00 * s0 + r01 * r01 * s1 + r02 * r02 * s2;
+    g.cov[m * 6 + 1] = -(r00 * r10 * s0 + r01 * r11 * s1 + r02 * r12 * s2);
+    g.cov[m * 6 + 2] = -(r00 * r20 * s0 + r01 * r21 * s1 + r02 * r22 * s2);
+    g.cov[m * 6 + 3] = r10 * r10 * s0 + r11 * r11 * s1 + r12 * r12 * s2;
+    g.cov[m * 6 + 4] = r10 * r20 * s0 + r11 * r21 * s1 + r12 * r22 * s2;
+    g.cov[m * 6 + 5] = r20 * r20 * s0 + r21 * r21 * s1 + r22 * r22 * s2;
+    m++;
+  }
+  g.n = m;
+  return g;
+}
+// Khối giả lập cho bản xem ngoài ComfyUI: phồng ảnh chính thành các điểm. Trên ComfyUI dùng splat thật từ TripoSplat.
+function buildDemoGaussians(img) {
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const k = Math.min(1, 380 / Math.max(iw, ih));
+  const w = Math.max(2, Math.round(iw * k)), h = Math.max(2, Math.round(ih * k));
+  const c = newCanvas(w, h);
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const px = ctx.getImageData(0, 0, w, h).data;
+  const step = 2.4 / Math.max(w, h);
+  const g = emptyGaussians(w * h * 2);
+  let m = 0;
+  const put = (X, Y, Z, r, gr, b) => {
+    g.pos.set([X, Y, Z], m * 3);
+    g.cov.set([step * step, 0, 0, step * step, 0, step * step], m * 6);
+    g.col.set([r, gr, b, 255], m * 4);
+    m++;
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const u = 2 * x / (w - 1) - 1, v = 2 * y / (h - 1) - 1;
+      const t = 0.55 * Math.sqrt(Math.max(0, (1 - u ** 4) * (1 - v ** 4)));
+      const i = (y * w + x) * 4;
+      const X = (x - (w - 1) / 2) * step, Y = ((h - 1) / 2 - y) * step;
+      put(X, Y, t, px[i], px[i + 1], px[i + 2]);
+      put(X, Y, -t, px[i] * 0.62, px[i + 1] * 0.62, px[i + 2] * 0.62);
+    }
+  }
+  return g;
+}
+// Góc nhìn ban đầu. Có thông số máy ảnh của TripoSplat thì khối mở đúng góc ảnh gốc, cách tính theo gói AnyAngle Studio.
+function splatCamera(g, W, H, source) {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < g.n; i++) {
+    if (g.col[i * 4 + 3] < 25) continue;
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k], g.pos[i * 3 + k]);
+      hi[k] = Math.max(hi[k], g.pos[i * 3 + k]);
+    }
+  }
+  const extent = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) || 1;
+  if (source && Array.isArray(source.camera_token) && Array.isArray(source.crop)) {
+    const t = source.camera_token;
+    const len = Math.hypot(t[0], t[1], t[2]) || 1;
+    const radius = t[3] < 0.001 ? 1000 : 1 / t[3];
+    return {
+      target: [0, 0, 0], radius, tan: t[4] / radius, crop: source.crop, W, H, extent, matched: true,
+      az0: Math.atan2(t[0] / len, -t[1] / len) * 180 / Math.PI, el0: Math.asin(Math.max(-1, Math.min(1, t[2] / len))) * 180 / Math.PI,
+    };
+  }
+  const tan = Math.tan(17.5 * Math.PI / 180), side = Math.max(W, H);
+  const half = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2 * 1.1;
+  return {
+    target: [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2], radius: half / tan, tan,
+    crop: [(W - side) / 2, (H - side) / 2, (W + side) / 2, (H + side) / 2], W, H, extent, matched: false, az0: 0, el0: 0,
+  };
+}
+
+const RotateView = (() => {
+  const canvas = $('rotCanvas');
+  const gl = canvas.getContext('webgl2', { antialias: true, preserveDrawingBuffer: true, alpha: true, premultipliedAlpha: true });
+  const cur = { az: 0, el: 0, z: 6.6 };
+  let raf = 0, dragging = false, meshCount = 0;
+  let meshProg, meshVao, meshU, splatProg, splatVao, splatU, orderBuf;
+  let splat = null, cam = null, order = null, counts = null, keys = null, lastSort = '';
+  const textures = [];
+  const mul = (a, b) => {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[r + 4] * b[c * 4 + 1] + a[r + 8] * b[c * 4 + 2] + a[r + 12] * b[c * 4 + 3];
+    return o;
+  };
+  const rotX = d => { const s = Math.sin(d * Math.PI / 180), c = Math.cos(d * Math.PI / 180); return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]); };
+  const rotY = d => { const s = Math.sin(d * Math.PI / 180), c = Math.cos(d * Math.PI / 180); return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]); };
+  const move = (x, y, z) => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, z, 1]);
+  // l, r, b, t tính ở độ sâu 1 đơn vị, nên khung lệch tâm vẫn dùng chung một công thức.
+  const frustum = (l, r, b, t, near, far) => new Float32Array([
+    2 / (r - l), 0, 0, 0,
+    0, 2 / (t - b), 0, 0,
+    (r + l) / (r - l), (t + b) / (t - b), (far + near) / (near - far), -1,
+    0, 0, 2 * far * near / (near - far), 0,
+  ]);
+  const program = (vs, fs) => {
+    const p = gl.createProgram();
+    for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+      gl.attachShader(p, s);
+    }
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error(gl.getProgramInfoLog(p));
+    return p;
+  };
+  function init() {
+    if (!gl) return;
+    meshProg = program(`#version 300 es
+      layout(location=0) in vec3 p; layout(location=1) in vec3 n; layout(location=2) in vec3 c;
+      uniform mat4 M, VP; out vec3 vn; out vec3 vc;
+      void main(){ vn = mat3(M) * n; vc = c; gl_Position = VP * M * vec4(p, 1.0); }`, `#version 300 es
+      precision highp float; in vec3 vn; in vec3 vc; out vec4 o;
+      void main(){ vec3 n = normalize(vn); float d = max(dot(n, normalize(vec3(0.45, 0.8, 0.65))), 0.0); float f = max(dot(n, normalize(vec3(-0.6, 0.1, 0.4))), 0.0); o = vec4(vc * (0.36 + 0.72 * d + 0.14 * f), 1.0); }`);
+    meshU = { M: gl.getUniformLocation(meshProg, 'M'), VP: gl.getUniformLocation(meshProg, 'VP') };
+    splatProg = program(`#version 300 es
+      precision highp float; precision highp int;
+      layout(location=0) in uint aIndex;
+      uniform highp sampler2D tPos, tCovA, tCovB; uniform lowp sampler2D tCol;
+      uniform mat4 P, MV; uniform vec2 view; uniform int texW;
+      out vec4 vCol; out vec2 vPos;
+      void main(){
+        ivec2 uv = ivec2(int(aIndex) % texW, int(aIndex) / texW);
+        vec3 c = texelFetch(tPos, uv, 0).xyz;
+        vec4 a = texelFetch(tCovA, uv, 0), b = texelFetch(tCovB, uv, 0);
+        vec4 cam = MV * vec4(c, 1.0);
+        vCol = texelFetch(tCol, uv, 0); vPos = vec2(0.0);
+        if (cam.z > -0.001) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+        mat3 R = mat3(MV);
+        mat3 S = mat3(a.x, a.y, a.z, a.y, a.w, b.x, a.z, b.x, b.y);
+        mat3 C = R * S * transpose(R);
+        float w = -cam.z;
+        vec2 f = vec2(P[0][0], P[1][1]) * view * 0.5;
+        vec3 j0 = vec3(f.x / w, 0.0, f.x * cam.x / (w * w));
+        vec3 j1 = vec3(0.0, f.y / w, f.y * cam.y / (w * w));
+        float aa = dot(j0, C * j0), bb = dot(j0, C * j1), dd = dot(j1, C * j1);
+        float mid = 0.5 * (aa + dd), rad = length(vec2(0.5 * (aa - dd), bb));
+        float l1 = mid + rad, l2 = max(mid - rad, 0.05);
+        vec2 v = abs(bb) > 1e-6 ? normalize(vec2(bb, l1 - aa)) : (aa >= dd ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+        vec2 major = min(sqrt(2.0 * max(l1, 0.05)), 512.0) * v;
+        vec2 minor = min(sqrt(2.0 * l2), 512.0) * vec2(v.y, -v.x);
+        vec2 corner = vec2(float(gl_VertexID & 1) * 2.0 - 1.0, float((gl_VertexID >> 1) & 1) * 2.0 - 1.0) * 2.0;
+        vPos = corner;
+        vec4 clip = P * cam;
+        gl_Position = vec4(clip.xy / clip.w + (corner.x * major + corner.y * minor) * 2.0 / view, 0.0, 1.0);
+      }`, `#version 300 es
+      precision highp float; in vec4 vCol; in vec2 vPos; out vec4 o;
+      void main(){ float A = dot(vPos, vPos); if (A > 4.0) discard; float B = exp(-A) * vCol.a; o = vec4(vCol.rgb * B, B); }`);
+    splatU = {};
+    for (const name of ['tPos', 'tCovA', 'tCovB', 'tCol', 'P', 'MV', 'view', 'texW']) splatU[name] = gl.getUniformLocation(splatProg, name);
+    const mesh = buildCatMesh();
+    meshCount = mesh.length / 9;
+    meshVao = gl.createVertexArray();
+    gl.bindVertexArray(meshVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, mesh, gl.STATIC_DRAW);
+    [[0, 0], [1, 12], [2, 24]].forEach(([loc, off]) => { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 36, off); });
+    splatVao = gl.createVertexArray();
+    gl.bindVertexArray(splatVao);
+    orderBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, orderBuf);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribIPointer(0, 1, gl.UNSIGNED_INT, 0, 0);
+    gl.vertexAttribDivisor(0, 1);
+    gl.bindVertexArray(null);
+  }
+  function target() {
+    return { az: Rotate.az, el: Rotate.el, z: Rotate.mode === 'splat' && cam ? cam.radius * Rotate.splatZoom : ROTATE_DIST[Rotate.dist].z };
+  }
+  function modelView(view) {
+    const az = view.az + cam.az0;
+    const el = Math.max(-89, Math.min(89, view.el + cam.el0));
+    const t = cam.target;
+    return mul(move(0, 0, -view.z), mul(rotX(el), mul(rotY(-az), move(-t[0], -t[1], -t[2]))));
+  }
+  // Toạ độ khung ảnh gốc ở độ sâu 1 đơn vị: ô vuông TripoSplat dùng để dựng chính là toàn bộ cảm biến.
+  function frameExtents() {
+    const [x0, y0, x1, y1] = cam.crop;
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, hw = (x1 - x0) / 2, hh = (y1 - y0) / 2;
+    return { l: -cx / hw * cam.tan, r: (cam.W - cx) / hw * cam.tan, t: cy / hh * cam.tan, b: (cy - cam.H) / hh * cam.tan };
+  }
+  function drawSplat(proj, mv, w, h) {
+    const key = [mv[2], mv[6], mv[10], mv[14]].map(v => v.toFixed(4)).join();
+    if (key !== lastSort) {
+      lastSort = key;
+      let min = Infinity, max = -Infinity;
+      const pos = splat.pos, n = splat.n, a = mv[2], b = mv[6], c = mv[10];
+      for (let i = 0; i < n; i++) {
+        const d = a * pos[i * 3] + b * pos[i * 3 + 1] + c * pos[i * 3 + 2];
+        keys[i] = d;
+        if (d < min) min = d;
+        if (d > max) max = d;
+      }
+      // Sắp từ gần tới xa: lớp gần vẽ trước, lớp xa cộng vào phần còn trong suốt.
+      const scale = 65535 / Math.max(1e-6, max - min);
+      counts.fill(0);
+      for (let i = 0; i < n; i++) counts[((max - keys[i]) * scale) | 0]++;
+      let sum = 0;
+      for (let i = 0; i < 65536; i++) { const v = counts[i]; counts[i] = sum; sum += v; }
+      for (let i = 0; i < n; i++) order[counts[((max - keys[i]) * scale) | 0]++] = i;
+      gl.bindBuffer(gl.ARRAY_BUFFER, orderBuf);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, order);
+    }
+    gl.useProgram(splatProg);
+    textures.forEach((tex, i) => { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, tex); });
+    ['tPos', 'tCovA', 'tCovB', 'tCol'].forEach((name, i) => gl.uniform1i(splatU[name], i));
+    gl.uniformMatrix4fv(splatU.P, false, proj);
+    gl.uniformMatrix4fv(splatU.MV, false, mv);
+    gl.uniform2f(splatU.view, w, h);
+    gl.uniform1i(splatU.texW, splat.texW);
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.ONE_MINUS_DST_ALPHA, gl.ONE, gl.ONE_MINUS_DST_ALPHA, gl.ONE);
+    gl.bindVertexArray(splatVao);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, splat.n);
+    gl.bindVertexArray(null);
+    gl.disable(gl.BLEND);
+  }
+  function draw() {
+    if (!gl) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(canvas.clientWidth * dpr)), h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, w, h);
+    if (Rotate.mode === 'dummy') {
+      gl.clearColor(0.09, 0.094, 0.106, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      const f = Math.tan(17.5 * Math.PI / 180), aspect = w / h;
+      const VP = mul(frustum(-f * aspect, f * aspect, -f, f, 0.1, 50), move(0, -0.1, -cur.z));
+      gl.enable(gl.DEPTH_TEST);
+      gl.useProgram(meshProg);
+      gl.uniformMatrix4fv(meshU.M, false, mul(rotX(cur.el), rotY(-cur.az)));
+      gl.uniformMatrix4fv(meshU.VP, false, VP);
+      gl.bindVertexArray(meshVao);
+      gl.drawArrays(gl.TRIANGLES, 0, meshCount);
+      gl.bindVertexArray(null);
+      return;
+    }
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    if (!splat || !cam) return;
+    // Khung nét đứt chiếm 86% khung xem, nên nhìn thấy gì trong khung thì ảnh render đúng như vậy.
+    const e = frameExtents();
+    const cx = (e.l + e.r) / 2, cy = (e.b + e.t) / 2, aspect = w / h;
+    const vy = Math.max((e.t - e.b) / 2 / 0.86, (e.r - e.l) / 2 / (0.86 * aspect)), vx = vy * aspect;
+    const near = Math.max(0.01, cur.z - cam.extent * 2), far = cur.z + cam.extent * 2;
+    drawSplat(frustum(cx - vx, cx + vx, cy - vy, cy + vy, near, far), modelView(cur), w, h);
+  }
+  function frame() {
+    raf = 0;
+    const t = target();
+    const ease = dragging ? 1 : 0.22;
+    let moving = false;
+    for (const key of ['az', 'el', 'z']) {
+      const gap = t[key] - cur[key];
+      if (Math.abs(gap) > 0.01) { cur[key] += gap * ease; moving = true; } else cur[key] = t[key];
+    }
+    draw();
+    if (moving) raf = requestAnimationFrame(frame);
+  }
+  const request = () => { if (!raf) raf = requestAnimationFrame(frame); };
+  // Vẽ khối ra ảnh đúng khung ảnh gốc, nền xám như ảnh render trong hướng dẫn của LoRA AnyAngle.
+  function capture(w, h) {
+    const view = target();
+    const fb = gl.createFramebuffer(), tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const e = frameExtents();
+    drawSplat(frustum(e.l, e.r, e.b, e.t, Math.max(0.01, view.z - cam.extent * 2), view.z + cam.extent * 2), modelView(view), w, h);
+    const px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(fb);
+    gl.deleteTexture(tex);
+    const out = newCanvas(w, h);
+    const ctx = out.getContext('2d');
+    const image = ctx.createImageData(w, h);
+    for (let y = 0; y < h; y++) {
+      const src = (h - 1 - y) * w * 4, dst = y * w * 4;
+      for (let x = 0; x < w * 4; x += 4) {
+        const rest = 64 * (1 - px[src + x + 3] / 255);
+        image.data[dst + x] = px[src + x] + rest;
+        image.data[dst + x + 1] = px[src + x + 1] + rest;
+        image.data[dst + x + 2] = px[src + x + 2] + rest;
+        image.data[dst + x + 3] = 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    request();
+    return out;
+  }
+  return {
+    available: !!gl,
+    init,
+    request,
+    capture,
+    setDragging(on) { dragging = on; },
+    setSplat(g, camera) {
+      if (!gl) return;
+      for (const tex of textures) gl.deleteTexture(tex);
+      textures.length = 0;
+      const texW = 2048, texH = Math.max(1, Math.ceil(g.n / texW));
+      const a = new Float32Array(texW * texH * 4), b = new Float32Array(texW * texH * 4), c = new Float32Array(texW * texH * 4), d = new Uint8Array(texW * texH * 4);
+      for (let i = 0; i < g.n; i++) {
+        a.set(g.pos.subarray(i * 3, i * 3 + 3), i * 4);
+        b.set(g.cov.subarray(i * 6, i * 6 + 4), i * 4);
+        c.set(g.cov.subarray(i * 6 + 4, i * 6 + 6), i * 4);
+        d.set(g.col.subarray(i * 4, i * 4 + 4), i * 4);
+      }
+      [[gl.RGBA32F, gl.FLOAT, a], [gl.RGBA32F, gl.FLOAT, b], [gl.RGBA32F, gl.FLOAT, c], [gl.RGBA8, gl.UNSIGNED_BYTE, d]].forEach(([format, type, data]) => {
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, format, texW, texH);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, texW, texH, gl.RGBA, type, data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        textures.push(tex);
+      });
+      splat = { n: g.n, pos: g.pos, texW };
+      cam = camera;
+      order = new Uint32Array(g.n);
+      keys = new Float32Array(g.n);
+      counts = new Uint32Array(65536);
+      lastSort = '';
+      gl.bindBuffer(gl.ARRAY_BUFFER, orderBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, order, gl.DYNAMIC_DRAW);
+      cur.z = camera.radius * Rotate.splatZoom;
+      request();
+    },
+    clearSplat() { splat = null; cam = null; request(); },
+    paintThumb(cv) {
+      if (!splat || !cam) return;
+      cv.width = 144;
+      cv.height = Math.max(1, Math.round(144 * cam.H / cam.W));
+      cv.getContext('2d').drawImage(capture(cv.width, cv.height), 0, 0);
+    },
+  };
+})();
+
+function syncRotateChips() {
+  const az = rotateAzIndex(), el = rotateElIndex();
+  $('rotAz').querySelectorAll('.viewchip').forEach((chip, i) => chip.setAttribute('aria-pressed', String(i === az)));
+  $('rotEl').querySelectorAll('.viewchip').forEach((chip, i) => chip.setAttribute('aria-pressed', String(i === el)));
+  $('rotDist').querySelectorAll('.viewchip').forEach((chip, i) => chip.setAttribute('aria-pressed', String(i === Rotate.dist)));
+  const azDeg = Math.round(wrapDegrees(Rotate.az)), elDeg = Math.round(Rotate.el);
+  $('rotAzRange').value = azDeg;
+  $('rotElRange').value = elDeg;
+  $('rotAzOut').textContent = `${azDeg}°`;
+  $('rotElOut').textContent = `${elDeg}°`;
+  $('rotRead').textContent = Rotate.mode === 'splat'
+    ? `Ngang ${azDeg}° · Dọc ${elDeg}°`
+    : `${ROTATE_AZ[az].vi} · ${ROTATE_EL[el].vi} · ${ROTATE_DIST[Rotate.dist].vi}`;
+}
+function applyRotate() {
+  syncRotateChips();
+  RotateView.request();
+}
+function setRotate(change) {
+  Object.assign(Rotate, change);
+  applyRotate();
+  renderPanel();
+}
+function layoutRotateFrame() {
+  const main = Rotate.slots[0].ref, box = $('rotView').getBoundingClientRect();
+  const show = Rotate.mode === 'splat' && Rotate.splat === 'ready' && !!main;
+  $('rotFrame').hidden = !show;
+  if (!show) return;
+  const aspect = (main.naturalWidth || main.width) / (main.naturalHeight || main.height);
+  const fit = Math.min(box.width * 0.86 / aspect, box.height * 0.86);
+  $('rotFrame').style.width = `${Math.round(fit * aspect)}px`;
+  $('rotFrame').style.height = `${Math.round(fit)}px`;
+}
+function fitMainForRotate(img) {
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const s = Math.sqrt(1e6 / (w * h));
+  const c = newCanvas(Math.max(32, Math.round(w * s)), Math.max(32, Math.round(h * s)));
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+function splatReady(g, main, source) {
+  Rotate.az = 0;
+  Rotate.el = 0;
+  Rotate.splatZoom = 1;
+  RotateView.setSplat(g, splatCamera(g, main.width, main.height, source));
+  Rotate.splat = 'ready';
+  syncRotateMode();
+  renderPanel();
+}
+function buildSplatPreview(main) {
+  clearInterval(Rotate.buildTimer);
+  $('rotMsgFill').style.width = '0';
+  let progress = 0;
+  Rotate.buildTimer = setInterval(() => {
+    progress = Math.min(100, progress + 6);
+    $('rotMsgFill').style.width = `${progress}%`;
+    if (progress < 100) return;
+    clearInterval(Rotate.buildTimer);
+    if (Rotate.mainCanvas === main) splatReady(buildDemoGaussians(main), main, null);
+  }, 90);
+}
+// Đường đi theo template TripoSplat của ComfyUI. Node của gói AnyAngle Studio chỉ thêm khi có, để lấy thông số máy ảnh.
+function buildSplatGraph(image, withStudio) {
+  const seed = 46;
+  const graph = {
+    1: { class_type: 'LoadImage', inputs: { image } },
+    2: { class_type: 'LoadBackgroundRemovalModel', inputs: { bg_removal_name: 'birefnet.safetensors' } },
+    3: { class_type: 'RemoveBackground', inputs: { bg_removal_model: ['2', 0], image: ['1', 0] } },
+    15: { class_type: 'UNETLoader', inputs: { unet_name: 'triposplat_fp16.safetensors', weight_dtype: 'default' } },
+    4: { class_type: 'TripoSplatPreprocessImage', inputs: { image: ['1', 0], mask: ['3', 0], erode_radius: 1, size: 1024 } },
+    20: { class_type: 'CLIPVisionLoader', inputs: { clip_name: 'dino_v3_vit_h.safetensors' } },
+    21: { class_type: 'VAELoader', inputs: { vae_name: 'flux2-vae.safetensors' } },
+    7: { class_type: 'TripoSplatConditioning', inputs: { clip_vision: ['20', 0], vae: ['21', 0], image: ['4', 0] } },
+    8: { class_type: 'KSampler', inputs: { model: ['15', 0], positive: ['7', 0], negative: ['7', 1], latent_image: ['7', 2], seed, steps: 20, cfg: 3, sampler_name: 'dpmpp_2m', scheduler: 'simple', denoise: 1 } },
+    22: { class_type: 'VAELoader', inputs: { vae_name: 'triposplat_vae_decoder_fp16.safetensors' } },
+    9: { class_type: 'VAEDecodeTripoSplat', inputs: { samples: ['8', 0], vae: ['22', 0], num_gaussians: 262144, seed } },
+    23: { class_type: 'SplatToFile3D', inputs: { splat: ['9', 0], format: 'spz' } },
+    6: { class_type: 'SaveGLB', inputs: { mesh: ['23', 0], filename_prefix: '3d/Concept_splat' } },
+  };
+  if (withStudio) {
+    graph[24] = { class_type: 'AnyAngleReconstructionOutputT8', inputs: { splat: ['9', 0], samples: ['8', 0], reference: ['1', 0], prepared: ['4', 0], mask: ['3', 0], keep_background: false } };
+  }
+  return graph;
+}
+async function buildSplatReal(main) {
+  const stamp = Date.now().toString(36);
+  beginRun();
+  try {
+    startPass('Dựng splat');
+    const name = await uploadCanvas(main, `${stamp}_splat.png`);
+    const check = await fetch('/api/object_info/AnyAngleReconstructionOutputT8');
+    const withStudio = check.ok && !!(await check.json()).AnyAngleReconstructionOutputT8;
+    run.promptId = await queueGraph(buildSplatGraph(name, withStudio));
+    advanceJob('queue');
+    renderJob();
+    const found = await waitForHistory(run.promptId, outputs => {
+      const all = Object.values(outputs);
+      const file = all.flatMap(o => o['3d'] || [])[0];
+      if (!file) return null;
+      const record = all.flatMap(o => o.anyangle_reconstruction || [])[0];
+      return { file, source: record && record.source };
+    }, 'ComfyUI chạy xong nhưng không có file splat.');
+    const res = await fetch(viewUrl(found.file));
+    if (!res.ok) throw new Error(`Không tải được file splat (lỗi ${res.status}).`);
+    const g = await parseSpz(await res.arrayBuffer());
+    if (Rotate.mainCanvas === main) splatReady(g, main, found.source);
+    hideJob();
+    setStatus(found.source ? 'Đã dựng xong splat.' : 'Đã dựng xong splat. Chưa có gói AnyAngle Studio nên khối có thể không mở đúng mặt ảnh, hãy xoay về đúng hướng.');
+  } catch (e) {
+    Rotate.splat = 'failed';
+    failRun(e);
+  } finally {
+    endRun();
+  }
+}
+function startSplatBuild() {
+  const main = fitMainForRotate(Rotate.slots[0].ref);
+  Rotate.builtFrom = Rotate.slots[0].ref;
+  Rotate.mainCanvas = main;
+  Rotate.splat = 'building';
+  RotateView.clearSplat();
+  if (ON_COMFY) buildSplatReal(main);
+  else buildSplatPreview(main);
+}
+function syncRotateMode() {
+  const splat = Rotate.mode === 'splat';
+  $('rotMode').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.mode === Rotate.mode)));
+  $('rotDummyCtl').hidden = splat;
+  $('rotSplatCtl').hidden = !splat;
+  $('rotHint').textContent = splat
+    ? 'Bỏ ảnh chính vào là tự dựng khối 3D. Hợp nhất với một vật rõ ràng, nền sạch, chụp góc 3/4.'
+    : 'Con mèo chỉ để biết hướng. Ảnh chính nên nhìn chính diện, ảnh các góc khác có thể bỏ trống.';
+  const main = Rotate.slots[0].ref;
+  if (splat && main && Rotate.builtFrom !== main && !run.active) startSplatBuild();
+  if (!main && Rotate.builtFrom) {
+    clearInterval(Rotate.buildTimer);
+    Rotate.splat = null;
+    Rotate.builtFrom = null;
+    Rotate.mainCanvas = null;
+    RotateView.clearSplat();
+  }
+  let message = '';
+  if (!RotateView.available) message = 'Máy này không chạy được WebGL nên không hiện được khối 3D';
+  else if (splat && !main) message = 'Bỏ ảnh chính vào để dựng splat';
+  else if (splat && Rotate.splat === 'building') message = 'Đang dựng splat từ ảnh chính...';
+  else if (splat && Rotate.splat === 'failed') message = 'Không dựng được splat. Bấm Dựng lại để thử.';
+  $('rotMsg').hidden = !message;
+  $('rotMsgText').textContent = message;
+  $('rotMsgBar').hidden = !(splat && Rotate.splat === 'building' && !ON_COMFY);
+  $('rotRetry').hidden = Rotate.splat !== 'failed';
+  $('rotNote').hidden = !splat || Rotate.splat !== 'ready' || ON_COMFY;
+  layoutRotateFrame();
+  applyRotate();
+}
+function syncRotate() {
+  syncSlotBoxes('rotateSlots', Rotate.slots);
+  syncRotateMode();
+}
+function takeRotateFiles(fileList, start) {
+  takeFilesInto(Rotate.slots, fileList, start, syncRotate);
+}
+function nudgeRotate(key) {
+  const splat = Rotate.mode === 'splat';
+  if (key === 'ArrowLeft') setRotate({ az: splat ? Rotate.az - 5 : Math.round(Rotate.az / 45) * 45 - 45 });
+  else if (key === 'ArrowRight') setRotate({ az: splat ? Rotate.az + 5 : Math.round(Rotate.az / 45) * 45 + 45 });
+  else if (key === 'ArrowUp') setRotate({ el: splat ? Math.min(80, Rotate.el + 5) : ROTATE_EL[Math.min(ROTATE_EL.length - 1, rotateElIndex() + 1)].deg });
+  else if (key === 'ArrowDown') setRotate({ el: splat ? Math.max(-80, Rotate.el - 5) : ROTATE_EL[Math.max(0, rotateElIndex() - 1)].deg });
+  else return false;
+  return true;
+}
+function buildRotatePanel() {
+  buildSlotBoxes('rotateSlots', Rotate.slots, takeRotateFiles, syncRotate);
+  RotateView.init();
+  const chips = (id, items, pick) => {
+    $(id).innerHTML = items.map(item => `<button class="viewchip" type="button" aria-pressed="false">${item.vi}</button>`).join('');
+    $(id).querySelectorAll('.viewchip').forEach((chip, i) => chip.addEventListener('click', () => pick(i)));
+  };
+  chips('rotAz', ROTATE_AZ, i => setRotate({ az: Rotate.az + wrapDegrees(i * 45 - Rotate.az) }));
+  chips('rotEl', ROTATE_EL, i => setRotate({ el: ROTATE_EL[i].deg }));
+  chips('rotDist', ROTATE_DIST, i => setRotate({ dist: i }));
+  $('rotMode').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip || chip.dataset.mode === Rotate.mode) return;
+    Rotate.mode = chip.dataset.mode;
+    S.overrides.rotate = null;
+    if (Rotate.mode === 'dummy') Object.assign(Rotate, { az: Math.round(Rotate.az / 45) * 45, el: ROTATE_EL[rotateElIndex()].deg });
+    syncRotateMode();
+    renderPanel();
+  });
+  $('rotAzRange').addEventListener('input', e => { Rotate.az = Number(e.target.value); applyRotate(); });
+  $('rotElRange').addEventListener('input', e => { Rotate.el = Number(e.target.value); applyRotate(); });
+  $('rotAzRange').addEventListener('change', renderPanel);
+  $('rotElRange').addEventListener('change', renderPanel);
+  $('rotReset').addEventListener('click', () => setRotate({ az: Rotate.az + wrapDegrees(-Rotate.az), el: 0, splatZoom: 1 }));
+  $('rotRetry').addEventListener('click', () => {
+    Rotate.builtFrom = null;
+    Rotate.splat = null;
+    syncRotateMode();
+    renderPanel();
+  });
+  const view = $('rotView');
+  let start = null;
+  view.addEventListener('pointerdown', e => {
+    view.setPointerCapture(e.pointerId);
+    start = { x: e.clientX, y: e.clientY, az: Rotate.az, el: Rotate.el };
+    view.classList.add('dragging');
+    RotateView.setDragging(true);
+  });
+  view.addEventListener('pointermove', e => {
+    if (!start) return;
+    const limit = Rotate.mode === 'splat' ? [-80, 80] : [-30, 60];
+    Rotate.az = start.az - (e.clientX - start.x) * 0.4;
+    Rotate.el = Math.max(limit[0], Math.min(limit[1], start.el + (e.clientY - start.y) * 0.3));
+    applyRotate();
+  });
+  // Dummy: thả tay thì về nấc gần nhất, vì LoRA chỉ hiểu 8 hướng và 4 độ cao. Splat: giữ nguyên góc đang chọn.
+  const finish = () => {
+    if (!start) return;
+    start = null;
+    view.classList.remove('dragging');
+    RotateView.setDragging(false);
+    if (Rotate.mode === 'dummy') setRotate({ az: Math.round(Rotate.az / 45) * 45, el: ROTATE_EL[rotateElIndex()].deg });
+    else setRotate({});
+  };
+  view.addEventListener('pointerup', finish);
+  view.addEventListener('pointercancel', finish);
+  view.addEventListener('wheel', e => {
+    if (Rotate.mode !== 'splat') return;
+    e.preventDefault();
+    Rotate.splatZoom = Math.max(0.35, Math.min(3, Rotate.splatZoom * (e.deltaY > 0 ? 1.08 : 0.93)));
+    RotateView.request();
+  }, { passive: false });
+  syncRotate();
 }
 function buildSheetPanel() {
   buildSheetSlots();
@@ -4752,12 +5574,14 @@ function buildSheetPanel() {
 }
 function switchTab(tab) {
   S.tab = tab;
-  const sheet = tab === 'sheet';
-  $('tabEdit').setAttribute('aria-selected', String(!sheet));
-  $('tabSheet').setAttribute('aria-selected', String(sheet));
-  $('strip').hidden = sheet;
-  $('sheetPanel').hidden = !sheet;
-  document.querySelectorAll('.edit-only').forEach(el => { el.hidden = sheet; });
+  const edit = tab === 'edit';
+  $('tabEdit').setAttribute('aria-selected', String(edit));
+  $('tabSheet').setAttribute('aria-selected', String(tab === 'sheet'));
+  $('tabRotate').setAttribute('aria-selected', String(tab === 'rotate'));
+  $('strip').hidden = !edit;
+  $('sheetPanel').hidden = tab !== 'sheet';
+  $('rotatePanel').hidden = tab !== 'rotate';
+  document.querySelectorAll('.edit-only').forEach(el => { el.hidden = !edit; });
   closePop();
   toggleEnv(false);
   stopCapture();
@@ -4765,7 +5589,8 @@ function switchTab(tab) {
   brushcur.hidden = true;
   syncStage();
   renderPanel();
-  if (!sheet) fit();
+  if (edit) fit();
+  if (tab === 'rotate') syncRotateMode();
 }
 
 function buildApiPrompt({ image1, refs, text, resolution, seed, lora, latent }) {
@@ -5081,7 +5906,7 @@ async function queueGraph(graph) {
   if (!res.ok) throw new Error(promptErrorText(data));
   return data.prompt_id;
 }
-async function waitForImage(promptId) {
+async function waitForHistory(promptId, pick, missing) {
   for (;;) {
     if (run.cancelled) throw new Error('Đã dừng.');
     if (!job.started) await checkQueue(promptId);
@@ -5095,15 +5920,21 @@ async function waitForImage(promptId) {
         if (interrupted) throw new Error('Đã dừng.');
         throw new Error(failed ? `${failed[1].node_type}: ${failed[1].exception_message}` : 'ComfyUI chạy lỗi.');
       }
-      const images = Object.values(entry.outputs || {}).flatMap(o => o.images || []).filter(i => i.type === 'output');
-      if (images.length) return images[0];
-      if (status.completed) throw new Error('ComfyUI chạy xong nhưng không có ảnh ra.');
+      const found = pick(entry.outputs || {});
+      if (found) return found;
+      if (status.completed) throw new Error(missing);
     }
     await new Promise(resolve => setTimeout(resolve, 1500));
   }
 }
+function waitForImage(promptId) {
+  return waitForHistory(promptId, outputs => Object.values(outputs).flatMap(o => o.images || []).filter(i => i.type === 'output')[0], 'ComfyUI chạy xong nhưng không có ảnh ra.');
+}
+function viewUrl(info) {
+  return `/api/view?filename=${encodeURIComponent(info.filename)}&subfolder=${encodeURIComponent(info.subfolder || '')}&type=${encodeURIComponent(info.type)}`;
+}
 function loadOutput(info) {
-  const url = `/api/view?filename=${encodeURIComponent(info.filename)}&subfolder=${encodeURIComponent(info.subfolder || '')}&type=${encodeURIComponent(info.type)}`;
+  const url = viewUrl(info);
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve({ img, url });
@@ -5227,6 +6058,10 @@ async function generate() {
     await generateSheet();
     return;
   }
+  if (S.tab === 'rotate') {
+    await generateRotate();
+    return;
+  }
   const expand = S.passes.find(p => p.kind === 'expand');
   const edit = S.passes.find(p => p.kind === 'edit');
   const snap = takeRunSnapshot();
@@ -5301,6 +6136,7 @@ function endRun() {
   run.active = false;
   run.promptId = null;
   syncGen();
+  if (S.tab === 'rotate') syncRotateMode();
 }
 async function generateSheet() {
   const pass = S.passes.find(p => p.kind === 'sheet');
@@ -5319,6 +6155,43 @@ async function generateSheet() {
     const { img, url } = await loadOutput(await waitForImage(run.promptId));
     addResult(img, url, 'Char sheet');
     if (S.tab === 'sheet') openViewer(img, url);
+    hideJob();
+    setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
+  } catch (e) {
+    failRun(e);
+  } finally {
+    endRun();
+  }
+}
+// Dummy theo trang LoRA QMA, Splat theo trang và sơ đồ của LoRA AnyAngle: image_1 là ảnh gốc, image_2 là ảnh render.
+const ROTATE_RUN = {
+  dummy: { lora: 'qwen-image-2.1-qma-camera-angles.safetensors', steps: 30, cfg: 3 },
+  splat: { lora: 'QI2.1_AnyAngle.safetensors', steps: 20, cfg: 3 },
+};
+const ROTATE_REF_MP = 0.5;
+async function generateRotate() {
+  const pass = S.passes.find(p => p.kind === 'rotate');
+  const text = promptFor(pass);
+  const settings = ROTATE_RUN[Rotate.mode];
+  const splat = Rotate.mode === 'splat';
+  const main = splat ? Rotate.mainCanvas : fitMainForRotate(Rotate.slots[0].ref);
+  const render = splat ? RotateView.capture(main.width, main.height) : null;
+  const extras = Rotate.slots.slice(1).filter(s => s.ref).map(s => fitReference(s.ref, ROTATE_REF_MP));
+  const stamp = Date.now().toString(36);
+  beginRun();
+  try {
+    startPass(pass.name);
+    const name = await uploadCanvas(main, `${stamp}_rotate.png`);
+    const refs = await uploadAll(render ? [render, ...extras] : extras, `${stamp}_angle`);
+    const graph = buildApiPrompt({ image1: name, refs, text, resolution: 0, seed: randomSeed(), lora: settings.lora });
+    graph[8].inputs.steps = settings.steps;
+    graph[8].inputs.cfg = settings.cfg;
+    run.promptId = await queueGraph(graph);
+    advanceJob('queue');
+    renderJob();
+    const { img, url } = await loadOutput(await waitForImage(run.promptId));
+    addResult(img, url, 'Xoay');
+    if (S.tab === 'rotate') openViewer(img, url);
     hideJob();
     setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
   } catch (e) {
@@ -5352,6 +6225,7 @@ $('viewerUse').addEventListener('click', () => {
 $('captureCancel').addEventListener('click', stopCapture);
 $('tabEdit').addEventListener('click', () => switchTab('edit'));
 $('tabSheet').addEventListener('click', () => switchTab('sheet'));
+$('tabRotate').addEventListener('click', () => switchTab('rotate'));
 
 function sampleScene() {
   const c = document.createElement('canvas');
@@ -5394,14 +6268,22 @@ function sampleScene() {
 buildPop();
 buildSheetPanel();
 buildEnvBox();
+buildRotatePanel();
 renderTiles();
 if (ON_COMFY) {
   clearBase();
   connectProgress();
 } else {
   setBase(sampleScene(), true);
+  const sample = sampleScene();
+  Rotate.slots[0].ref = sample;
+  Rotate.slots[0].refUrl = sample.toDataURL('image/jpeg', 0.8);
+  syncRotate();
 }
-new ResizeObserver(() => { if (!drag && !live) fit(); }).observe(stage);
+new ResizeObserver(() => {
+  if (S.tab === 'rotate') { layoutRotateFrame(); RotateView.request(); }
+  else if (!drag && !live) fit();
+}).observe(stage);
 </script>
 </body>
 </html>
