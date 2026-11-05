@@ -3274,6 +3274,26 @@ svg{display:block}
 .drop svg{width:48px;height:48px}
 .stage.over{outline:2px dashed var(--paper);outline-offset:-6px}
 
+.tabs{display:flex;gap:4px;flex:none}
+.tab{background:transparent;border:0;border-bottom:2px solid transparent;padding:2px 10px 4px;color:var(--ink-2);font-weight:500;cursor:pointer}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--paper)}
+.sheetpanel{width:280px;display:grid;gap:10px;align-content:start;min-height:0;overflow-y:auto;padding:2px}
+.sheetbox{position:relative;display:grid;place-items:center;height:300px;border:1.5px dashed var(--ink-2);border-radius:4px;color:var(--ink-2);cursor:pointer;overflow:hidden}
+.sheetbox:hover{border-style:solid}
+.sheetbox:focus-within{outline:2px solid var(--paper);outline-offset:2px}
+.sheetbox.over{border-color:var(--paper)}
+.sheetbox img{position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:contain;background:var(--well)}
+.sheetempty-box{display:grid;justify-items:center;gap:4px}
+.sheetempty-box svg{width:32px;height:32px}
+.sheetx{position:absolute;right:6px;top:6px;width:24px;height:24px;padding:0;background:var(--well);border:1px solid var(--line);border-radius:3px;cursor:pointer;display:grid;place-items:center}
+.sheetx svg{width:12px;height:12px}
+.sheetwrap{position:relative}
+.viewchips{display:flex;flex-wrap:wrap;gap:6px}
+.viewchip{padding:4px 11px;background:var(--raised);border:1px solid var(--line);border-radius:14px;cursor:pointer}
+.viewchip[aria-pressed="true"]{background:var(--paper);color:var(--paper-ink);border-color:var(--paper)}
+.sheetpanel textarea.field{height:64px}
+.sheet-empty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:16px;color:var(--ink-2)}
 .capbox{position:absolute;pointer-events:none;outline:2px dashed #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px #00000066}
 .capture-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--paper);color:var(--paper-ink);border-radius:6px;font-weight:600;white-space:nowrap;box-shadow:0 8px 24px #00000080}
 .capture-hint button{background:transparent;border:1px solid var(--paper-ink);border-radius:4px;padding:2px 8px;color:inherit;font-weight:500;cursor:pointer}
@@ -3379,6 +3399,8 @@ a.btn{color:inherit;text-decoration:none}
   .strip hr{display:none}
   .ibtn{width:38px}
   .pop{width:min(100%,320px)}
+  .sheetpanel{width:auto;overflow:visible}
+  .sheetbox{height:180px}
   .size input{width:110px}
   #gen{flex:1}
 }
@@ -3386,8 +3408,12 @@ a.btn{color:inherit;text-decoration:none}
 
 <div class="app">
   <h1 class="sr">Concept Image Edit</h1>
+  <div class="tabs" role="tablist" aria-label="Chế độ">
+    <button class="tab" id="tabEdit" type="button" role="tab" aria-selected="true">Sửa ảnh</button>
+    <button class="tab" id="tabSheet" type="button" role="tab" aria-selected="false">Char sheet</button>
+  </div>
   <div class="main" id="main">
-    <nav class="strip" aria-label="Cọ và công cụ">
+    <nav class="strip" id="strip" aria-label="Cọ và công cụ">
       <div class="tiles" id="tiles"></div>
       <button class="add" id="addBrush" type="button" title="Thêm cọ (+)" aria-label="Thêm cọ" data-icon="plus"></button>
       <hr>
@@ -3398,7 +3424,26 @@ a.btn{color:inherit;text-decoration:none}
       <label class="ibtn" title="Đổi ảnh gốc"><span data-icon="image"></span><input class="sr" id="baseFile" type="file" accept="image/*" aria-label="Đổi ảnh gốc"></label>
     </nav>
 
+    <section class="sheetpanel" id="sheetPanel" aria-label="Char sheet" hidden>
+      <div class="sheetwrap">
+        <label class="sheetbox" id="sheetBox" title="Ảnh nhân vật">
+          <span class="sheetempty-box" id="sheetEmptyBox"><span data-icon="plus"></span><span>Ảnh nhân vật</span></span>
+          <img id="sheetImg" alt="Ảnh nhân vật" hidden>
+          <input class="sr" id="sheetFile" type="file" accept="image/*" aria-label="Ảnh nhân vật">
+        </label>
+        <button class="sheetx" id="sheetClear" type="button" title="Bỏ ảnh" aria-label="Bỏ ảnh" data-icon="close" hidden></button>
+      </div>
+      <div class="viewchips" id="sheetViews" role="group" aria-label="Góc nhìn"></div>
+      <textarea class="field" id="sheetNote" placeholder="Mô tả thêm (tiếng Anh)" aria-label="Mô tả thêm"></textarea>
+      <select class="field" id="sheetSize" aria-label="Cỡ bảng nhân vật" title="Càng lớn càng chậm">
+        <option value="1408x768">1408 × 768</option>
+        <option value="2048x1152" selected>2048 × 1152</option>
+        <option value="2720x1536">2720 × 1536</option>
+      </select>
+    </section>
+
     <div class="stage" id="stage">
+      <div class="sheet-empty" id="sheetEmpty" hidden>Bảng nhân vật sẽ hiện ở đây</div>
       <div class="frame" id="frame">
         <canvas id="view"></canvas>
         <div class="capbox" id="capbox" hidden></div>
@@ -3480,15 +3525,15 @@ a.btn{color:inherit;text-decoration:none}
   <div class="results" id="results" aria-label="Kết quả" hidden></div>
 
   <div class="bar">
-    <label class="size" title="Cỡ cọ ([ ])">
+    <label class="size edit-only" title="Cỡ cọ ([ ])">
       <span style="width:6px;height:6px"></span>
       <input id="size" type="range" min="8" max="400" value="72" aria-label="Cỡ cọ">
       <span style="width:14px;height:14px"></span>
     </label>
-    <span class="nums" id="readout"></span>
-    <span class="warn" id="sizeNote"></span>
+    <span class="nums edit-only" id="readout"></span>
+    <span class="warn edit-only" id="sizeNote"></span>
     <span class="grow"></span>
-    <select class="field model" id="resolution" aria-label="Độ nét khi gen" title="Càng lớn vùng sửa càng nét và càng chậm. Ảnh ra luôn giữ cỡ ảnh đang sửa.">
+    <select class="field model edit-only" id="resolution" aria-label="Độ nét khi gen" title="Càng lớn vùng sửa càng nét và càng chậm. Ảnh ra luôn giữ cỡ ảnh đang sửa.">
       <option value="1024">Gen ở 1 MP</option>
       <option value="2048">Gen ở 4 MP</option>
       <option value="0">Gen ở cỡ gốc</option>
@@ -3646,7 +3691,7 @@ const S = {
   pads: { left: 0, right: 0, top: 0, bottom: 0 },
   strokes: [], past: [], future: [],
   brushes: [], nextId: 1, active: null, editing: null, erase: false, size: 72,
-  padsPainted: false, capture: null, baseFromResult: false,
+  padsPainted: false, capture: null, baseFromResult: false, isSample: false, tab: 'edit',
   scene: '',
   overrides: { expand: null, marks: null },
 };
@@ -4018,15 +4063,16 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
   });
   $('promptDot').hidden = !problems.length;
   $('problems').replaceChildren(...problems.map(p => { const li = document.createElement('li'); li.textContent = p.text; return li; }));
-  $('scene').hidden = !needsOutpaint() || !S.base;
+  $('scene').hidden = S.tab === 'sheet' || !needsOutpaint() || !S.base;
   $('noPrompt').hidden = passes.length > 0 || problems.length > 0;
+  $('noPrompt').textContent = S.tab === 'sheet' ? 'Thêm ảnh nhân vật để tạo prompt.' : 'Tô hoặc kéo rộng để tạo prompt.';
   S.passes = passes;
   S.problems = problems;
   syncGen();
@@ -4037,7 +4083,7 @@ function renderPanel() {
     const sec = document.createElement('section');
     sec.className = 'pass';
     const auto = pass.lines.map(l => l.en).join(' ');
-    const override = S.overrides[pass.kind];
+    const override = S.overrides[pass.kind] ?? null;
 
     const head = document.createElement('div');
     head.className = 'pass-head';
@@ -4062,7 +4108,14 @@ function renderPanel() {
 
     const slots = document.createElement('div');
     slots.className = 'slots';
-    if (pass.kind === 'expand') {
+    if (pass.kind === 'sheet') {
+      slots.append(slotFigure('image_1', 'Ảnh nhân vật', cv => {
+        const rw = Sheet.ref.naturalWidth || Sheet.ref.width, rh = Sheet.ref.naturalHeight || Sheet.ref.height;
+        cv.width = 144;
+        cv.height = Math.max(1, Math.round(rh * 144 / rw));
+        cv.getContext('2d').drawImage(Sheet.ref, 0, 0, cv.width, cv.height);
+      }));
+    } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv, false)));
     } else {
       slots.append(slotFigure('image_1', needsOutpaint() ? 'Kết quả lượt 1 + nét tô' : 'Ảnh đã tô', cv => paintThumb(cv, true)));
@@ -4287,6 +4340,7 @@ function loadFile(file, done) {
 function setBase(img, sample, fromResult) {
   stopCapture();
   S.base = img;
+  S.isSample = !!sample;
   S.baseFromResult = !!fromResult;
   S.w = img.naturalWidth || img.width;
   S.h = img.naturalHeight || img.height;
@@ -4294,12 +4348,17 @@ function setBase(img, sample, fromResult) {
   S.strokes = [];
   S.past = [];
   S.future = [];
-  S.overrides = { expand: null, marks: null };
-  frame.hidden = false;
-  $('drop').hidden = true;
-  $('sampleTag').hidden = !sample;
+  S.overrides = { ...S.overrides, expand: null, marks: null };
+  syncStage();
   afterChange();
   fit();
+}
+function syncStage() {
+  const sheet = S.tab === 'sheet';
+  frame.hidden = sheet || !S.base;
+  $('drop').hidden = sheet || !!S.base;
+  $('sampleTag').hidden = sheet || !S.base || !S.isSample;
+  $('sheetEmpty').hidden = !sheet;
 }
 function takeBase(file) {
   if (file && file.type.startsWith('image/')) loadFile(file, img => setBase(img, false));
@@ -4314,7 +4373,8 @@ stage.addEventListener('dragover', () => stage.classList.add('over'));
 stage.addEventListener('dragleave', () => stage.classList.remove('over'));
 stage.addEventListener('drop', e => {
   stage.classList.remove('over');
-  takeBase(e.dataTransfer.files[0]);
+  if (S.tab === 'sheet') takeSheetRef(e.dataTransfer.files[0]);
+  else takeBase(e.dataTransfer.files[0]);
 });
 
 function toggleDrawer(open) {
@@ -4336,12 +4396,11 @@ function clearBase() {
   S.base = null; S.w = 0; S.h = 0;
   S.pads = { left: 0, right: 0, top: 0, bottom: 0 };
   S.strokes = []; S.past = []; S.future = []; S.scene = '';
-  S.overrides = { expand: null, marks: null };
+  S.overrides = { ...S.overrides, expand: null, marks: null };
+  S.isSample = false;
   $('scene').value = '';
   closePop();
-  frame.hidden = true;
-  $('sampleTag').hidden = true;
-  $('drop').hidden = false;
+  syncStage();
   rebuildLayer();
   measureCover();
   syncBar();
@@ -4350,7 +4409,7 @@ function clearBase() {
 $('sampleTag').addEventListener('click', clearBase);
 window.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closePop(); $('viewer').hidden = true; stopCapture(); return; }
-  if (e.target.matches('input,textarea,select')) return;
+  if (e.target.matches('input,textarea,select') || S.tab !== 'edit') return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     if (e.shiftKey) restore(S.future, S.past); else restore(S.past, S.future);
@@ -4382,7 +4441,100 @@ const EDIT_GRAPH = {
   9: { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
 };
 
-function buildApiPrompt({ image1, refs, text, resolution, seed, lora }) {
+const SHEET_VIEWS = [
+  { id: 'front', label: 'Trước', en: 'front view', vi: 'nhìn trước', on: true },
+  { id: 'three', label: '3/4', en: 'three-quarter view', vi: 'góc 3/4', on: true },
+  { id: 'side', label: 'Nghiêng', en: 'side view', vi: 'nhìn nghiêng', on: true },
+  { id: 'back', label: 'Sau', en: 'back view', vi: 'nhìn sau', on: true },
+  { id: 'face', label: 'Cận mặt', on: false },
+];
+const Sheet = { ref: null, refUrl: '', views: new Set(SHEET_VIEWS.filter(v => v.on).map(v => v.id)), note: '' };
+
+function buildSheetPasses() {
+  if (!Sheet.ref) return { passes: [], problems: [] };
+  const picked = SHEET_VIEWS.filter(v => v.en && Sheet.views.has(v.id));
+  if (!picked.length) return { passes: [], problems: [{ brush: null, text: 'Chọn ít nhất một góc nhìn' }] };
+  const lines = [
+    {
+      en: `Using the character in <image1>, create a character reference sheet on a plain light gray background: ${picked.map(v => v.en).join(', ')}, full body, same scale, evenly spaced in one row.`,
+      vi: `Dựa trên nhân vật trong <image1>, tạo bảng nhân vật trên nền xám nhạt trơn: ${picked.map(v => v.vi).join(', ')}, toàn thân, cùng tỉ lệ, cách đều trên một hàng.`,
+    },
+    {
+      en: 'Keep the face, hair, body shape, outfit and colors identical to <image1> in every view.',
+      vi: 'Giữ mặt, tóc, vóc dáng, trang phục và màu sắc giống hệt <image1> ở mọi góc.',
+    },
+    { en: 'Neutral standing pose, even studio lighting, no text, no labels.', vi: 'Dáng đứng trung tính, ánh sáng studio đều, không chữ, không nhãn.' },
+  ];
+  if (Sheet.views.has('face')) lines.push({ en: 'Add a close-up of the face.', vi: 'Thêm một ô cận mặt.' });
+  const note = Sheet.note.trim().replace(/[.\s]+$/, '');
+  if (note) lines.push({ en: `${note}.`, vi: `${note}.` });
+  return { passes: [{ kind: 'sheet', name: 'Char sheet', lines, slots: [] }], problems: [] };
+}
+function syncSheetBox() {
+  const has = !!Sheet.ref;
+  $('sheetImg').hidden = !has;
+  if (has) $('sheetImg').src = Sheet.refUrl;
+  $('sheetEmptyBox').hidden = has;
+  $('sheetClear').hidden = !has;
+}
+function takeSheetRef(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  loadFile(file, (img, url) => {
+    Sheet.ref = img;
+    Sheet.refUrl = url;
+    syncSheetBox();
+    renderPanel();
+  });
+}
+function buildSheetPanel() {
+  $('sheetViews').innerHTML = SHEET_VIEWS.map(v => `<button class="viewchip" type="button" data-view="${v.id}" aria-pressed="${Sheet.views.has(v.id)}">${v.label}</button>`).join('');
+  $('sheetViews').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip) return;
+    const id = chip.dataset.view;
+    if (Sheet.views.has(id)) Sheet.views.delete(id); else Sheet.views.add(id);
+    chip.setAttribute('aria-pressed', String(Sheet.views.has(id)));
+    renderPanel();
+  });
+  $('sheetFile').addEventListener('change', e => {
+    takeSheetRef(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('sheetClear').addEventListener('click', () => {
+    Sheet.ref = null;
+    Sheet.refUrl = '';
+    syncSheetBox();
+    renderPanel();
+  });
+  $('sheetNote').addEventListener('input', e => { Sheet.note = e.target.value; renderPanel(); });
+  const box = $('sheetBox');
+  box.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); box.classList.add('over'); });
+  box.addEventListener('dragleave', () => box.classList.remove('over'));
+  box.addEventListener('drop', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    box.classList.remove('over');
+    takeSheetRef(e.dataTransfer.files[0]);
+  });
+}
+function switchTab(tab) {
+  S.tab = tab;
+  const sheet = tab === 'sheet';
+  $('tabEdit').setAttribute('aria-selected', String(!sheet));
+  $('tabSheet').setAttribute('aria-selected', String(sheet));
+  $('strip').hidden = sheet;
+  $('sheetPanel').hidden = !sheet;
+  document.querySelectorAll('.edit-only').forEach(el => { el.hidden = sheet; });
+  closePop();
+  stopCapture();
+  $('viewer').hidden = true;
+  brushcur.hidden = true;
+  syncStage();
+  renderPanel();
+  if (!sheet) fit();
+}
+
+function buildApiPrompt({ image1, refs, text, resolution, seed, lora, latent }) {
   const graph = JSON.parse(JSON.stringify(EDIT_GRAPH));
   const encoder = graph[7].inputs;
   graph[4].inputs.image = image1;
@@ -4397,6 +4549,11 @@ function buildApiPrompt({ image1, refs, text, resolution, seed, lora }) {
   if (lora) {
     graph[15] = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: lora, strength_model: 1 } };
     graph[8].inputs.model = ['15', 0];
+  }
+  if (latent) {
+    // Như nhánh custom size của workflow Qwen chính thức: cỡ ảnh ra theo khung trống thay vì theo image_1.
+    graph[30] = { class_type: 'EmptyLatentImage', inputs: { width: latent.w, height: latent.h, batch_size: 1 } };
+    graph[8].inputs.latent_image = ['30', 0];
   }
   return graph;
 }
@@ -4731,6 +4888,10 @@ async function generate() {
     }
     return;
   }
+  if (S.tab === 'sheet') {
+    await generateSheet();
+    return;
+  }
   const expand = S.passes.find(p => p.kind === 'expand');
   const marks = S.passes.find(p => p.kind === 'marks');
   const snap = takeRunSnapshot();
@@ -4740,16 +4901,7 @@ async function generate() {
   const resolution = Number($('resolution').value);
   const stamp = Date.now().toString(36);
   const strokesAtStart = S.strokes;
-  run.active = true;
-  run.cancelled = false;
-  run.promptId = null;
-  job.startedAt = Date.now();
-  job.cancelling = false;
-  setStatus('');
-  $('gen').textContent = 'Dừng';
-  clearInterval(job.timer);
-  job.timer = setInterval(renderJob, 1000);
-  syncGen();
+  beginRun();
   try {
     let current = snap.padded;
     let finished = null;
@@ -4783,16 +4935,58 @@ async function generate() {
     hideJob();
     setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.${continued ? ' Đang sửa tiếp trên ảnh này.' : ''}`);
   } catch (e) {
-    if (run.cancelled) {
-      hideJob();
-      setStatus('Đã dừng.');
-    } else {
-      showJobError(e.message || String(e));
-    }
+    failRun(e);
   } finally {
-    run.active = false;
-    run.promptId = null;
-    syncGen();
+    endRun();
+  }
+}
+function beginRun() {
+  run.active = true;
+  run.cancelled = false;
+  run.promptId = null;
+  job.startedAt = Date.now();
+  job.cancelling = false;
+  setStatus('');
+  $('gen').textContent = 'Dừng';
+  clearInterval(job.timer);
+  job.timer = setInterval(renderJob, 1000);
+  syncGen();
+}
+function failRun(e) {
+  if (run.cancelled) {
+    hideJob();
+    setStatus('Đã dừng.');
+  } else {
+    showJobError(e.message || String(e));
+  }
+}
+function endRun() {
+  run.active = false;
+  run.promptId = null;
+  syncGen();
+}
+async function generateSheet() {
+  const pass = S.passes.find(p => p.kind === 'sheet');
+  const text = promptFor(pass);
+  const reference = imageToCanvas(Sheet.ref);
+  const [w, h] = $('sheetSize').value.split('x').map(Number);
+  const stamp = Date.now().toString(36);
+  beginRun();
+  try {
+    startPass('Char sheet');
+    const image1 = await uploadCanvas(reference, `${stamp}_sheet.png`);
+    run.promptId = await queueGraph(buildApiPrompt({ image1, refs: [], text, resolution: 1024, seed: randomSeed(), lora: null, latent: { w, h } }));
+    advanceJob('queue');
+    renderJob();
+    const { img, url } = await loadOutput(await waitForImage(run.promptId));
+    addResult(img, url, 'Char sheet');
+    if (S.tab === 'sheet') openViewer(img, url);
+    hideJob();
+    setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
+  } catch (e) {
+    failRun(e);
+  } finally {
+    endRun();
   }
 }
 function copyText(text) {
@@ -4814,9 +5008,12 @@ $('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; })
 $('viewerUse').addEventListener('click', () => {
   if (!shown) return;
   $('viewer').hidden = true;
+  if (S.tab !== 'edit') switchTab('edit');
   setBase(shown, false, true);
 });
 $('captureCancel').addEventListener('click', stopCapture);
+$('tabEdit').addEventListener('click', () => switchTab('edit'));
+$('tabSheet').addEventListener('click', () => switchTab('sheet'));
 
 function sampleScene() {
   const c = document.createElement('canvas');
@@ -4857,6 +5054,7 @@ function sampleScene() {
 }
 
 buildPop();
+buildSheetPanel();
 renderTiles();
 if (ON_COMFY) {
   clearBase();
