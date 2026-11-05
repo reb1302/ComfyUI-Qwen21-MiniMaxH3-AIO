@@ -3595,8 +3595,8 @@ const TYPES = {
 const extra = n => (n ? `, ${n}` : '');
 const upper = t => t.charAt(0).toUpperCase() + t.slice(1);
 const ONE_FIGURE = {
-  en: r => `Use <image${r}> only for how the character looks, draw one single figure, do not copy the layout of <image${r}>.`,
-  vi: r => `Chỉ dùng <image${r}> để biết nhân vật trông thế nào, vẽ đúng một người, không chép bố cục của <image${r}>.`,
+  en: r => `<image${r}> is a character reference sheet of one character. Use it only for the character's face, hair, body and outfit. Ignore its lighting, background, poses and layout, and draw one single figure.`,
+  vi: r => `<image${r}> là sheet tham chiếu của một nhân vật. Chỉ dùng nó để biết mặt, tóc, vóc dáng và trang phục. Bỏ qua ánh sáng, nền, dáng và bố cục của nó, vẽ đúng một người.`,
 };
 const PROMPTS = {
   outpaint: {
@@ -3605,8 +3605,8 @@ const PROMPTS = {
   },
   scene: { en: t => `Scene: ${t}.`, vi: t => `Mô tả cảnh: ${t}.` },
   character: {
-    en: (w, r, n) => `Replace the person${w.en} with the character from <image${r}>${extra(n)}. Keep the same pose, position, size and camera angle. ${ONE_FIGURE.en(r)}`,
-    vi: (w, r, n) => `Thay người${w.vi} bằng nhân vật từ <image${r}>${extra(n)}. Giữ nguyên dáng, vị trí, cỡ và góc máy. ${ONE_FIGURE.vi(r)}`,
+    en: (w, r, n) => `Replace the whole person in <image1>${w.en} with the character from <image${r}>${extra(n)}. Keep the exact pose, position, size and camera angle of the person in <image1>. ${ONE_FIGURE.en(r)}`,
+    vi: (w, r, n) => `Thay toàn bộ người trong <image1>${w.vi} bằng nhân vật từ <image${r}>${extra(n)}. Giữ đúng dáng, vị trí, cỡ và góc máy của người trong <image1>. ${ONE_FIGURE.vi(r)}`,
   },
   addChar: {
     en: (w, r, n) => `Add the character from <image${r}>${w.en}${extra(n)}, in a natural pose for the scene. ${ONE_FIGURE.en(r)}`,
