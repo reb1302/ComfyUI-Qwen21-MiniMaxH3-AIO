@@ -2423,6 +2423,68 @@ class stoneV_ScreenX_Cut:
         return (cut, out_w, out_h)
 
 
+SCREENX_PAINT_MULTIPLE = 64  # LTX-2.5 cắt hình về bội số 64 ngay sau bước đệm, khung phải khớp sẵn để không mất hình
+
+
+class Huy_screenx_outpain_mask:
+    """
+    Chuẩn bị vùng paint, không gen gì: nới khung về 1 bên của ảnh/video và trả mask vùng cần vẽ.
+    Ảnh gốc giữ nguyên, vùng mới tô xám 0.5. Mask = 1 ở vùng cần vẽ, = 0 ở ảnh gốc.
+    Mask giống nhau ở mọi frame nên chỉ tính 1 lần rồi nhân đủ số frame, vì blend của LTX cắt video theo số frame của mask.
+    Tổng chiều rộng và chiều cao tự làm tròn lên bội số 64.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "side": (["left", "right"], {
+                    "default": "left",
+                    "tooltip": "left = vẽ thêm cánh trái, right = vẽ thêm cánh phải.",
+                }),
+                "wing_width": ("INT", {
+                    "default": 1024,
+                    "min": 64,
+                    "max": 8192,
+                    "step": 64,
+                    "tooltip": "Độ rộng cánh, tính bằng px của ảnh đưa vào node.",
+                }),
+                "extra_height": ("INT", {
+                    "default": 0,
+                    "min": 0,
+                    "max": 4096,
+                    "step": 32,
+                    "tooltip": "Phần nới thêm ở MỖI cạnh trên và dưới, tính bằng px. 0 = giữ nguyên chiều cao.",
+                }),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_NAMES = ("image", "mask")
+    FUNCTION = "prepare"
+    CATEGORY = "stoneV"
+
+    def prepare(
+        self,
+        image: torch.Tensor,
+        side: str = "left",
+        wing_width: int = 1024,
+        extra_height: int = 0,
+    ):
+        frames, height, width, channels = image.shape
+        canvas_w = math.ceil((width + wing_width) / SCREENX_PAINT_MULTIPLE) * SCREENX_PAINT_MULTIPLE
+        canvas_h = math.ceil((height + 2 * extra_height) / SCREENX_PAINT_MULTIPLE) * SCREENX_PAINT_MULTIPLE
+        left = canvas_w - width if side == "left" else 0
+        top = (canvas_h - height) // 2
+
+        canvas = image.new_full((frames, canvas_h, canvas_w, channels), 0.5)
+        canvas[:, top : top + height, left : left + width, :] = image
+        mask = image.new_ones((canvas_h, canvas_w))
+        mask[top : top + height, left : left + width] = 0.0
+        return (canvas, mask.repeat(frames, 1, 1))
+
+
 # ==============================================================================
 # RTX Video Super Resolution Pro & AI 4x-UltraSharp 16K Upscaler
 # ==============================================================================
@@ -5254,6 +5316,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_SeamlessRestore": stoneV_SeamlessRestore,
     "stoneV_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
     "stoneV_ScreenX_Cut": stoneV_ScreenX_Cut,
+    "Huy_screenx_outpain_mask": Huy_screenx_outpain_mask,
     "stoneV_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
     "stoneV_Panorama_Stitch2": stoneV_Panorama_Stitch2,
     "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
@@ -5285,6 +5348,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "stoneV_SeamlessRestore": "stoneV: Seamless Restore Original (Image / Video)",
     "stoneV_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
     "stoneV_ScreenX_Cut": "stoneV: ScreenX Cut (Cánh + Ảnh Giữa)",
+    "Huy_screenx_outpain_mask": "Huy_screenx outpain mask",
     "stoneV_Panorama360_AutoLoop": "stoneV Panorama 360: Auto-Loop Multi-Ref & Height Expand",
     "stoneV_Panorama_Stitch2": "stoneV Panorama: Stitch & Feather 2 Plates",
     "VStone_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
