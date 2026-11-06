@@ -3001,6 +3001,12 @@ class stoneV_CloudSyncHub:
         custom_target_folder: str = "loras",
         unique_id: Any = None,
     ):
+        # ComfyUI giữ đối tượng node giữa các lần Queue (execution.py, caches.objects), nên sau khi nạp nóng
+        # node đang nằm trên màn hình vẫn chạy code cũ. Chuyển sang lớp mới nhất đã nạp.
+        import nodes
+        newest = nodes.NODE_CLASS_MAPPINGS.get("stoneV_CloudSyncHub")
+        if newest is not None and getattr(newest, "run_sync", None) is not stoneV_CloudSyncHub.run_sync:
+            return newest.run_sync(self, action, preset_model, custom_url, custom_target_folder, unique_id)
         if action.startswith("0."):
             report = install_ltx25_one_click(unique_id)
             _vstone_ui_status(unique_id, report)
