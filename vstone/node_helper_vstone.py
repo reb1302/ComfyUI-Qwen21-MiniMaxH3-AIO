@@ -1862,12 +1862,14 @@ def install_bfs_swap_packs(unique_id: Any = None) -> str:
 
 
 # ------------------------------------------------------------------------------
-# LLM Qwen3.6-35B-A3B chạy bằng vLLM trong môi trường riêng (vLLM kéo torch riêng, không được đụng torch của ComfyUI).
+# LLM Qwen3.8-27B (Huihui Abliterated FP8) chạy bằng vLLM trong môi trường riêng (vLLM kéo torch riêng, không được đụng torch của ComfyUI).
 # vLLM nghe ở cổng nội bộ, trang HTML gọi qua /vstone/llm trên chính cổng của ComfyUI, nên không cần mở thêm cổng.
 # ------------------------------------------------------------------------------
 LLM_ROUTE = "/vstone/llm"
-LLM_MODEL_REPO = "Qwen/Qwen3.6-35B-A3B-FP8"
-LLM_SERVED_NAME = "qwen3.6-35b-a3b"
+LLM_MODEL_REPO = "munekazu/Huihui-Qwen3.8-27B-abliterated-FP8"
+LLM_MODEL_DIR = "Huihui-Qwen3.8-27B-abliterated-FP8"
+LLM_SERVED_NAME = "qwen3.8-27b-abliterated"
+LLM_LEGACY_NAME = "qwen3.6-35b-a3b"
 LLM_PORT = 8010
 LLM_GPU_SHARE = 0.4
 LLM_MAX_LEN = 65536
@@ -1883,8 +1885,8 @@ def _llm_paths(root: str) -> dict[str, str]:
         "venv": venv,
         "python": python,
         "vllm_ok": os.path.join(venv, ".vllm_installed"),
-        "model": os.path.join(base, "Qwen3.6-35B-A3B-FP8"),
-        "model_ok": os.path.join(base, "Qwen3.6-35B-A3B-FP8", ".download_complete"),
+        "model": os.path.join(base, LLM_MODEL_DIR),
+        "model_ok": os.path.join(base, LLM_MODEL_DIR, ".download_complete"),
         "setup_log": os.path.join(base, "setup.log"),
         "server_log": os.path.join(base, "vllm.log"),
         "pid": os.path.join(base, "vllm.pid"),
@@ -1902,7 +1904,8 @@ def _llm_state() -> dict[str, Any]:
 def _llm_alive() -> bool:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{LLM_PORT}/v1/models", timeout=2) as resp:
-            return resp.status == 200
+            body = resp.read().decode("utf-8", errors="replace")
+            return resp.status == 200 and (LLM_SERVED_NAME in body or LLM_MODEL_DIR in body)
     except Exception:
         return False
 
@@ -1919,8 +1922,8 @@ def _llm_pick_gpu() -> tuple[int, int, int]:
         return 0, 0, 0
 
 
-# Model FP8 khoảng 35 GB, cộng KV cache và phần đệm. Dưới mức này thì không bật, báo card đang bận.
-LLM_MIN_GIB = 40
+# Model FP8 khoảng 29 GB, cộng KV cache và phần đệm. Dưới mức này thì không bật, báo card đang bận.
+LLM_MIN_GIB = 36
 LLM_START_GRACE_SEC = 600
 
 
@@ -1985,7 +1988,8 @@ def _llm_stop(paths: dict[str, str]) -> None:
 def _log_tail(path: str, lines: int = 6) -> str:
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
-            return "".join(f.readlines()[-lines:]).strip()
+            rows = [line.strip() for line in f.read().replace("\r", "\n").splitlines() if line.strip()]
+            return "\n".join(rows[-lines:])
     except OSError:
         return ""
 
@@ -2049,12 +2053,12 @@ def _llm_progress(path: str) -> str:
 
 
 def _llm_last_run_eager(path: str) -> bool:
-    """Kiểm tra lần chạy gần nhất trong log đã có --enforce-eager chưa (để không báo lại lỗi Segfault của bản cũ)."""
+    """Kiểm tra lần chạy gần nhất trong log đã là model hiện tại (LLM_MODEL_DIR) và có --enforce-eager chưa."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
         start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=-1)
-        return start >= 0 and "--enforce-eager" in lines[start]
+        return start >= 0 and "--enforce-eager" in lines[start] and LLM_MODEL_DIR in lines[start]
     except OSError:
         return False
 
@@ -2083,7 +2087,7 @@ def _llm_start_server(root: str) -> None:
                VLLM_USE_DEEP_GEMM="0", VLLM_MOE_USE_DEEP_GEMM="0")
     cmd = [
         paths["python"], "-m", "vllm.entrypoints.openai.api_server",
-        "--model", paths["model"], "--served-model-name", LLM_SERVED_NAME,
+        "--model", paths["model"], "--served-model-name", LLM_SERVED_NAME, LLM_LEGACY_NAME,
         "--host", "127.0.0.1", "--port", str(LLM_PORT),
         "--gpu-memory-utilization", str(share), "--max-model-len", str(max_len),
         "--enforce-eager",
@@ -2102,6 +2106,8 @@ def _llm_start_server(root: str) -> None:
 def _llm_setup(root: str) -> None:
     state, paths = _llm_state(), _llm_paths(root)
     os.makedirs(paths["base"], exist_ok=True)
+    # Tắt vLLM của model cũ (nếu đang chạy) để giải phóng VRAM trước khi tải/bật model mới.
+    _llm_stop(paths)
     steps = []
     if not os.path.isfile(paths["vllm_ok"]):
         if not os.path.isfile(paths["python"]):
@@ -2110,7 +2116,7 @@ def _llm_setup(root: str) -> None:
         steps.append(("Cài vLLM, khoảng 10 phút", [paths["python"], "-m", "pip", "install", "-U", "vllm"], paths["vllm_ok"]))
     if not os.path.isfile(paths["model_ok"]):
         download = f"from huggingface_hub import snapshot_download; snapshot_download({LLM_MODEL_REPO!r}, local_dir={paths['model']!r})"
-        steps.append(("Tải model khoảng 35 GB", [paths["python"], "-c", download], paths["model_ok"]))
+        steps.append((f"Tải model {LLM_MODEL_DIR} (khoảng 29 GB)", [paths["python"], "-c", download], paths["model_ok"]))
     try:
         with open(paths["setup_log"], "a", encoding="utf-8") as log:
             for label, cmd, marker in steps:
@@ -2153,7 +2159,7 @@ def install_llm(unique_id: Any = None) -> str:
             _restart_comfyui_after(5.0)
             return "🔄 vLLM đã chạy. ComfyUI khởi động lại một lần để mở đường dẫn /vstone/llm. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa."
         gpu = state.get("gpu")
-        return (f"✅ LLM {LLM_SERVED_NAME} đang chạy{f' trên GPU {gpu}' if gpu is not None else ''}. "
+        return (f"✅ LLM {LLM_MODEL_DIR} đang chạy{f' trên GPU {gpu}' if gpu is not None else ''}. "
                 f"Gọi qua {LLM_ROUTE}/v1/chat/completions trên cổng ComfyUI.")
     if state["busy"]:
         detail = _llm_progress(paths["server_log"]) if state["stage"] == "Khởi động vLLM" else _log_tail(paths["setup_log"], 3)
@@ -2168,7 +2174,7 @@ def install_llm(unique_id: Any = None) -> str:
         dead = proc.poll() is not None if proc is not None else _llm_pid_running(paths) is None
         if not dead:
             state["stage"] = "Khởi động vLLM"
-            return "\n".join(["⏳ vLLM đang khởi động, thường 2-3 phút. Bấm Queue lại để xem tiến độ.", _llm_progress(paths["server_log"])])
+            return "\n".join(["⏳ vLLM đang khởi động, thường 1-2 phút. Bấm Queue lại để xem tiến độ.", _llm_progress(paths["server_log"])])
         state.update(stage="", proc=None)
         if _llm_last_run_eager(paths["server_log"]):
             return "\n".join(["❌ vLLM dừng khi khởi động. Gửi các dòng dưới đây để sửa, rồi bấm Queue để thử lại.",
@@ -2181,13 +2187,13 @@ def install_llm(unique_id: Any = None) -> str:
             return f"❌ {err}"
         gpu = state.get("gpu")
         return "\n".join([
-            f"⏳ Đã bật vLLM mới (--enforce-eager) trên GPU {gpu if gpu is not None else 0}, thường mất 2-3 phút nạp 42 phần trọng số. Bấm Queue lại sau 30 giây để xem % tiến độ.",
+            f"⏳ Đã bật vLLM ({LLM_MODEL_DIR}) trên GPU {gpu if gpu is not None else 0}, thường mất 1-2 phút nạp 6 phần trọng số. Bấm Queue lại sau 30 giây để xem % tiến độ.",
             _llm_progress(paths["server_log"]),
         ])
     state.update(busy=True, error="", stage="Chuẩn bị")
     threading.Thread(target=_llm_setup, args=(root,), name="VStoneLLMSetup", daemon=True).start()
-    return ("⏳ Bắt đầu cài LLM ngầm: môi trường riêng, vLLM (khoảng 10 phút), model khoảng 35 GB. "
-            "ComfyUI vẫn dùng bình thường. Bấm Queue lại để xem tiến độ.")
+    return (f"⏳ Bắt đầu tải và bật LLM mới ({LLM_MODEL_DIR}, khoảng 29 GB). "
+            "Môi trường vLLM đã có sẵn nên chỉ cần tải model. ComfyUI vẫn dùng bình thường. Bấm Queue lại để xem tiến độ.")
 
 
 def _register_llm_route() -> None:
@@ -4093,7 +4099,7 @@ a.btn{color:inherit;text-decoration:none}
       <div class="viewchips" id="chatMode" role="group" aria-label="Việc cần làm"></div>
       <p class="envhint" id="chatHint"></p>
       <button class="viewchip" id="chatClear" type="button">Cuộc trò chuyện mới</button>
-      <p class="envhint">Model Qwen3.6-35B-A3B chạy trên H200.</p>
+      <p class="envhint">Model Qwen3.8-27B (Huihui Abliterated FP8) chạy trên H200.</p>
     </section>
 
     <section class="sheetpanel" id="swapPanel" aria-label="Đổi người" hidden>
