@@ -1656,6 +1656,9 @@ AUSBOSS_PACK: dict[str, Any] = {
         "AUSBOSS_NODES_StitchInpaint",
         "AUSBOSS_NODES_Text",
         "AUSBOSS_NODES_WorkflowNote",
+        # Workflow Tiled Upscale của tác giả cần pack 2.15.0 trở lên, pack cũ hơn thì thiếu hai node này và sẽ được pull.
+        "AUSBOSS_NODES_TiledUpscale",
+        "AUSBOSS_NODES_TiledUpscaleStitch",
     ],
 }
 AUSBOSS_RESTARTED_ENV = "VSTONE_AUSBOSS_PACK_RESTARTED"
@@ -1670,7 +1673,9 @@ def install_ausboss_outpaint(unique_id: Any = None) -> str:
     missing = _missing_node_ids(AUSBOSS_PACK["node_ids"])
     if not missing:
         return f"✅ Pack AusBoss đã đủ node. Mở workflow {AUSBOSS_WORKFLOW}."
-    if os.environ.get(AUSBOSS_RESTARTED_ENV) == "1":
+    # os.execv giữ biến môi trường, nên nhớ các node đã thử cài; node mới thêm vào danh sách vẫn được cài.
+    tried = set(filter(None, os.environ.get(AUSBOSS_RESTARTED_ENV, "").split(",")))
+    if set(missing) <= tried:
         return "\n".join([
             "❌ Đã khởi động lại nhưng vẫn thiếu node AusBoss. Xem log khởi động, dòng IMPORT FAILED.",
             "Thiếu node: " + ", ".join(missing),
@@ -1686,7 +1691,7 @@ def install_ausboss_outpaint(unique_id: Any = None) -> str:
     if not ok or not os.path.isfile(os.path.join(pack_dir, "__init__.py")):
         return f"❌ Không tải được pack AusBoss, chưa khởi động lại. {tail}"
 
-    os.environ[AUSBOSS_RESTARTED_ENV] = "1"
+    os.environ[AUSBOSS_RESTARTED_ENV] = ",".join(sorted(tried | set(missing)))
     _restart_comfyui_after(5.0)
     return "🔄 Đã cài pack AusBoss, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."
 

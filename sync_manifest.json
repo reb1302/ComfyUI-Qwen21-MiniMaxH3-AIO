@@ -67,6 +67,16 @@
       "folder": "loras/Downloads"
     },
     {
+      "filename": "qwen-image-2.1-restore.safetensors",
+      "url": "https://huggingface.co/ausboss/Qwen-Image-2.1-Restore-LoRA/resolve/main/qwen-image-2.1-restore.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors",
+      "url": "https://huggingface.co/Viggle/Qwen-Image-2.1-viggle-turbo/resolve/main/Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors",
+      "folder": "loras"
+    },
+    {
       "filename": "sam3.1_multiplex_fp16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
       "folder": "checkpoints"
@@ -260,6 +270,7 @@
     "workflows/anyangle_studio/AnyAngle-Studio-Qwen21.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_xoay_dummy.app.json",
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",
+    "workflows/qwen_image_2.1/qwen_image_2_1_tiled_upscale_ausboss.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_image_edit_light.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_image_edit_light.json",
     "workflows/video_wan_vace_outpainting.json",
