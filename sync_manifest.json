@@ -97,6 +97,26 @@
       "folder": "background_removal"
     },
     {
+      "filename": "pixal3d_multiview_int8_convrot.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/diffusion_models/pixal3d_multiview_int8_convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "dino_v3_L_naf_fp32.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/clip_vision/dino_v3_L_naf_fp32.safetensors",
+      "folder": "clip_vision"
+    },
+    {
+      "filename": "trellis_2_shape_vae_bf16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/vae/trellis_2_shape_vae_bf16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "trellis_2_texture_vae_bf16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/vae/trellis_2_texture_vae_bf16.safetensors",
+      "folder": "vae"
+    },
+    {
       "filename": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
       "folder": "text_encoders"
@@ -236,6 +256,7 @@
     "workflows/bfs_swap/BFS_Head_Swap_V1_Qwen_2.1.json",
     "workflows/bfs_swap/BFS_Body_Swap_Qwen_Image_2.1_V1.json",
     "workflows/bfs_swap/BFS_Body_Swap_Selective_Qwen_Image_2.1_V1.0.json",
+    "workflows/pixal3d/3d_pixal3d_multi_views.json",
     "workflows/anyangle_studio/AnyAngle-Studio-Qwen21.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_xoay_dummy.app.json",
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",
