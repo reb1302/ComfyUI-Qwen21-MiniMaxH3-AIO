@@ -174,6 +174,9 @@ textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--fo
 .msg.bot{align-self:flex-start;background:var(--raised);border:1px solid var(--line);padding-right:40px}
 .msg.bot .msgcopy{position:absolute;top:4px;right:4px;opacity:.6}
 .msg.err{color:var(--warn)}
+.msgthink{margin-bottom:8px;padding:6px 8px;background:var(--well);border:1px solid var(--line);border-radius:4px;font-size:12px;color:var(--ink-2)}
+.msgthink summary{cursor:pointer;font-weight:600;user-select:none}
+.msgthink div{margin-top:6px;max-height:220px;overflow-y:auto;white-space:pre-wrap}
 .chatempty{margin:auto;color:var(--ink-2);text-align:center}
 .chatin{display:flex;gap:8px;align-items:flex-end}
 .chatin textarea{flex:1;min-height:44px;max-height:200px;resize:vertical}
@@ -309,7 +312,10 @@ a.btn{color:inherit;text-decoration:none}
     <section class="sheetpanel" id="chatPanel" aria-label="Chat" hidden>
       <div class="viewchips" id="chatMode" role="group" aria-label="Việc cần làm"></div>
       <p class="envhint" id="chatHint"></p>
-      <button class="viewchip" id="chatClear" type="button">Cuộc trò chuyện mới</button>
+      <div class="viewchips">
+        <button class="viewchip" id="chatThink" type="button" aria-pressed="false" title="Bật hoặc tắt suy nghĩ từng bước trước khi trả lời">Suy nghĩ sâu</button>
+        <button class="viewchip" id="chatClear" type="button">Cuộc trò chuyện mới</button>
+      </div>
       <p class="envhint">Model Qwen3.8-27B (Huihui Abliterated FP8) chạy trên H200.</p>
     </section>
 
@@ -2804,20 +2810,22 @@ const CHAT_MODES = [
     system: 'You are a concise coding assistant. Answer in Vietnamese, with complete, working code when code is needed.' },
   { id: 'free', label: 'Tự do', hint: 'Hỏi gì cũng được.', think: false, system: '' },
 ];
-const LLM_MODEL = 'qwen3.6-35b-a3b';
-const Chat = { mode: 'ko2vi', history: [], busy: false, abort: null };
+const LLM_MODEL = 'qwen3.8-27b-abliterated';
+const Chat = { mode: 'ko2vi', think: false, history: [], busy: false, abort: null };
 function chatBubble(role, content) {
   $('chatEmpty').hidden = true;
   const div = document.createElement('div');
   div.className = `msg ${role}`;
-  div.textContent = content;
   if (role === 'bot') {
-    const copy = iconButton('copy', 'Chép', () => copyText(div.firstChild ? div.firstChild.textContent : '').then(ok => {
+    const body = document.createElement('div');
+    body.textContent = content;
+    const copy = iconButton('copy', 'Chép', () => copyText(body.textContent).then(ok => {
       if (ok) { copy.innerHTML = icon('check'); setTimeout(() => { copy.innerHTML = icon('copy'); }, 1200); }
     }));
     copy.classList.add('msgcopy');
-    div.textContent = '';
-    div.append(document.createTextNode(content), copy);
+    div.append(body, copy);
+  } else {
+    div.textContent = content;
   }
   $('chatLog').append(div);
   $('chatLog').scrollTop = $('chatLog').scrollHeight;
@@ -2825,6 +2833,7 @@ function chatBubble(role, content) {
 }
 function syncChat() {
   $('chatMode').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.mode === Chat.mode)));
+  $('chatThink').setAttribute('aria-pressed', String(Chat.think));
   $('chatHint').textContent = CHAT_MODES.find(m => m.id === Chat.mode).hint;
   $('chatSend').textContent = Chat.busy ? 'Dừng' : 'Gửi';
 }
@@ -2833,6 +2842,7 @@ async function sendChat() {
   const content = $('chatInput').value.trim();
   if (!content) return;
   const mode = CHAT_MODES.find(m => m.id === Chat.mode);
+  const think = Chat.think;
   $('chatInput').value = '';
   chatBubble('user', content);
   Chat.history.push({ role: 'user', content });
@@ -2845,14 +2855,14 @@ async function sendChat() {
   Chat.busy = true;
   Chat.abort = new AbortController();
   syncChat();
-  let answer = '';
+  let answer = '', thought = '', thinkBox = null, thinkSum = null, thinkBody = null;
   try {
     const messages = (mode.system ? [{ role: 'system', content: mode.system }] : []).concat(Chat.history.slice(-20));
     const res = await fetch('/vstone/llm/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: Chat.abort.signal,
-      body: JSON.stringify({ model: LLM_MODEL, messages, stream: true, temperature: mode.think ? 0.6 : 0.3, chat_template_kwargs: { enable_thinking: mode.think } }),
+      body: JSON.stringify({ model: LLM_MODEL, messages, stream: true, temperature: think ? 0.6 : 0.3, chat_template_kwargs: { enable_thinking: think } }),
     });
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}));
@@ -2861,7 +2871,7 @@ async function sendChat() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    textNode.textContent = mode.think ? 'Đang suy nghĩ…' : '';
+    textNode.textContent = think ? 'Đang suy nghĩ…' : '';
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -2871,7 +2881,28 @@ async function sendChat() {
       for (const line of lines) {
         if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
         const delta = (JSON.parse(line.slice(6)).choices[0] || {}).delta || {};
+        const r = delta.reasoning_content || delta.reasoning || '';
+        if (r) {
+          if (!thinkBox) {
+            thinkBox = document.createElement('details');
+            thinkBox.className = 'msgthink';
+            thinkBox.open = true;
+            thinkSum = document.createElement('summary');
+            thinkSum.textContent = 'Đang suy nghĩ…';
+            thinkBody = document.createElement('div');
+            thinkBox.append(thinkSum, thinkBody);
+            bubble.insertBefore(thinkBox, textNode);
+            textNode.textContent = '';
+          }
+          thought += r;
+          thinkBody.textContent = thought;
+          thinkBody.scrollTop = thinkBody.scrollHeight;
+          $('chatLog').scrollTop = $('chatLog').scrollHeight;
+        }
         if (delta.content) {
+          if (thinkSum && thinkSum.textContent !== 'Quá trình suy nghĩ') {
+            thinkSum.textContent = 'Quá trình suy nghĩ';
+          }
           answer += delta.content;
           textNode.textContent = answer;
           $('chatLog').scrollTop = $('chatLog').scrollHeight;
@@ -2900,6 +2931,12 @@ function buildChatPanel() {
     const chip = e.target.closest('.viewchip');
     if (!chip) return;
     Chat.mode = chip.dataset.mode;
+    Chat.think = CHAT_MODES.find(m => m.id === Chat.mode).think;
+    syncChat();
+    $('chatInput').focus();
+  });
+  $('chatThink').addEventListener('click', () => {
+    Chat.think = !Chat.think;
     syncChat();
     $('chatInput').focus();
   });
