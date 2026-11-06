@@ -1950,7 +1950,9 @@ def _llm_root_cause(path: str, limit: int = 15) -> str:
 def _llm_start_server(root: str) -> None:
     paths = _llm_paths(root)
     gpu = _llm_pick_gpu()
-    env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID", CUDA_VISIBLE_DEVICES=str(gpu))
+    # DeepGEMM dịch kernel lúc chạy và đòi nvcc >= 12.9, CUDA trên H200 cũ hơn (log 2026-11-06). Tắt để vLLM dùng kernel FP8 khác.
+    env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID", CUDA_VISIBLE_DEVICES=str(gpu),
+               VLLM_USE_DEEP_GEMM="0", VLLM_MOE_USE_DEEP_GEMM="0")
     cmd = [
         paths["python"], "-m", "vllm.entrypoints.openai.api_server",
         "--model", paths["model"], "--served-model-name", LLM_SERVED_NAME,
