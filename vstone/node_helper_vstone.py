@@ -2053,23 +2053,35 @@ def _llm_progress(path: str) -> str:
 
 
 def _llm_last_run_eager(path: str) -> bool:
-    """Kiểm tra lần chạy gần nhất trong log đã là model hiện tại (LLM_MODEL_DIR) và có --enforce-eager chưa."""
+    """Kiểm tra lần chạy gần nhất trong log đã là model hiện tại (LLM_MODEL_DIR) và có cờ tăng tốc (--gdn-prefill-backend) chưa."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
         start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=-1)
-        return start >= 0 and "--enforce-eager" in lines[start] and LLM_MODEL_DIR in lines[start]
+        return start >= 0 and "--gdn-prefill-backend" in lines[start] and LLM_MODEL_DIR in lines[start]
+    except OSError:
+        return False
+
+
+def _llm_spec_failed(path: str) -> bool:
+    """Nếu lần bật ngay trước đó có --speculative-config mà dừng sớm, lần bật lại tự bỏ cờ này để đảm bảo chạy được."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+        start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=-1)
+        return start >= 0 and "--speculative-config" in lines[start] and LLM_MODEL_DIR in lines[start]
     except OSError:
         return False
 
 
 def _llm_start_server(root: str) -> None:
     paths, state = _llm_paths(root), _llm_state()
-    # Chỉ một vLLM: bản đang chạy hoặc đang nạp (với cấu hình mới --enforce-eager) thì để yên, bản cũ hoặc treo quá lâu thì tắt.
+    # Chỉ một vLLM: bản đang chạy hoặc đang nạp (với cấu hình tăng tốc mới) thì để yên, bản cũ hoặc treo quá lâu thì tắt.
     running = _llm_pid_running(paths)
-    if running and (_llm_alive() or (_llm_last_run_eager(paths["server_log"]) and time.time() - running[1] < LLM_START_GRACE_SEC)):
+    if running and _llm_last_run_eager(paths["server_log"]) and (_llm_alive() or time.time() - running[1] < LLM_START_GRACE_SEC):
         state["stage"] = "Khởi động vLLM"
         return
+    use_mtp = not (_llm_spec_failed(paths["server_log"]) and not _llm_alive())
     _llm_stop(paths)
     gpu, free_mib, total_mib = _llm_pick_gpu()
     share, max_len = LLM_GPU_SHARE, LLM_MAX_LEN
@@ -2082,7 +2094,7 @@ def _llm_start_server(root: str) -> None:
         if share < LLM_GPU_SHARE:
             max_len = 32768
     # DeepGEMM dịch kernel lúc chạy và đòi nvcc >= 12.9, CUDA trên H200 cũ hơn (log 2026-11-06).
-    # --enforce-eager tắt torch.compile (AOT Inductor) và CUDA graph PIECEWISE bị lỗi Segfault (aoti_torch_new_tensor_handle) trên H200.
+    # --enforce-eager + MTP speculative decoding (đoán 2 token/bước từ tầng BF16 mtp sẵn có) + Triton GDN prefill + Prefix caching.
     env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID", CUDA_VISIBLE_DEVICES=str(gpu),
                VLLM_USE_DEEP_GEMM="0", VLLM_MOE_USE_DEEP_GEMM="0")
     cmd = [
@@ -2091,8 +2103,13 @@ def _llm_start_server(root: str) -> None:
         "--host", "127.0.0.1", "--port", str(LLM_PORT),
         "--gpu-memory-utilization", str(share), "--max-model-len", str(max_len),
         "--enforce-eager",
+        "--enable-prefix-caching",
+        "--gdn-prefill-backend", "triton",
+        "--safetensors-load-strategy", "prefetch",
         "--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
     ]
+    if use_mtp:
+        cmd.extend(["--speculative-config", '{"method": "mtp", "num_speculative_tokens": 2}'])
     log = open(paths["server_log"], "a", encoding="utf-8")
     log.write(f"\n{LLM_RUN_MARK} {time.strftime('%Y-%m-%d %H:%M:%S')} trên GPU {gpu}: {' '.join(cmd[3:])}\n")
     log.flush()
@@ -2151,7 +2168,7 @@ def install_llm(unique_id: Any = None) -> str:
     if not root:
         return "❌ Không tìm thấy thư mục ComfyUI."
     state, paths = _llm_state(), _llm_paths(root)
-    if _llm_alive():
+    if _llm_alive() and _llm_last_run_eager(paths["server_log"]):
         if not getattr(sys, "_vstone_llm_route", False):
             if os.environ.get(LLM_RESTARTED_ENV) == "1":
                 return "❌ vLLM đang chạy nhưng ComfyUI chưa mở được đường dẫn /vstone/llm. Xem log khởi động."
@@ -2159,7 +2176,7 @@ def install_llm(unique_id: Any = None) -> str:
             _restart_comfyui_after(5.0)
             return "🔄 vLLM đã chạy. ComfyUI khởi động lại một lần để mở đường dẫn /vstone/llm. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa."
         gpu = state.get("gpu")
-        return (f"✅ LLM {LLM_MODEL_DIR} đang chạy{f' trên GPU {gpu}' if gpu is not None else ''}. "
+        return (f"✅ LLM {LLM_MODEL_DIR} (tăng tốc MTP + Triton GDN) đang chạy{f' trên GPU {gpu}' if gpu is not None else ''}. "
                 f"Gọi qua {LLM_ROUTE}/v1/chat/completions trên cổng ComfyUI.")
     if state["busy"]:
         detail = _llm_progress(paths["server_log"]) if state["stage"] == "Khởi động vLLM" else _log_tail(paths["setup_log"], 3)
@@ -2168,7 +2185,7 @@ def install_llm(unique_id: Any = None) -> str:
         report = "\n".join([f"❌ {state['error']} Bấm Queue lần nữa để thử lại.", _log_tail(paths["setup_log"])])
         state["error"] = ""
         return report
-    if _llm_ready(root) and (state["stage"] == "Khởi động vLLM" or _llm_pid_running(paths) is not None):
+    if _llm_ready(root) and _llm_last_run_eager(paths["server_log"]) and (state["stage"] == "Khởi động vLLM" or _llm_pid_running(paths) is not None):
         proc = state.get("proc")
         # Sau khi ComfyUI khởi động lại thì không còn proc trong RAM, xem file pid thay thế.
         dead = proc.poll() is not None if proc is not None else _llm_pid_running(paths) is None
