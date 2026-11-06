@@ -1820,7 +1820,9 @@ def install_bfs_swap_packs(unique_id: Any = None) -> str:
                 "Chưa có: " + ", ".join(waiting),
             ])
         return f"✅ BFS đã đủ node và model. Mở các workflow trong thư mục {BFS_SWAP_WORKFLOW_DIR}."
-    if os.environ.get(BFS_SWAP_RESTARTED_ENV) == "1":
+    # Biến môi trường còn nguyên sau os.execv, nên nhớ đã thử cài cho node nào. Pack mới thêm vào danh sách vẫn được cài.
+    tried = set(filter(None, os.environ.get(BFS_SWAP_RESTARTED_ENV, "").split(",")))
+    if set(missing) <= tried:
         return "\n".join([
             "❌ Đã khởi động lại nhưng vẫn thiếu node cho BFS. Xem log khởi động, dòng IMPORT FAILED.",
             "Thiếu node: " + ", ".join(missing),
@@ -1847,7 +1849,7 @@ def install_bfs_swap_packs(unique_id: Any = None) -> str:
                 pip_ok, pip_tail = _run_install_cmd([sys.executable, "-m", "pip", "install", spec], 900)
                 details.append(f"Thư viện {spec}: " + ("đã cài." if pip_ok else f"LỖI {pip_tail}"))
 
-    os.environ[BFS_SWAP_RESTARTED_ENV] = "1"
+    os.environ[BFS_SWAP_RESTARTED_ENV] = ",".join(sorted(tried | set(missing)))
     _restart_comfyui_after(5.0)
     return "\n".join(["🔄 Đã cài pack cho BFS, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."] + details)
 
@@ -6144,8 +6146,9 @@ async function requireSwapPacks() {
   const read = name => fetch(`/api/object_info/${name}`).then(r => (r.ok ? r.json() : {}), () => ({}));
   const [sampler, resize] = await Promise.all([read('KSampler'), read('ImageResizeKJv2')]);
   const names = sampler.KSampler ? sampler.KSampler.input.required.sampler_name[0] : [];
-  if (!names.includes('deis_2m') || !resize.ImageResizeKJv2) {
-    throw new Error('ComfyUI chưa có pack mà workflow BFS cần (RES4LYF, KJNodes). Mở ComfyUI, chạy mục 6 của node stoneV_CloudSyncHub, rồi Gen lại.');
+  const missing = [!names.includes('deis_2m') && 'RES4LYF', !resize.ImageResizeKJv2 && 'KJNodes'].filter(Boolean);
+  if (missing.length) {
+    throw new Error(`ComfyUI chưa có pack ${missing.join(' và ')} mà workflow BFS cần. Mở ComfyUI, chạy mục 6 của node stoneV_CloudSyncHub, rồi Gen lại.`);
   }
 }
 async function generateSwap() {

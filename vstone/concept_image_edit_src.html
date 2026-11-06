@@ -2547,8 +2547,9 @@ async function requireSwapPacks() {
   const read = name => fetch(`/api/object_info/${name}`).then(r => (r.ok ? r.json() : {}), () => ({}));
   const [sampler, resize] = await Promise.all([read('KSampler'), read('ImageResizeKJv2')]);
   const names = sampler.KSampler ? sampler.KSampler.input.required.sampler_name[0] : [];
-  if (!names.includes('deis_2m') || !resize.ImageResizeKJv2) {
-    throw new Error('ComfyUI chưa có pack mà workflow BFS cần (RES4LYF, KJNodes). Mở ComfyUI, chạy mục 6 của node stoneV_CloudSyncHub, rồi Gen lại.');
+  const missing = [!names.includes('deis_2m') && 'RES4LYF', !resize.ImageResizeKJv2 && 'KJNodes'].filter(Boolean);
+  if (missing.length) {
+    throw new Error(`ComfyUI chưa có pack ${missing.join(' và ')} mà workflow BFS cần. Mở ComfyUI, chạy mục 6 của node stoneV_CloudSyncHub, rồi Gen lại.`);
   }
 }
 async function generateSwap() {
