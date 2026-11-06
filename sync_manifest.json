@@ -42,6 +42,36 @@
       "folder": "loras"
     },
     {
+      "filename": "bfs_head_v1.1_qwen_2.1.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_head_v1.1_qwen_2.1.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "bfs_body_swap_v1.0_qwen_2.1.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_body_swap_v1.0_qwen_2.1.safetensors",
+      "folder": "loras/Downloads"
+    },
+    {
+      "filename": "bfs_body_swap_selective_magenta_v1.0_qwen_2.1.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_body_swap_selective_magenta_v1.0_qwen_2.1.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "p_qwen_image_2.1_8step_v0.1.safetensors",
+      "url": "https://huggingface.co/PrunaAI/Pruna-Qwen-Image-2.1/resolve/main/p_q_image_2.1_8_steps_v0.1.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "p_qwen_image_2.1_8step_v0.1.safetensors",
+      "url": "https://huggingface.co/PrunaAI/Pruna-Qwen-Image-2.1/resolve/main/p_q_image_2.1_8_steps_v0.1.safetensors",
+      "folder": "loras/Downloads"
+    },
+    {
+      "filename": "sam3.1_multiplex_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
+      "folder": "checkpoints"
+    },
+    {
       "filename": "triposplat_fp16.safetensors",
       "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/diffusion_models/triposplat_fp16.safetensors",
       "folder": "diffusion_models"
@@ -203,6 +233,9 @@
     }
   ],
   "workflows": [
+    "workflows/bfs_swap/BFS_Head_Swap_V1_Qwen_2.1.json",
+    "workflows/bfs_swap/BFS_Body_Swap_Qwen_Image_2.1_V1.json",
+    "workflows/bfs_swap/BFS_Body_Swap_Selective_Qwen_Image_2.1_V1.0.json",
     "workflows/anyangle_studio/AnyAngle-Studio-Qwen21.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_xoay_dummy.app.json",
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",

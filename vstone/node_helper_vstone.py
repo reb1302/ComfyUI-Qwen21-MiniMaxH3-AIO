@@ -1752,6 +1752,98 @@ def install_anyangle_studio(unique_id: Any = None) -> str:
     return "\n".join(["🔄 Đã cài pack AnyAngle Studio, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."] + details)
 
 
+# ------------------------------------------------------------------------------
+# Cài pack cho 3 workflow BFS đổi mặt / đổi nhân vật của tác giả, model đi theo sync_manifest.json
+# ------------------------------------------------------------------------------
+# "pip" là requirements.txt của từng pack (module -> gói pip). Chỉ cài gói còn thiếu,
+# để không nâng cấp thư viện các pack khác đang dùng.
+BFS_SWAP_PACKS: list[dict[str, Any]] = [
+    {
+        "dir": "ComfyUI-KJNodes",
+        "repo": "kijai/ComfyUI-KJNodes",
+        "branch": "main",
+        "node_ids": ["ImageResizeKJv2", "ImageConcatMulti", "AddLabel"],
+        "pip": {"color_matcher": "color-matcher", "matplotlib": "matplotlib", "mss": "mss", "cv2": "opencv-python-headless"},
+    },
+    {
+        "dir": "rgthree-comfy",
+        "repo": "rgthree/rgthree-comfy",
+        "branch": "main",
+        "node_ids": ["Image Comparer (rgthree)"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-BFSNodes",
+        "repo": "alisson-anjos/ComfyUI-BFSNodes",
+        "branch": "main",
+        "node_ids": ["BFSSegmentPicker", "BFSVideoCompare"],
+        "pip": {
+            "librosa": "librosa",
+            "cv2": "opencv-python-headless",
+            "scenedetect": "scenedetect",
+            "transformers": "transformers>=4.55.0",
+            "scipy": "scipy",
+        },
+    },
+]
+BFS_SWAP_MODELS: list[tuple[str, str]] = [
+    ("loras", "bfs_head_v1.1_qwen_2.1.safetensors"),
+    ("loras/Downloads", "bfs_body_swap_v1.0_qwen_2.1.safetensors"),
+    ("loras", "bfs_body_swap_selective_magenta_v1.0_qwen_2.1.safetensors"),
+    ("loras", "p_qwen_image_2.1_8step_v0.1.safetensors"),
+    ("loras/Downloads", "p_qwen_image_2.1_8step_v0.1.safetensors"),
+    ("checkpoints", "sam3.1_multiplex_fp16.safetensors"),
+]
+BFS_SWAP_RESTARTED_ENV = "VSTONE_BFS_SWAP_PACKS_RESTARTED"
+BFS_SWAP_WORKFLOW_DIR = "bfs_swap"
+
+
+def install_bfs_swap_packs(unique_id: Any = None) -> str:
+    """Cài các pack còn thiếu rồi khởi động lại một lần. Lần Queue sau xác nhận node và model. Dòng đầu của báo cáo là kết luận."""
+    root = _get_comfy_root()
+    if not root:
+        return "❌ Không tìm thấy thư mục ComfyUI."
+    missing = _missing_node_ids([node_id for pack in BFS_SWAP_PACKS for node_id in pack["node_ids"]])
+    if not missing:
+        waiting = [f"{folder}/{name}" for folder, name in BFS_SWAP_MODELS if not os.path.isfile(os.path.join(root, "models", folder, name))]
+        if waiting:
+            return "\n".join([
+                "⏳ Đã đủ node cho BFS, model còn đang tải ngầm. Bấm Queue lần nữa để kiểm tra lại.",
+                "Chưa có: " + ", ".join(waiting),
+            ])
+        return f"✅ BFS đã đủ node và model. Mở các workflow trong thư mục {BFS_SWAP_WORKFLOW_DIR}."
+    if os.environ.get(BFS_SWAP_RESTARTED_ENV) == "1":
+        return "\n".join([
+            "❌ Đã khởi động lại nhưng vẫn thiếu node cho BFS. Xem log khởi động, dòng IMPORT FAILED.",
+            "Thiếu node: " + ", ".join(missing),
+        ])
+
+    custom_nodes = os.path.join(root, "custom_nodes")
+    os.makedirs(custom_nodes, exist_ok=True)
+    installed_dirs = {name.lower(): name for name in os.listdir(custom_nodes)}
+    details: list[str] = []
+    for pack in BFS_SWAP_PACKS:
+        if not _missing_node_ids(pack["node_ids"]):
+            details.append(f"Pack {pack['dir']}: đã đủ node.")
+            continue
+        pack_dir = os.path.join(custom_nodes, installed_dirs.get(pack["dir"].lower(), pack["dir"]))
+        _vstone_ui_status(unique_id, f"Đang cài pack {pack['dir']}...")
+        ok, tail = _fetch_node_pack(pack, pack_dir)
+        if not ok or not os.path.isfile(os.path.join(pack_dir, "__init__.py")):
+            return "\n".join([f"❌ Không tải được pack {pack['dir']}, chưa khởi động lại. {tail}"] + details)
+        details.append(f"Pack {pack['dir']}: đã tải về.")
+        for module, spec in pack["pip"].items():
+            importlib.invalidate_caches()
+            if importlib.util.find_spec(module) is None:
+                _vstone_ui_status(unique_id, f"Đang cài thư viện {spec}...")
+                pip_ok, pip_tail = _run_install_cmd([sys.executable, "-m", "pip", "install", spec], 900)
+                details.append(f"Thư viện {spec}: " + ("đã cài." if pip_ok else f"LỖI {pip_tail}"))
+
+    os.environ[BFS_SWAP_RESTARTED_ENV] = "1"
+    _restart_comfyui_after(5.0)
+    return "\n".join(["🔄 Đã cài pack cho BFS, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."] + details)
+
+
 def _start_background_sync_daemon(interval_sec: int = 30):
     """Chạy ngầm kiểm tra GitHub mỗi 30 giây khi đang chạy trong ComfyUI trên máy H200."""
     try:
@@ -2624,6 +2716,7 @@ class stoneV_CloudSyncHub:
                     "2. Download Selected Model / LoRA (Tải Model/LoRA đã chọn bên dưới)",
                     "4. Cài pack AusBoss cho outpaint Qwen (tự khởi động lại)",
                     "5. Cài AnyAngle Studio để xoay vật thể (tự khởi động lại)",
+                    "6. Cài pack cho BFS đổi mặt / đổi nhân vật (tự khởi động lại)",
                 ], {
                     "default": "3. Pull Code + Download Model (Cập nhật tất cả)"
                 }),
@@ -2687,6 +2780,11 @@ class stoneV_CloudSyncHub:
 
         if action.startswith("5."):
             report = install_anyangle_studio(unique_id)
+            _vstone_ui_status(unique_id, report)
+            return {"ui": {"text": [report]}, "result": (report,)}
+
+        if action.startswith("6."):
+            report = install_bfs_swap_packs(unique_id)
             _vstone_ui_status(unique_id, report)
             return {"ui": {"text": [report]}, "result": (report,)}
 
