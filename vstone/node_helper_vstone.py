@@ -1887,6 +1887,7 @@ def _llm_paths(root: str) -> dict[str, str]:
         "model_ok": os.path.join(base, "Qwen3.6-35B-A3B-FP8", ".download_complete"),
         "setup_log": os.path.join(base, "setup.log"),
         "server_log": os.path.join(base, "vllm.log"),
+        "pid": os.path.join(base, "vllm.pid"),
     }
 
 
@@ -1906,15 +1907,58 @@ def _llm_alive() -> bool:
         return False
 
 
-def _llm_pick_gpu() -> int:
-    """Card còn trống nhiều bộ nhớ nhất, để LLM và ComfyUI chia đều hai card."""
+def _llm_pick_gpu() -> tuple[int, int, int]:
+    """Card còn trống nhiều bộ nhớ nhất, để LLM và ComfyUI chia đều hai card. Trả về (số card, MiB trống, MiB tổng)."""
     try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=index,memory.free", "--format=csv,noheader,nounits"],
+        out = subprocess.run(["nvidia-smi", "--query-gpu=index,memory.free,memory.total", "--format=csv,noheader,nounits"],
                              capture_output=True, text=True, timeout=20, check=True).stdout
-        rows = [line.split(",") for line in out.strip().splitlines() if line.strip()]
-        return int(max(rows, key=lambda r: int(r[1]))[0])
+        rows = [[int(v) for v in line.split(",")] for line in out.strip().splitlines() if line.strip()]
+        best = max(rows, key=lambda r: r[1])
+        return best[0], best[1], best[2]
     except Exception:
-        return 0
+        return 0, 0, 0
+
+
+# Model FP8 khoảng 35 GB, cộng KV cache và phần đệm. Dưới mức này thì không bật, báo card đang bận.
+LLM_MIN_GIB = 40
+LLM_START_GRACE_SEC = 600
+
+
+def _llm_pid_running(paths: dict[str, str]) -> tuple[int, float] | None:
+    """vLLM do helper bật trước đó (kể cả trước khi ComfyUI khởi động lại) mà còn sống: (pid, lúc bật)."""
+    try:
+        with open(paths["pid"], encoding="utf-8") as f:
+            pid_text, started_text = f.read().split()
+        pid, started = int(pid_text), float(started_text)
+        os.kill(pid, 0)
+        return pid, started
+    except Exception:
+        return None
+
+
+def _llm_stop(paths: dict[str, str]) -> None:
+    """Tắt mọi tiến trình chạy bằng python của venv LLM, kể cả EngineCore mồ côi của các lần bật lỗi trước, vì chúng còn giữ bộ nhớ GPU."""
+    killed = []
+    try:
+        import psutil
+        venv = os.path.realpath(paths["venv"])
+        for p in psutil.process_iter(["pid", "cmdline", "exe"]):
+            exe = (p.info.get("exe") or "") + " " + " ".join((p.info.get("cmdline") or [])[:1])
+            if venv in exe and p.pid != os.getpid():
+                p.terminate()
+                killed.append(p)
+        psutil.wait_procs(killed, timeout=20)
+        for p in killed:
+            if p.is_running():
+                p.kill()
+    except Exception as e:
+        print(f"[VStone] LLM: không tắt được vLLM cũ: {e}", flush=True)
+    if killed:
+        time.sleep(5)
+    try:
+        os.remove(paths["pid"])
+    except OSError:
+        pass
 
 
 def _log_tail(path: str, lines: int = 6) -> str:
@@ -1948,8 +1992,23 @@ def _llm_root_cause(path: str, limit: int = 15) -> str:
 
 
 def _llm_start_server(root: str) -> None:
-    paths = _llm_paths(root)
-    gpu = _llm_pick_gpu()
+    paths, state = _llm_paths(root), _llm_state()
+    # Chỉ một vLLM: bản đang chạy hoặc đang nạp (kể cả do lần khởi động ComfyUI trước bật) thì để yên, bản treo quá lâu thì tắt.
+    running = _llm_pid_running(paths)
+    if running and (_llm_alive() or time.time() - running[1] < LLM_START_GRACE_SEC):
+        state["stage"] = "Khởi động vLLM"
+        return
+    _llm_stop(paths)
+    gpu, free_mib, total_mib = _llm_pick_gpu()
+    share, max_len = LLM_GPU_SHARE, LLM_MAX_LEN
+    if total_mib:
+        share = min(LLM_GPU_SHARE, round((free_mib - 1536) / total_mib - 0.005, 2))
+        if share * total_mib / 1024 < LLM_MIN_GIB:
+            state.update(stage="", error=f"Card trống nhất (GPU {gpu}) chỉ còn {free_mib / 1024:.0f} GB, LLM cần ít nhất {LLM_MIN_GIB} GB. "
+                                         "Đợi các job ComfyUI xong hoặc giải phóng bộ nhớ rồi thử lại.")
+            return
+        if share < LLM_GPU_SHARE:
+            max_len = 32768
     # DeepGEMM dịch kernel lúc chạy và đòi nvcc >= 12.9, CUDA trên H200 cũ hơn (log 2026-11-06). Tắt để vLLM dùng kernel FP8 khác.
     env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID", CUDA_VISIBLE_DEVICES=str(gpu),
                VLLM_USE_DEEP_GEMM="0", VLLM_MOE_USE_DEEP_GEMM="0")
@@ -1957,7 +2016,7 @@ def _llm_start_server(root: str) -> None:
         paths["python"], "-m", "vllm.entrypoints.openai.api_server",
         "--model", paths["model"], "--served-model-name", LLM_SERVED_NAME,
         "--host", "127.0.0.1", "--port", str(LLM_PORT),
-        "--gpu-memory-utilization", str(LLM_GPU_SHARE), "--max-model-len", str(LLM_MAX_LEN),
+        "--gpu-memory-utilization", str(share), "--max-model-len", str(max_len),
         "--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
     ]
     log = open(paths["server_log"], "a", encoding="utf-8")
@@ -1965,7 +2024,9 @@ def _llm_start_server(root: str) -> None:
     log.flush()
     # Phiên riêng: vLLM sống sót khi ComfyUI tự khởi động lại bằng os.execv.
     proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
-    _llm_state().update(gpu=gpu, proc=proc)
+    with open(paths["pid"], "w", encoding="utf-8") as f:
+        f.write(f"{proc.pid} {time.time()}")
+    state.update(gpu=gpu, proc=proc, stage="Khởi động vLLM")
 
 
 def _llm_setup(root: str) -> None:
@@ -2033,7 +2094,9 @@ def install_llm(unique_id: Any = None) -> str:
     if _llm_ready(root) and state["stage"] == "Khởi động vLLM":
         tail = _log_tail(paths["server_log"], 4)
         proc = state.get("proc")
-        if proc is not None and proc.poll() is not None:
+        # Sau khi ComfyUI khởi động lại thì không còn proc trong RAM, xem file pid thay thế.
+        dead = proc.poll() is not None if proc is not None else _llm_pid_running(paths) is None
+        if dead:
             state.update(stage="", proc=None)
             return "\n".join(["❌ vLLM dừng khi khởi động. Gửi các dòng dưới đây để sửa, rồi bấm Queue để thử lại.",
                               _llm_root_cause(paths["server_log"])])
