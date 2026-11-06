@@ -3419,6 +3419,8 @@ textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--fo
 .sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--paper)}
 .popfoot .ibtn{margin-left:auto;width:36px;height:30px}
 .typehint,.envhint{color:var(--ink-2);font-size:11.5px;line-height:1.35}
+.envlora{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--ink-2)}
+.envlora .viewchip{padding:3px 12px;font-size:12px}
 .envslots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .imgpick.over{border-color:var(--paper)}
 
@@ -3655,6 +3657,14 @@ a.btn{color:inherit;text-decoration:none}
       <div class="envslots" id="envSlots"></div>
       <textarea class="field" id="scene" placeholder="Mô tả cảnh, nếu cần (tiếng Anh)" aria-label="Mô tả cảnh"></textarea>
       <p class="envhint">Model xem các ảnh này khi kéo rộng để biết xung quanh có gì.</p>
+      <div class="envlora">
+        <span>LoRA kéo rộng</span>
+        <div class="viewchips" id="envLora" role="group" aria-label="LoRA kéo rộng">
+          <button class="viewchip" type="button" data-strength="0" aria-pressed="false">Tắt</button>
+          <button class="viewchip" type="button" data-strength="0.6" aria-pressed="false">0,6</button>
+          <button class="viewchip" type="button" data-strength="1" aria-pressed="true">1</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3813,7 +3823,7 @@ function buildEditPass(marks, problems) {
   return { kind: 'edit', name: 'Sửa', lines, slots, brushes };
 }
 
-function buildPasses({ marks, expanded, scene, envCount }) {
+function buildPasses({ marks, expanded, scene, envCount, expandLora }) {
   const problems = [];
   const passes = [];
   if (expanded) {
@@ -3824,7 +3834,8 @@ function buildPasses({ marks, expanded, scene, envCount }) {
       const tags = Array.from({ length: envCount }, (_, i) => `<image${i + 2}>`);
       out.push({ en: PROMPTS.env.en(tags), vi: PROMPTS.env.vi(tags) });
     }
-    passes.push({ kind: 'expand', name: 'Kéo rộng', lines: out, slots: [] });
+    const loraNote = expandLora === 1 ? '' : expandLora ? ` (LoRA ${String(expandLora).replace('.', ',')})` : ' (không LoRA)';
+    passes.push({ kind: 'expand', name: `Kéo rộng${loraNote}`, lines: out, slots: [] });
   }
   const edit = buildEditPass(marks.filter(m => m.cover), problems);
   if (edit) passes.push(edit);
@@ -3849,6 +3860,7 @@ const S = {
   brushes: [], nextId: 1, active: null, editing: null, erase: false, size: 72,
   padsPainted: false, capture: null, baseFromResult: false, isSample: false, tab: 'edit',
   scene: '',
+  expandLora: 1,
   env: [0, 1, 2, 3].map(() => ({ ref: null, refUrl: '' })),
   overrides: { expand: null, edit: null },
 };
@@ -4250,7 +4262,7 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
@@ -4765,6 +4777,14 @@ function buildEnvBox() {
     });
   });
   $('envBtn').addEventListener('click', () => toggleEnv($('envPop').hidden));
+  // Để so sánh: tắt LoRA, LoRA 0,6 hoặc LoRA 1 cho lượt kéo rộng. Lượt sửa không đổi.
+  $('envLora').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip) return;
+    S.expandLora = Number(chip.dataset.strength);
+    $('envLora').querySelectorAll('.viewchip').forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
+    renderPanel();
+  });
 }
 function buildSlotBoxes(containerId, slots, take, sync) {
   $(containerId).innerHTML = slots.map(slot => `
@@ -6162,7 +6182,9 @@ async function generate() {
       startPass(passLabel(1, 'Kéo rộng'));
       const name = await uploadCanvas(current, `${stamp}_outpaint.png`);
       const refs = await uploadAll(envRefs, `${stamp}_env`);
-      run.promptId = await queueGraph(buildApiPrompt({ image1: name, refs, text: expandText, resolution: 0, seed: randomSeed(), lora: OUTPAINT_LORA }));
+      const graph = buildApiPrompt({ image1: name, refs, text: expandText, resolution: 0, seed: randomSeed(), lora: S.expandLora ? OUTPAINT_LORA : null });
+      if (S.expandLora) graph[15].inputs.strength_model = S.expandLora;
+      run.promptId = await queueGraph(graph);
       advanceJob('queue');
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
