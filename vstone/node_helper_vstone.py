@@ -1991,6 +1991,40 @@ def _llm_root_cause(path: str, limit: int = 15) -> str:
     return "\n".join(([head] if head else []) + picked[-limit:] + [f"(Log đầy đủ: {path})"])
 
 
+LLM_STEPS = (
+    ("Capturing CUDA graph", "Chụp CUDA graph, bước cuối"),
+    ("torch.compile", "Biên dịch kernel (torch.compile)"),
+    ("KV cache", "Tính chỗ cho KV cache"),
+    ("Memory profiling", "Đo bộ nhớ"),
+    ("Loading weights took", "Đã nạp xong trọng số"),
+    ("Loading safetensors", "Đang nạp trọng số model"),
+    ("Starting to load model", "Bắt đầu nạp model"),
+    ("Initializing a V1 LLM engine", "Khởi tạo engine"),
+    ("non-default args", "Đọc cấu hình"),
+)
+
+
+def _llm_progress(path: str) -> str:
+    """vLLM đang làm gì trong lần bật gần nhất: đã chạy bao lâu, bước gần nhất, vài dòng log cuối không kèm tiền tố."""
+    import re
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return ""
+    start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=0)
+    run = lines[start:]
+    elapsed = ""
+    stamp = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", run[0]) if run else None
+    if stamp:
+        seconds = time.time() - time.mktime(time.strptime(stamp.group(1), "%Y-%m-%d %H:%M:%S"))
+        elapsed = f"Đã chạy {int(seconds // 60)} phút {int(seconds % 60)} giây. "
+    step = next((vi for key, vi in LLM_STEPS if any(key in line for line in run)), "Đang chuẩn bị")
+    clean = [re.sub(r"^\(\w+ pid=\d+\)\s*(INFO|WARNING|ERROR)?\s*[\d-]+ [\d:]+ \[[^\]]+\]\s*", "", line).strip()[:200]
+             for line in run[1:] if line.strip()]
+    return "\n".join([f"{elapsed}Bước: {step}."] + clean[-3:])
+
+
 def _llm_start_server(root: str) -> None:
     paths, state = _llm_paths(root), _llm_state()
     # Chỉ một vLLM: bản đang chạy hoặc đang nạp (kể cả do lần khởi động ComfyUI trước bật) thì để yên, bản treo quá lâu thì tắt.
@@ -2086,7 +2120,8 @@ def install_llm(unique_id: Any = None) -> str:
         return (f"✅ LLM {LLM_SERVED_NAME} đang chạy{f' trên GPU {gpu}' if gpu is not None else ''}. "
                 f"Gọi qua {LLM_ROUTE}/v1/chat/completions trên cổng ComfyUI.")
     if state["busy"]:
-        return "\n".join([f"⏳ Đang làm: {state['stage']}. Bấm Queue lại để xem tiến độ.", _log_tail(paths["setup_log"], 3)])
+        detail = _llm_progress(paths["server_log"]) if state["stage"] == "Khởi động vLLM" else _log_tail(paths["setup_log"], 3)
+        return "\n".join([f"⏳ Đang làm: {state['stage']}. Bấm Queue lại để xem tiến độ.", detail])
     if state["error"]:
         report = "\n".join([f"❌ {state['error']} Bấm Queue lần nữa để thử lại.", _log_tail(paths["setup_log"])])
         state["error"] = ""
@@ -2100,11 +2135,11 @@ def install_llm(unique_id: Any = None) -> str:
             state.update(stage="", proc=None)
             return "\n".join(["❌ vLLM dừng khi khởi động. Gửi các dòng dưới đây để sửa, rồi bấm Queue để thử lại.",
                               _llm_root_cause(paths["server_log"])])
-        return "\n".join(["⏳ vLLM đang nạp model, 2-5 phút. Bấm Queue lại để kiểm tra.", tail])
+        return "\n".join(["⏳ vLLM đang khởi động, thường 2-5 phút. Bấm Queue lại để xem tiến độ.", _llm_progress(paths["server_log"])])
     state.update(busy=True, error="", stage="Chuẩn bị")
     threading.Thread(target=_llm_setup, args=(root,), name="VStoneLLMSetup", daemon=True).start()
     if _llm_ready(root):
-        return "⏳ Đang khởi động vLLM, 2-5 phút. Bấm Queue lại để kiểm tra."
+        return "⏳ Đang khởi động vLLM, thường 2-5 phút. Bấm Queue lại để xem nó đang làm gì."
     return ("⏳ Bắt đầu cài LLM ngầm: môi trường riêng, vLLM (khoảng 10 phút), model khoảng 35 GB. "
             "ComfyUI vẫn dùng bình thường. Bấm Queue lại để xem tiến độ.")
 
