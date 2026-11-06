@@ -3945,6 +3945,12 @@ svg{display:block}
 .swapswatch{width:14px;height:14px;border-radius:3px;background:#FF00FF;opacity:.6;flex:none}
 .swapsize{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
 .swapsize input{flex:1;min-width:0}
+.upscale{position:absolute;inset:0;z-index:1;padding:8px}
+.upview{position:relative;width:100%;height:100%;overflow:hidden;border-radius:4px}
+.upview canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.upinfo{position:absolute;left:8px;top:8px;display:grid;gap:2px;max-width:calc(100% - 16px);padding:5px 9px;font:400 12px/1.45 var(--font-data);font-variant-numeric:tabular-nums;color:var(--ink);background:var(--well);border:1px solid var(--line);border-radius:3px;pointer-events:none}
+.upinfo .upwarn{font-family:var(--font-ui);color:var(--warn)}
+.upslots .sheetbox{height:180px}
 .rotslider{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
 .rotslider input{width:220px;accent-color:var(--paper)}
 .capbox{position:absolute;pointer-events:none;outline:2px dashed #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px #00000066}
@@ -4084,6 +4090,7 @@ a.btn{color:inherit;text-decoration:none}
     <button class="tab" id="tabSheet" type="button" role="tab" aria-selected="false">Char sheet</button>
     <button class="tab" id="tabRotate" type="button" role="tab" aria-selected="false">Xoay</button>
     <button class="tab" id="tabSwap" type="button" role="tab" aria-selected="false">Đổi người</button>
+    <button class="tab" id="tabUpscale" type="button" role="tab" aria-selected="false">Upscale</button>
     <button class="tab" id="tabChat" type="button" role="tab" aria-selected="false">Chat</button>
   </div>
   <div class="main" id="main">
@@ -4149,6 +4156,19 @@ a.btn{color:inherit;text-decoration:none}
       </div>
     </section>
 
+    <section class="sheetpanel" id="upscalePanel" aria-label="Upscale" hidden>
+      <div class="sheetslots upslots" id="upscaleSlots"></div>
+      <div class="viewchips" id="upscaleSize" role="group" aria-label="Cỡ kết quả">
+        <button class="viewchip" type="button" data-mp="4" aria-pressed="true" title="Kết quả khoảng 4 triệu điểm ảnh, thường vẽ lại 2 ô">4 MP</button>
+        <button class="viewchip" type="button" data-mp="8" aria-pressed="false" title="Kết quả khoảng 8 triệu điểm ảnh, thường vẽ lại 4 ô">8 MP</button>
+      </div>
+      <div class="viewchips" id="upscaleSpeed" role="group" aria-label="Tốc độ">
+        <button class="viewchip" type="button" data-fast="1" aria-pressed="true" title="8 bước, có LoRA Viggle Turbo">Nhanh</button>
+        <button class="viewchip" type="button" data-fast="0" aria-pressed="false" title="25 bước, không Turbo, lâu gấp khoảng 3 lần">Kỹ</button>
+      </div>
+      <p class="envhint" id="upscaleHint"></p>
+    </section>
+
     <div class="stage" id="stage">
       <div class="sheet-empty" id="sheetEmpty" hidden>Bảng nhân vật sẽ hiện ở đây</div>
       <div class="rot" id="rot" hidden>
@@ -4185,6 +4205,13 @@ a.btn{color:inherit;text-decoration:none}
           <canvas id="swapCanvas"></canvas>
           <div class="rotmsg" id="swapMsg">Bỏ ảnh cảnh vào</div>
           <div class="swapring" id="swapRing" hidden></div>
+        </div>
+      </div>
+      <div class="upscale" id="upscale" hidden>
+        <div class="upview" id="upView">
+          <canvas id="upCanvas"></canvas>
+          <div class="rotmsg" id="upMsg">Bỏ ảnh cần upscale vào</div>
+          <div class="upinfo" id="upInfo" hidden></div>
         </div>
       </div>
       <div class="frame" id="frame">
@@ -4873,7 +4900,7 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.tab === 'upscale' ? buildUpscalePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
@@ -4881,7 +4908,7 @@ function renderPanel() {
   $('promptDot').hidden = !problems.length;
   $('problems').replaceChildren(...problems.map(p => { const li = document.createElement('li'); li.textContent = p.text; return li; }));
   $('noPrompt').hidden = passes.length > 0 || problems.length > 0;
-  $('noPrompt').textContent = { sheet: 'Thêm ảnh nhân vật để tạo prompt.', rotate: 'Thêm ảnh chính để tạo prompt.', swap: 'Thêm ảnh cảnh để tạo prompt.' }[S.tab] || 'Tô hoặc kéo rộng để tạo prompt.';
+  $('noPrompt').textContent = { sheet: 'Thêm ảnh nhân vật để tạo prompt.', rotate: 'Thêm ảnh chính để tạo prompt.', swap: 'Thêm ảnh cảnh để tạo prompt.', upscale: 'Thêm ảnh cần upscale để tạo prompt.' }[S.tab] || 'Tô hoặc kéo rộng để tạo prompt.';
   S.passes = passes;
   S.problems = problems;
   syncGen();
@@ -4934,6 +4961,8 @@ function renderPanel() {
       let n = 2;
       if (pass.kind === 'swap_selective') slots.append(slotFigure(`image_${n++}`, 'Ảnh cảnh, người cần thay phủ hồng', cv => paintRefThumb(cv, swapMarked())));
       if (ref.ref) slots.append(slotFigure(`image_${n}`, SWAP_REF_LABEL[Swap.mode], cv => paintRefThumb(cv, ref.ref)));
+    } else if (pass.kind === 'upscale') {
+      slots.append(slotFigure('image_1', 'Từng ô khoảng 2 MP của ảnh đã phóng to, vẽ lại lần lượt', cv => paintRefThumb(cv, Up.slots[0].ref)));
     } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv)));
       S.env.filter(s => s.ref).forEach((slot, n) => {
@@ -5178,6 +5207,7 @@ function syncStage() {
   $('sheetEmpty').hidden = S.tab !== 'sheet';
   $('rot').hidden = S.tab !== 'rotate';
   $('swap').hidden = S.tab !== 'swap';
+  $('upscale').hidden = S.tab !== 'upscale';
   $('chat').hidden = S.tab !== 'chat';
 }
 function takeBase(file) {
@@ -5196,6 +5226,7 @@ stage.addEventListener('drop', e => {
   if (S.tab === 'sheet') takeSheetFiles(e.dataTransfer.files, Math.max(0, Sheet.slots.findIndex(s => !s.ref)));
   else if (S.tab === 'rotate') takeRotateFiles(e.dataTransfer.files, 0);
   else if (S.tab === 'swap') takeSwapFiles(e.dataTransfer.files, Swap.slots[0].ref ? 1 : 0);
+  else if (S.tab === 'upscale') takeUpscaleFiles(e.dataTransfer.files, 0);
   else takeBase(e.dataTransfer.files[0]);
 });
 
@@ -6775,6 +6806,162 @@ function buildChatPanel() {
   });
   syncChat();
 }
+// Tab Upscale theo workflow Tiled Upscale của AusBoss (workflows/qwen_image_2.1/qwen_image_2_1_tiled_upscale_ausboss.json).
+// Qwen 2.1 vẽ lại ảnh theo từng ô khoảng 2 MP rồi ghép, Restore LoRA giữ sát ảnh gốc, mỗi ô khớp màu với ô gốc.
+// Prompt tiếng Anh là prompt gốc trong workflow của tác giả, giữ nguyên.
+const UPSCALE_PROMPT = {
+  en: 'Restore the photo: remove blur, noise and compression artifacts and recover sharp, natural detail, keeping the same composition, people and colors.',
+  vi: 'Phục hồi ảnh: bỏ mờ, nhiễu và vết nén, lấy lại chi tiết sắc nét, tự nhiên, giữ nguyên bố cục, người và màu.',
+};
+const UPSCALE_HINT = 'Qwen 2.1 vẽ lại ảnh nét hơn ở cỡ lớn: chia thành các ô khoảng 2 MP, vẽ từng ô rồi ghép, mỗi ô giữ màu ảnh gốc. Chi tiết nhỏ là vẽ thêm cho hợp, mặt nhỏ có thể đổi, chữ nhỏ có thể sai. Ảnh đã to và nét thì được thêm ít. Dùng workflow Tiled Upscale và Restore LoRA của AusBoss.';
+const UPSCALE_LORAS = { restore: 'qwen-image-2.1-restore.safetensors', turbo: 'Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors' };
+// Các giá trị của node Tiled Upscale trong workflow tác giả: ô 2 MP, chồng 128 px, cạnh chia hết 32, vẽ lại tối đa gấp 8 lần cỡ gốc.
+const UPSCALE_TILE = { tile_megapixels: 2, overlap: 128, multiple: 32, max_growth: 8 };
+const UPSCALE_UPLOAD_MP = 16;
+const Up = {
+  slots: [{ label: 'Ảnh cần upscale', ref: null, refUrl: '' }],
+  mp: 4,
+  fast: true,
+  fromBase: null,
+};
+function upscaleTarget(w, h, mp) {
+  const s = Math.sqrt(mp * 1e6 / (w * h)), m = UPSCALE_TILE.multiple;
+  return { w: Math.max(m, Math.round(w * s / m) * m), h: Math.max(m, Math.round(h * s / m) * m) };
+}
+function drawUpscale() {
+  const view = $('upView'), canvas = $('upCanvas');
+  const box = view.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.max(1, Math.round(box.width * dpr));
+  canvas.height = Math.max(1, Math.round(box.height * dpr));
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, box.width, box.height);
+  const ref = Up.slots[0].ref;
+  $('upMsg').hidden = !!ref;
+  $('upInfo').hidden = !ref;
+  if (!ref) return;
+  const w = ref.naturalWidth || ref.width, h = ref.naturalHeight || ref.height;
+  const s = Math.min(box.width / w, box.height / h);
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(ref, (box.width - w * s) / 2, (box.height - h * s) / 2, w * s, h * s);
+  const target = upscaleTarget(w, h, Up.mp), sourceMp = w * h / 1e6;
+  const lines = [`${w} × ${h}  →  khoảng ${target.w} × ${target.h}`];
+  if (sourceMp > Up.mp) lines.push(`Ảnh đã lớn hơn ${Up.mp} MP, kết quả sẽ nhỏ lại.`);
+  else if (Up.mp > UPSCALE_TILE.max_growth * sourceMp) lines.push('Ảnh nhỏ: Qwen vẽ lại tối đa gấp 8 lần cỡ gốc, phần còn lại phóng to thường.');
+  $('upInfo').replaceChildren(...lines.map((line, i) => {
+    const span = document.createElement('span');
+    span.textContent = line;
+    if (i) span.className = 'upwarn';
+    return span;
+  }));
+}
+function syncUpscale() {
+  syncSlotBoxes('upscaleSlots', Up.slots);
+  $('upscaleSize').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(Number(chip.dataset.mp) === Up.mp)));
+  $('upscaleSpeed').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String((chip.dataset.fast === '1') === Up.fast)));
+  drawUpscale();
+}
+function takeUpscaleFiles(fileList, start) {
+  Up.fromBase = null;
+  takeFilesInto(Up.slots, fileList, start, syncUpscale);
+}
+// Ô ảnh tự lấy ảnh đang sửa ở tab Sửa ảnh, trừ khi họa sĩ đã bỏ ảnh khác vào.
+function syncUpscaleFromBase() {
+  const slot = Up.slots[0];
+  const own = slot.ref && Up.fromBase !== slot.ref;
+  if (S.base && !S.isSample && !own && slot.ref !== S.base) {
+    slot.ref = S.base;
+    slot.refUrl = S.base.src || S.base.toDataURL('image/jpeg', 0.85);
+    Up.fromBase = S.base;
+  }
+  syncUpscale();
+  renderPanel();
+}
+function buildUpscalePasses() {
+  if (!Up.slots[0].ref) return { passes: [], problems: [] };
+  return { passes: [{ kind: 'upscale', name: `Upscale ${Up.mp} MP`, lines: [UPSCALE_PROMPT], slots: [] }], problems: [] };
+}
+function buildUpscalePanel() {
+  buildSlotBoxes('upscaleSlots', Up.slots, takeUpscaleFiles, syncUpscale);
+  $('upscaleHint').textContent = UPSCALE_HINT;
+  $('upscaleSize').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip) return;
+    Up.mp = Number(chip.dataset.mp);
+    syncUpscale();
+    renderPanel();
+  });
+  $('upscaleSpeed').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip) return;
+    Up.fast = chip.dataset.fast === '1';
+    syncUpscale();
+    renderPanel();
+  });
+  syncUpscale();
+}
+// Đồ thị theo đúng workflow Tiled Upscale của tác giả, chỉ bỏ node cắt ảnh (để mặc định là giữ nguyên ảnh), node so sánh và node đo giờ.
+// Nhanh: bật LoRA Viggle Turbo, 8 bước. Kỹ: tắt Viggle, 25 bước. Giống công tắc Fast của tác giả.
+function buildUpscaleGraph({ image, text, seed, mp, fast }) {
+  const loras = [
+    { name: UPSCALE_LORAS.restore, strength: 1.0, enabled: true, triggers: '' },
+    { name: UPSCALE_LORAS.turbo, strength: 1.0, enabled: fast, triggers: '' },
+  ];
+  return {
+    1: { class_type: 'UNETLoader', inputs: { unet_name: 'qwen_image_2.1_int8_convrot.safetensors', weight_dtype: 'default' } },
+    2: { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3vl_8b_int8_convrot.safetensors', type: 'qwen_image', device: 'default' } },
+    3: { class_type: 'VAELoader', inputs: { vae_name: 'qwen_image_2.1_vae_bf16.safetensors' } },
+    4: { class_type: 'LoadImage', inputs: { image } },
+    11: { class_type: 'AUSBOSS_NODES_LoraLoader', inputs: { model: ['1', 0], loras: JSON.stringify(loras), trigger_separator: ', ', on_missing: 'error' } },
+    30: { class_type: 'AUSBOSS_NODES_TiledUpscale', inputs: { image: ['4', 0], megapixels: mp, ...UPSCALE_TILE } },
+    17: { class_type: 'QwenImage21Cache', inputs: { model: ['11', 0], device: 'auto', dtype: 'default' } },
+    7: { class_type: 'TextEncodeQwenImage21', inputs: { clip: ['2', 0], vae: ['3', 0], prompt: text, negative_prompt: '', resolution: 0, 'images.image_1': ['30', 0] } },
+    8: { class_type: 'KSampler', inputs: { model: ['17', 0], positive: ['7', 0], negative: ['7', 1], latent_image: ['7', 2], seed, steps: fast ? 8 : 25, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
+    9: { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
+    31: { class_type: 'AUSBOSS_NODES_TiledUpscaleStitch', inputs: { tiles: ['9', 0], stitcher: ['30', 1], keep_colors: 1 } },
+    6: { class_type: 'SaveImage', inputs: { images: ['31', 0], filename_prefix: 'Concept_upscale' } },
+  };
+}
+// Node Tiled Upscale có từ pack AusBoss 2.15, mục 4 của stoneV_CloudSyncHub cập nhật pack. Hai LoRA đi theo sync_manifest.json.
+async function requireUpscaleParts(fast) {
+  const read = name => fetch(`/api/object_info/${name}`).then(r => (r.ok ? r.json() : {}), () => ({}));
+  const [tile, lora] = await Promise.all([read('AUSBOSS_NODES_TiledUpscale'), read('LoraLoaderModelOnly')]);
+  if (!tile.AUSBOSS_NODES_TiledUpscale) {
+    throw new Error('ComfyUI chưa có node Tiled Upscale của pack AusBoss (cần bản 2.15 trở lên). Mở ComfyUI, chạy mục 4 của node stoneV_CloudSyncHub, rồi Gen lại.');
+  }
+  if (!lora.LoraLoaderModelOnly) return;
+  const names = lora.LoraLoaderModelOnly.input.required.lora_name[0];
+  const missing = [UPSCALE_LORAS.restore, fast && UPSCALE_LORAS.turbo].filter(name => name && !names.includes(name));
+  if (missing.length) {
+    throw new Error(`ComfyUI chưa có ${missing.join(' và ')}. Cloud Sync tải LoRA trong nền, chờ tải xong rồi Gen lại.`);
+  }
+}
+async function generateUpscale() {
+  const pass = S.passes.find(p => p.kind === 'upscale');
+  const text = promptFor(pass);
+  const source = fitReference(Up.slots[0].ref, UPSCALE_UPLOAD_MP);
+  const { mp, fast } = Up;
+  const stamp = Date.now().toString(36);
+  beginRun();
+  try {
+    startPass(pass.name);
+    await requireUpscaleParts(fast);
+    const names = await uploadAll([source], `${stamp}_upscale`);
+    run.promptId = await queueGraph(buildUpscaleGraph({ image: names[0], text, seed: randomSeed(), mp, fast }));
+    advanceJob('queue');
+    renderJob();
+    const { img, url } = await loadOutput(await waitForImage(run.promptId));
+    addResult(img, url, pass.name);
+    if (S.tab === 'upscale') openViewer(img, url);
+    hideJob();
+    setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
+  } catch (e) {
+    failRun(e);
+  } finally {
+    endRun();
+  }
+}
 function switchTab(tab) {
   S.tab = tab;
   const edit = tab === 'edit';
@@ -6797,6 +6984,9 @@ function switchTab(tab) {
   if (edit) fit();
   if (tab === 'rotate') syncRotateMode();
   if (tab === 'swap') syncSwapMode();
+  $('tabUpscale').setAttribute('aria-selected', String(tab === 'upscale'));
+  $('upscalePanel').hidden = tab !== 'upscale';
+  if (tab === 'upscale') syncUpscaleFromBase();
   $('tabChat').setAttribute('aria-selected', String(tab === 'chat'));
   $('chatPanel').hidden = tab !== 'chat';
   document.querySelectorAll('.bar > :not(.grow)').forEach(el => { if (!el.classList.contains('edit-only')) el.hidden = tab === 'chat'; });
@@ -7276,6 +7466,10 @@ async function generate() {
     await generateSwap();
     return;
   }
+  if (S.tab === 'upscale') {
+    await generateUpscale();
+    return;
+  }
   const expand = S.passes.find(p => p.kind === 'expand');
   const edit = S.passes.find(p => p.kind === 'edit');
   const snap = takeRunSnapshot();
@@ -7443,6 +7637,7 @@ $('tabEdit').addEventListener('click', () => switchTab('edit'));
 $('tabSheet').addEventListener('click', () => switchTab('sheet'));
 $('tabRotate').addEventListener('click', () => switchTab('rotate'));
 $('tabSwap').addEventListener('click', () => switchTab('swap'));
+$('tabUpscale').addEventListener('click', () => switchTab('upscale'));
 $('tabChat').addEventListener('click', () => switchTab('chat'));
 
 function sampleScene() {
@@ -7488,6 +7683,7 @@ buildSheetPanel();
 buildEnvBox();
 buildRotatePanel();
 buildSwapPanel();
+buildUpscalePanel();
 buildChatPanel();
 renderTiles();
 if (ON_COMFY) {
@@ -7503,10 +7699,15 @@ if (ON_COMFY) {
   Swap.slots[0].ref = person;
   Swap.slots[0].refUrl = person.toDataURL('image/jpeg', 0.8);
   syncSwap();
+  const shot = sampleScene();
+  Up.slots[0].ref = shot;
+  Up.slots[0].refUrl = shot.toDataURL('image/jpeg', 0.8);
+  syncUpscale();
 }
 new ResizeObserver(() => {
   if (S.tab === 'rotate') { layoutRotateFrame(); RotateView.request(); }
   else if (S.tab === 'swap') drawSwap();
+  else if (S.tab === 'upscale') drawUpscale();
   else if (!drag && !live) fit();
 }).observe(stage);
 </script>
