@@ -122,6 +122,18 @@ svg{display:block}
 .rotctl{display:grid;justify-items:center;gap:6px}
 .rotrow{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 6px}
 .rotrow .viewchip{padding:3px 10px;font-size:12px}
+.swap{position:absolute;inset:0;z-index:1;padding:8px}
+.swapview{position:relative;width:100%;height:100%;overflow:hidden;border-radius:4px;touch-action:none;user-select:none}
+.swapview canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.swapview.painting{cursor:none}
+.swapring{position:absolute;left:0;top:0;border:1.5px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.55);pointer-events:none;transform:translate(-50%,-50%)}
+.swapslots .sheetbox{height:150px}
+.swappick{display:grid;gap:8px}
+.swappick-head{display:flex;align-items:center;gap:8px;font-size:13px}
+.swappick-head span:last-child{color:var(--ink-2);font-size:12px}
+.swapswatch{width:14px;height:14px;border-radius:3px;background:#FF00FF;opacity:.6;flex:none}
+.swapsize{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
+.swapsize input{flex:1;min-width:0}
 .rotslider{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
 .rotslider input{width:220px;accent-color:var(--paper)}
 .capbox{position:absolute;pointer-events:none;outline:2px dashed #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px #00000066}
@@ -247,6 +259,7 @@ a.btn{color:inherit;text-decoration:none}
     <button class="tab" id="tabEdit" type="button" role="tab" aria-selected="true">Sửa ảnh</button>
     <button class="tab" id="tabSheet" type="button" role="tab" aria-selected="false">Char sheet</button>
     <button class="tab" id="tabRotate" type="button" role="tab" aria-selected="false">Xoay</button>
+    <button class="tab" id="tabSwap" type="button" role="tab" aria-selected="false">Đổi người</button>
   </div>
   <div class="main" id="main">
     <nav class="strip" id="strip" aria-label="Cọ và công cụ">
@@ -282,6 +295,25 @@ a.btn{color:inherit;text-decoration:none}
       <p class="envhint" id="rotHint"></p>
     </section>
 
+    <section class="sheetpanel" id="swapPanel" aria-label="Đổi người" hidden>
+      <div class="viewchips" id="swapMode" role="group" aria-label="Đổi gì">
+        <button class="viewchip" type="button" data-mode="head" aria-pressed="true" title="Thay cả đầu, gồm tóc">Đổi mặt</button>
+        <button class="viewchip" type="button" data-mode="body" aria-pressed="false" title="Thay cả người, giữ dáng và cảnh">Thay nhân vật</button>
+      </div>
+      <div class="sheetslots swapslots" id="swapSlots"></div>
+      <p class="envhint" id="swapHint"></p>
+      <div class="swappick" id="swapPick" hidden>
+        <div class="swappick-head"><span class="swapswatch" aria-hidden="true"></span><strong>Tô chọn người</strong><span>(không bắt buộc)</span></div>
+        <p class="envhint">Cảnh đông người thì tô lên người cần thay. Không tô thì thay người chính trong cảnh.</p>
+        <div class="viewchips" id="swapTools" role="group" aria-label="Chọn người cần thay">
+          <button class="viewchip" type="button" data-tool="paint" aria-pressed="false">Cọ</button>
+          <button class="viewchip" type="button" data-tool="erase" aria-pressed="false">Tẩy</button>
+          <button class="viewchip" type="button" id="swapClear">Xoá hết</button>
+        </div>
+        <label class="swapsize">Cỡ cọ<input id="swapSize" type="range" min="8" max="300" value="60" aria-label="Cỡ cọ tô chọn người"></label>
+      </div>
+    </section>
+
     <div class="stage" id="stage">
       <div class="sheet-empty" id="sheetEmpty" hidden>Bảng nhân vật sẽ hiện ở đây</div>
       <div class="rot" id="rot" hidden>
@@ -304,6 +336,13 @@ a.btn{color:inherit;text-decoration:none}
             <button class="viewchip" id="rotReset" type="button">Chính diện</button>
             <button class="viewchip" id="rotRetry" type="button" hidden>Dựng lại</button>
           </div>
+        </div>
+      </div>
+      <div class="swap" id="swap" hidden>
+        <div class="swapview" id="swapView">
+          <canvas id="swapCanvas"></canvas>
+          <div class="rotmsg" id="swapMsg">Bỏ ảnh cảnh vào</div>
+          <div class="swapring" id="swapRing" hidden></div>
         </div>
       </div>
       <div class="frame" id="frame">
@@ -992,7 +1031,7 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
@@ -1000,7 +1039,7 @@ function renderPanel() {
   $('promptDot').hidden = !problems.length;
   $('problems').replaceChildren(...problems.map(p => { const li = document.createElement('li'); li.textContent = p.text; return li; }));
   $('noPrompt').hidden = passes.length > 0 || problems.length > 0;
-  $('noPrompt').textContent = { sheet: 'Thêm ảnh nhân vật để tạo prompt.', rotate: 'Thêm ảnh chính để tạo prompt.' }[S.tab] || 'Tô hoặc kéo rộng để tạo prompt.';
+  $('noPrompt').textContent = { sheet: 'Thêm ảnh nhân vật để tạo prompt.', rotate: 'Thêm ảnh chính để tạo prompt.', swap: 'Thêm ảnh cảnh để tạo prompt.' }[S.tab] || 'Tô hoặc kéo rộng để tạo prompt.';
   S.passes = passes;
   S.problems = problems;
   syncGen();
@@ -1047,6 +1086,12 @@ function renderPanel() {
       Rotate.slots.slice(1).filter(s => s.ref).forEach(slot => {
         slots.append(slotFigure(`image_${n++}`, slot.label, cv => paintRefThumb(cv, slot.ref)));
       });
+    } else if (pass.kind.startsWith('swap')) {
+      const [shot, ref] = Swap.slots;
+      slots.append(slotFigure('image_1', 'Ảnh cảnh', cv => paintRefThumb(cv, shot.ref)));
+      let n = 2;
+      if (pass.kind === 'swap_selective') slots.append(slotFigure(`image_${n++}`, 'Ảnh cảnh, người cần thay phủ hồng', cv => paintRefThumb(cv, swapMarked())));
+      if (ref.ref) slots.append(slotFigure(`image_${n}`, SWAP_REF_LABEL[Swap.mode], cv => paintRefThumb(cv, ref.ref)));
     } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv)));
       S.env.filter(s => s.ref).forEach((slot, n) => {
@@ -1290,6 +1335,7 @@ function syncStage() {
   $('sampleTag').hidden = !edit || !S.base || !S.isSample;
   $('sheetEmpty').hidden = S.tab !== 'sheet';
   $('rot').hidden = S.tab !== 'rotate';
+  $('swap').hidden = S.tab !== 'swap';
 }
 function takeBase(file) {
   if (file && file.type.startsWith('image/')) loadFile(file, img => setBase(img, false));
@@ -1306,6 +1352,7 @@ stage.addEventListener('drop', e => {
   stage.classList.remove('over');
   if (S.tab === 'sheet') takeSheetFiles(e.dataTransfer.files, Math.max(0, Sheet.slots.findIndex(s => !s.ref)));
   else if (S.tab === 'rotate') takeRotateFiles(e.dataTransfer.files, 0);
+  else if (S.tab === 'swap') takeSwapFiles(e.dataTransfer.files, Swap.slots[0].ref ? 1 : 0);
   else takeBase(e.dataTransfer.files[0]);
 });
 
@@ -2404,15 +2451,331 @@ function buildSheetPanel() {
   });
   $('sheetNote').addEventListener('input', e => { Sheet.note = e.target.value; renderPanel(); });
 }
+// Tab Đổi người theo ba workflow BFS cho Qwen 2.1: đổi cả đầu, thay cả người, thay đúng người được tô.
+// Prompt tiếng Anh là prompt gốc trong workflow của tác giả, giữ nguyên.
+const SWAP_PROMPTS = {
+  head: {
+    en: 'head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k',
+    vi: 'Lấy <image1> làm nền, giữ ánh sáng, môi trường và nền. Bỏ hẳn đầu trong <image1>, thay bằng đầu trong <image2>, giữ đúng tóc, màu mắt, dáng mũi của <image2>. Chép hướng nhìn, góc đầu và biểu cảm của <image1>.',
+  },
+  body: {
+    en: 'body_swap: start with <image1> as the base image, keeping its lighting, environment, and background. replace the body from <image1> with the body from <image2>, strictly preserving the clothing, body shape and proportions from <image2>. strictly replicate the exact pose, arm positions, leg positions, hand gestures, head rotation, eye direction and micro expressions from <image1>',
+    vi: 'Lấy <image1> làm nền, giữ ánh sáng, môi trường và nền. Thay người trong <image1> bằng người trong <image2>, giữ đúng quần áo, dáng người và tỉ lệ của <image2>. Chép đúng tư thế, tay, chân, cử chỉ, góc đầu, hướng nhìn và biểu cảm của <image1>.',
+  },
+  selective: {
+    en: "body_swap: replace only the person highlighted in magenta in the second image with the character from the third image - face, hair, body and outfit. Keep the first image's scene, lighting, colours, camera and every other person unchanged, and keep the exact pose, head angle and facial expression of the replaced person. The replaced person's original hair must not remain; use only the hairstyle of the character from the third image. No magenta in the result.",
+    vi: 'Chỉ thay người được phủ hồng trong ảnh thứ hai bằng nhân vật trong ảnh thứ ba, gồm mặt, tóc, thân và trang phục. Giữ nguyên cảnh, ánh sáng, màu, góc máy và mọi người khác của ảnh đầu, giữ đúng tư thế, góc đầu và biểu cảm. Không giữ tóc cũ. Kết quả không còn màu hồng.',
+  },
+};
+const SWAP_REF_LABEL = { head: 'Ảnh mặt', body: 'Ảnh nhân vật' };
+const SWAP_HINTS = {
+  head: 'Thay cả đầu (gồm tóc) của người trong cảnh bằng người ở ảnh mặt. Giữ dáng, ánh sáng, nền. Hợp nhất khi cảnh có 1 người và mặt không quá nhỏ. Dùng LoRA BFS Head v1.1.',
+  body: 'Thay cả người (mặt, tóc, dáng, quần áo) bằng nhân vật ở ảnh mẫu. Giữ dáng, khung hình, ánh sáng và nền của cảnh. Ảnh nhân vật nên toàn thân, chính diện, nền trơn. Dùng LoRA BFS Body Swap.',
+};
+// Màu và độ đậm như đầu ra marked của node BFS Segment Picker.
+const SWAP_MARK = { color: '#FF00FF', alpha: 0.3 };
+const Swap = {
+  mode: 'head',
+  slots: [{ label: 'Ảnh cảnh' }, { label: SWAP_REF_LABEL.head }].map(slot => ({ ...slot, ref: null, refUrl: '' })),
+  mark: null,
+  markFor: null,
+  hasMark: false,
+  tool: null,
+  size: 60,
+};
+const swapFit = { x: 0, y: 0, s: 1 };
+const swapVariant = () => (Swap.mode === 'head' ? 'head' : Swap.hasMark ? 'selective' : 'body');
+// Đồ thị theo đúng ba workflow BFS trong workflows/bfs_swap, chỉ bỏ các node xem thử và so sánh.
+// Đổi mặt và thay nhân vật: ảnh vừa khung vuông 2 MP và 1,5 MP bằng ImageResizeKJv2, sampler deis_2m (của RES4LYF), 8 bước, CFG 1.
+// Thay người đã tô: cảnh và nhân vật 1 MP, ảnh phủ hồng là ảnh thứ hai thay cho node Segment Picker, euler 8 bước, CFG 1.
+const BFS_RUN = {
+  head: { lora: 'bfs_head_v1.1_qwen_2.1.safetensors', turbo: 'p_qwen_image_2.1_8step_v0.1.safetensors', cache: 'auto', mp: 2, latent: 'empty' },
+  body: { lora: 'Downloads/bfs_body_swap_v1.0_qwen_2.1.safetensors', turbo: 'Downloads/p_qwen_image_2.1_8step_v0.1.safetensors', cache: 'gpu', mp: 1.5, latent: 'encoder' },
+  selective: { lora: 'bfs_body_swap_selective_magenta_v1.0_qwen_2.1.safetensors', turbo: 'p_qwen_image_2.1_8step_v0.1.safetensors', cache: 'auto', mp: 1 },
+};
+const SWAP_UPLOAD_MP = 4;
+function buildSwapGraph(variant, { scene, person, marked, text, seed }) {
+  const run = BFS_RUN[variant];
+  const graph = {
+    1: { class_type: 'UNETLoader', inputs: { unet_name: 'qwen_image_2.1_int8_convrot.safetensors', weight_dtype: 'default' } },
+    2: { class_type: 'CLIPLoader', inputs: { clip_name: 'qwen3vl_8b_int8_convrot.safetensors', type: 'qwen_image', device: 'default' } },
+    3: { class_type: 'VAELoader', inputs: { vae_name: 'qwen_image_2.1_vae_bf16.safetensors' } },
+    15: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: run.turbo, strength_model: 1 } },
+    16: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['15', 0], lora_name: run.lora, strength_model: 1 } },
+    17: { class_type: 'QwenImage21Cache', inputs: { model: ['16', 0], device: run.cache, dtype: 'default' } },
+    4: { class_type: 'LoadImage', inputs: { image: scene } },
+    20: { class_type: 'LoadImage', inputs: { image: person } },
+    7: { class_type: 'TextEncodeQwenImage21', inputs: { clip: ['2', 0], vae: ['3', 0], prompt: text, negative_prompt: '', resolution: 0 } },
+    9: { class_type: 'VAEDecode', inputs: { samples: ['8', 0], vae: ['3', 0] } },
+    6: { class_type: 'SaveImage', inputs: { images: ['9', 0], filename_prefix: 'Concept_swap' } },
+  };
+  const encoder = graph[7].inputs;
+  if (variant === 'selective') {
+    const resize = id => ({ class_type: 'ResizeImageMaskNode', inputs: { input: [id, 0], resize_type: 'scale total pixels', 'resize_type.megapixels': run.mp, scale_method: 'lanczos' } });
+    graph[21] = { class_type: 'LoadImage', inputs: { image: marked } };
+    graph[10] = resize('4');
+    graph[11] = resize('21');
+    graph[12] = resize('20');
+    encoder['images.image_1'] = ['10', 0];
+    encoder['images.image_2'] = ['11', 0];
+    encoder['images.image_3'] = ['12', 0];
+    graph[30] = { class_type: 'RandomNoise', inputs: { noise_seed: seed } };
+    graph[31] = { class_type: 'CFGGuider', inputs: { model: ['17', 0], positive: ['7', 0], negative: ['7', 1], cfg: 1 } };
+    graph[32] = { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } };
+    graph[33] = { class_type: 'BasicScheduler', inputs: { model: ['17', 0], scheduler: 'simple', steps: 8, denoise: 1 } };
+    graph[8] = { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['30', 0], guider: ['31', 0], sampler: ['32', 0], sigmas: ['33', 0], latent_image: ['7', 2] } };
+    graph[18] = { class_type: 'SplitImageWithAlpha', inputs: { image: ['9', 0] } };
+    graph[6].inputs.images = ['18', 0];
+    return graph;
+  }
+  const fit = id => ({ class_type: 'ImageResizeKJv2', inputs: { image: [id, 0], width: ['12', 0], height: ['12', 1], upscale_method: 'lanczos', keep_proportion: 'resize', pad_color: '0, 0, 0', crop_position: 'center', divisible_by: 32, device: 'cpu' } });
+  graph[12] = { class_type: 'ResolutionSelector', inputs: { aspect_ratio: '1:1 (Square)', megapixels: run.mp, multiple: 32 } };
+  graph[10] = fit('4');
+  graph[11] = fit('20');
+  encoder['images.image_1'] = ['10', 0];
+  encoder['images.image_2'] = ['11', 0];
+  let latent = ['7', 2];
+  if (run.latent === 'empty') {
+    graph[13] = { class_type: 'EmptyLatentImage', inputs: { width: ['10', 1], height: ['10', 2], batch_size: 1 } };
+    latent = ['13', 0];
+  }
+  graph[8] = { class_type: 'KSampler', inputs: { model: ['17', 0], positive: ['7', 0], negative: ['7', 1], latent_image: latent, seed, steps: 8, cfg: 1, sampler_name: 'deis_2m', scheduler: 'simple', denoise: 1 } };
+  return graph;
+}
+// deis_2m do pack RES4LYF thêm vào KSampler, ImageResizeKJv2 thuộc KJNodes. Mục 6 của stoneV_CloudSyncHub cài cả hai.
+async function requireSwapPacks() {
+  const read = name => fetch(`/api/object_info/${name}`).then(r => (r.ok ? r.json() : {}), () => ({}));
+  const [sampler, resize] = await Promise.all([read('KSampler'), read('ImageResizeKJv2')]);
+  const names = sampler.KSampler ? sampler.KSampler.input.required.sampler_name[0] : [];
+  if (!names.includes('deis_2m') || !resize.ImageResizeKJv2) {
+    throw new Error('ComfyUI chưa có pack mà workflow BFS cần (RES4LYF, KJNodes). Mở ComfyUI, chạy mục 6 của node stoneV_CloudSyncHub, rồi Gen lại.');
+  }
+}
+async function generateSwap() {
+  const pass = S.passes.find(p => p.kind.startsWith('swap_'));
+  const variant = pass.kind.slice(5);
+  const text = promptFor(pass);
+  const scene = fitReference(Swap.slots[0].ref, SWAP_UPLOAD_MP);
+  const person = fitReference(Swap.slots[1].ref, SWAP_UPLOAD_MP);
+  const marked = variant === 'selective' ? fitReference(swapMarked(), SWAP_UPLOAD_MP) : null;
+  const stamp = Date.now().toString(36);
+  beginRun();
+  try {
+    startPass(pass.name);
+    if (variant !== 'selective') await requireSwapPacks();
+    const names = await uploadAll(marked ? [scene, person, marked] : [scene, person], `${stamp}_swap`);
+    run.promptId = await queueGraph(buildSwapGraph(variant, { scene: names[0], person: names[1], marked: names[2], text, seed: randomSeed() }));
+    advanceJob('queue');
+    renderJob();
+    const { img, url } = await loadOutput(await waitForImage(run.promptId));
+    addResult(img, url, pass.name);
+    if (S.tab === 'swap') openViewer(img, url);
+    hideJob();
+    setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
+  } catch (e) {
+    failRun(e);
+  } finally {
+    endRun();
+  }
+}
+function buildSwapPasses() {
+  const [shot, ref] = Swap.slots;
+  if (!shot.ref) return { passes: [], problems: [] };
+  const variant = swapVariant();
+  const problems = ref.ref ? [] : [{ brush: null, text: `Thêm ${SWAP_REF_LABEL[Swap.mode].toLowerCase()}` }];
+  const name = { head: 'Đổi mặt', body: 'Thay nhân vật', selective: 'Thay người đã tô' }[variant];
+  return { passes: [{ kind: `swap_${variant}`, name, lines: [SWAP_PROMPTS[variant]], slots: [] }], problems };
+}
+// Lớp tô cùng cỡ ảnh cảnh. Đổi ảnh cảnh thì bỏ vùng tô cũ.
+function swapMark() {
+  const shot = Swap.slots[0].ref;
+  if (!shot) {
+    Object.assign(Swap, { mark: null, markFor: null, hasMark: false });
+    return null;
+  }
+  if (Swap.markFor !== shot) {
+    Object.assign(Swap, { mark: newCanvas(shot.naturalWidth || shot.width, shot.naturalHeight || shot.height), markFor: shot, hasMark: false });
+  }
+  return Swap.mark;
+}
+// Ảnh cảnh có người cần thay phủ hồng, gửi làm ảnh thứ hai như workflow chọn người.
+function swapMarked() {
+  const shot = Swap.slots[0].ref, mark = swapMark();
+  const c = imageToCanvas(shot), g = c.getContext('2d');
+  g.globalAlpha = SWAP_MARK.alpha;
+  g.drawImage(mark, 0, 0);
+  return c;
+}
+function measureSwapMark() {
+  const mark = Swap.mark;
+  if (!mark) return false;
+  const small = newCanvas(Math.max(1, Math.round(mark.width / 8)), Math.max(1, Math.round(mark.height / 8)));
+  const g = small.getContext('2d');
+  g.drawImage(mark, 0, 0, small.width, small.height);
+  const data = g.getImageData(0, 0, small.width, small.height).data;
+  for (let i = 3; i < data.length; i += 4) if (data[i] > 8) return true;
+  return false;
+}
+function drawSwap() {
+  const view = $('swapView'), canvas = $('swapCanvas');
+  const box = view.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.max(1, Math.round(box.width * dpr));
+  canvas.height = Math.max(1, Math.round(box.height * dpr));
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, box.width, box.height);
+  const shot = Swap.slots[0].ref;
+  $('swapMsg').hidden = !!shot;
+  if (!shot) return;
+  const w = shot.naturalWidth || shot.width, h = shot.naturalHeight || shot.height;
+  const s = Math.min(box.width / w, box.height / h);
+  Object.assign(swapFit, { s, x: (box.width - w * s) / 2, y: (box.height - h * s) / 2 });
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(shot, swapFit.x, swapFit.y, w * s, h * s);
+  if (Swap.mode === 'body' && swapMark()) {
+    g.globalAlpha = SWAP_MARK.alpha;
+    g.drawImage(Swap.mark, swapFit.x, swapFit.y, w * s, h * s);
+    g.globalAlpha = 1;
+  }
+}
+function syncSwapMode() {
+  const body = Swap.mode === 'body', shot = Swap.slots[0].ref;
+  $('swapMode').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.mode === Swap.mode)));
+  $('swapHint').textContent = SWAP_HINTS[Swap.mode];
+  $('swapPick').hidden = !body || !shot;
+  Swap.tool = body && shot ? Swap.tool || 'paint' : null;
+  $('swapTools').querySelectorAll('[data-tool]').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.tool === Swap.tool)));
+  $('swapView').classList.toggle('painting', !!Swap.tool);
+  if (!Swap.tool) $('swapRing').hidden = true;
+  drawSwap();
+}
+function syncSwap() {
+  syncSlotBoxes('swapSlots', Swap.slots);
+  swapMark();
+  syncSwapMode();
+}
+function takeSwapFiles(fileList, start) {
+  takeFilesInto(Swap.slots, fileList, start, syncSwap);
+}
+function buildSwapSlots() {
+  Swap.slots[1].label = SWAP_REF_LABEL[Swap.mode];
+  buildSlotBoxes('swapSlots', Swap.slots, takeSwapFiles, syncSwap);
+  syncSlotBoxes('swapSlots', Swap.slots);
+}
+function buildSwapPanel() {
+  buildSwapSlots();
+  $('swapMode').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip || chip.dataset.mode === Swap.mode) return;
+    Swap.mode = chip.dataset.mode;
+    buildSwapSlots();
+    syncSwapMode();
+    renderPanel();
+  });
+  $('swapTools').addEventListener('click', e => {
+    const chip = e.target.closest('[data-tool]');
+    if (!chip) return;
+    Swap.tool = chip.dataset.tool;
+    syncSwapMode();
+  });
+  $('swapClear').addEventListener('click', () => {
+    if (!Swap.mark) return;
+    Swap.mark.getContext('2d').clearRect(0, 0, Swap.mark.width, Swap.mark.height);
+    Swap.hasMark = false;
+    drawSwap();
+    renderPanel();
+  });
+  $('swapSize').addEventListener('input', e => {
+    Swap.size = Number(e.target.value);
+    $('swapRing').style.width = $('swapRing').style.height = `${Swap.size}px`;
+  });
+  const view = $('swapView'), ring = $('swapRing');
+  const toImage = e => {
+    const box = view.getBoundingClientRect();
+    return { x: (e.clientX - box.left - swapFit.x) / swapFit.s, y: (e.clientY - box.top - swapFit.y) / swapFit.s };
+  };
+  const paint = (a, b) => {
+    const g = swapMark().getContext('2d');
+    g.globalCompositeOperation = Swap.tool === 'erase' ? 'destination-out' : 'source-over';
+    g.fillStyle = g.strokeStyle = SWAP_MARK.color;
+    g.lineWidth = Swap.size / swapFit.s;
+    g.lineCap = g.lineJoin = 'round';
+    g.beginPath();
+    g.arc(b.x, b.y, g.lineWidth / 2, 0, Math.PI * 2);
+    g.fill();
+    if (a) {
+      g.beginPath();
+      g.moveTo(a.x, a.y);
+      g.lineTo(b.x, b.y);
+      g.stroke();
+    }
+    g.globalCompositeOperation = 'source-over';
+  };
+  let last = null;
+  view.addEventListener('pointerdown', e => {
+    if (!Swap.tool || !Swap.slots[0].ref) return;
+    view.setPointerCapture(e.pointerId);
+    last = toImage(e);
+    paint(null, last);
+    drawSwap();
+  });
+  view.addEventListener('pointermove', e => {
+    if (Swap.tool) {
+      const box = view.getBoundingClientRect();
+      ring.hidden = false;
+      ring.style.width = ring.style.height = `${Swap.size}px`;
+      ring.style.transform = `translate(${e.clientX - box.left}px, ${e.clientY - box.top}px) translate(-50%, -50%)`;
+    }
+    if (!last) return;
+    const point = toImage(e);
+    paint(last, point);
+    last = point;
+    drawSwap();
+  });
+  const finish = () => {
+    if (!last) return;
+    last = null;
+    Swap.hasMark = measureSwapMark();
+    renderPanel();
+  };
+  view.addEventListener('pointerup', finish);
+  view.addEventListener('pointercancel', finish);
+  view.addEventListener('pointerleave', () => { ring.hidden = true; });
+  syncSwap();
+}
+// Bóng người đứng giữa cảnh mẫu, chỉ để xem giao diện khi chưa nối ComfyUI.
+function sampleSwapScene() {
+  const c = sampleScene(), g = c.getContext('2d');
+  g.fillStyle = '#1B2126';
+  g.beginPath();
+  g.moveTo(628, 704);
+  g.lineTo(640, 536);
+  g.quadraticCurveTo(672, 508, 704, 536);
+  g.lineTo(716, 704);
+  g.closePath();
+  g.fill();
+  g.fillStyle = '#C49478';
+  g.beginPath();
+  g.arc(672, 486, 26, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#2B1C15';
+  g.beginPath();
+  g.arc(672, 480, 27, Math.PI, 0);
+  g.fill();
+  return c;
+}
 function switchTab(tab) {
   S.tab = tab;
   const edit = tab === 'edit';
   $('tabEdit').setAttribute('aria-selected', String(edit));
   $('tabSheet').setAttribute('aria-selected', String(tab === 'sheet'));
   $('tabRotate').setAttribute('aria-selected', String(tab === 'rotate'));
+  $('tabSwap').setAttribute('aria-selected', String(tab === 'swap'));
   $('strip').hidden = !edit;
   $('sheetPanel').hidden = tab !== 'sheet';
   $('rotatePanel').hidden = tab !== 'rotate';
+  $('swapPanel').hidden = tab !== 'swap';
   document.querySelectorAll('.edit-only').forEach(el => { el.hidden = !edit; });
   closePop();
   toggleEnv(false);
@@ -2423,6 +2786,7 @@ function switchTab(tab) {
   renderPanel();
   if (edit) fit();
   if (tab === 'rotate') syncRotateMode();
+  if (tab === 'swap') syncSwapMode();
 }
 
 function buildApiPrompt({ image1, refs, text, resolution, seed, lora, latent }) {
@@ -2894,6 +3258,10 @@ async function generate() {
     await generateRotate();
     return;
   }
+  if (S.tab === 'swap') {
+    await generateSwap();
+    return;
+  }
   const expand = S.passes.find(p => p.kind === 'expand');
   const edit = S.passes.find(p => p.kind === 'edit');
   const snap = takeRunSnapshot();
@@ -3060,6 +3428,7 @@ $('captureCancel').addEventListener('click', stopCapture);
 $('tabEdit').addEventListener('click', () => switchTab('edit'));
 $('tabSheet').addEventListener('click', () => switchTab('sheet'));
 $('tabRotate').addEventListener('click', () => switchTab('rotate'));
+$('tabSwap').addEventListener('click', () => switchTab('swap'));
 
 function sampleScene() {
   const c = document.createElement('canvas');
@@ -3103,6 +3472,7 @@ buildPop();
 buildSheetPanel();
 buildEnvBox();
 buildRotatePanel();
+buildSwapPanel();
 renderTiles();
 if (ON_COMFY) {
   clearBase();
@@ -3113,9 +3483,14 @@ if (ON_COMFY) {
   Rotate.slots[0].ref = sample;
   Rotate.slots[0].refUrl = sample.toDataURL('image/jpeg', 0.8);
   syncRotate();
+  const person = sampleSwapScene();
+  Swap.slots[0].ref = person;
+  Swap.slots[0].refUrl = person.toDataURL('image/jpeg', 0.8);
+  syncSwap();
 }
 new ResizeObserver(() => {
   if (S.tab === 'rotate') { layoutRotateFrame(); RotateView.request(); }
+  else if (S.tab === 'swap') drawSwap();
   else if (!drag && !live) fit();
 }).observe(stage);
 </script>
