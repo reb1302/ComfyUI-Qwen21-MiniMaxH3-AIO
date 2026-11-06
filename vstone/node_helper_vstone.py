@@ -1908,12 +1908,12 @@ def _llm_alive() -> bool:
 
 
 def _llm_pick_gpu() -> tuple[int, int, int]:
-    """Card còn trống nhiều bộ nhớ nhất, để LLM và ComfyUI chia đều hai card. Trả về (số card, MiB trống, MiB tổng)."""
+    """Ưu tiên card phụ (GPU > 0) nếu đủ bộ nhớ để tách khỏi ComfyUI ở GPU 0; nếu không thì chọn card trống nhất."""
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=index,memory.free,memory.total", "--format=csv,noheader,nounits"],
                              capture_output=True, text=True, timeout=20, check=True).stdout
         rows = [[int(v) for v in line.split(",")] for line in out.strip().splitlines() if line.strip()]
-        best = max(rows, key=lambda r: r[1])
+        best = max(rows, key=lambda r: (r[0] > 0 and r[1] >= int(r[2] * LLM_GPU_SHARE) + 2048, r[1], r[0]))
         return best[0], best[1], best[2]
     except Exception:
         return 0, 0, 0
@@ -1937,14 +1937,35 @@ def _llm_pid_running(paths: dict[str, str]) -> tuple[int, float] | None:
 
 
 def _llm_stop(paths: dict[str, str]) -> None:
-    """Tắt mọi tiến trình chạy bằng python của venv LLM, kể cả EngineCore mồ côi của các lần bật lỗi trước, vì chúng còn giữ bộ nhớ GPU."""
+    """Tắt mọi tiến trình vLLM và EngineCore mồ côi (trên Linux venv/bin/python là symlink nên phải dò cả cmdline và tên tiến trình)."""
     killed = []
     try:
         import psutil
-        venv = os.path.realpath(paths["venv"])
-        for p in psutil.process_iter(["pid", "cmdline", "exe"]):
-            exe = (p.info.get("exe") or "") + " " + " ".join((p.info.get("cmdline") or [])[:1])
-            if venv in exe and p.pid != os.getpid():
+        venv = paths["venv"]
+        venv_real = os.path.realpath(venv)
+        base = paths["base"]
+        me = os.getpid()
+        for p in psutil.process_iter(["pid", "name", "cmdline", "exe"]):
+            if p.pid == me:
+                continue
+            cmdline = " ".join(p.info.get("cmdline") or [])
+            name = p.info.get("name") or ""
+            exe = p.info.get("exe") or ""
+            if (
+                base in cmdline
+                or venv in cmdline
+                or venv_real in cmdline
+                or venv_real in exe
+                or "VLLM::EngineCore" in cmdline
+                or "VLLM::EngineCore" in name
+                or f"--port {LLM_PORT}" in cmdline
+            ):
+                try:
+                    for child in p.children(recursive=True):
+                        child.terminate()
+                        killed.append(child)
+                except Exception:
+                    pass
                 p.terminate()
                 killed.append(p)
         psutil.wait_procs(killed, timeout=20)
@@ -1970,7 +1991,7 @@ def _log_tail(path: str, lines: int = 6) -> str:
 
 
 LLM_RUN_MARK = "=== VStone: bật vLLM"
-LLM_ERROR_WORDS = ("Error", "error:", "Exception", "CUDA", "memory", "OOM", "not supported", "No such file", "Traceback")
+LLM_ERROR_WORDS = ("Segfault", "Assertion", "Error", "error:", "Exception", "CUDA", "memory", "OOM", "not supported", "No such file", "Traceback")
 
 
 def _llm_root_cause(path: str, limit: int = 15) -> str:
@@ -1992,7 +2013,9 @@ def _llm_root_cause(path: str, limit: int = 15) -> str:
 
 
 LLM_STEPS = (
+    ("Application startup complete", "Đã mở cổng, sẵn sàng nhận câu hỏi"),
     ("Capturing CUDA graph", "Chụp CUDA graph, bước cuối"),
+    ("Initial profiling/warmup", "Đã chạy thử (warmup), chuẩn bị mở cổng"),
     ("torch.compile", "Biên dịch kernel (torch.compile)"),
     ("KV cache", "Tính chỗ cho KV cache"),
     ("Memory profiling", "Đo bộ nhớ"),
@@ -2025,11 +2048,22 @@ def _llm_progress(path: str) -> str:
     return "\n".join([f"{elapsed}Bước: {step}."] + clean[-3:])
 
 
+def _llm_last_run_eager(path: str) -> bool:
+    """Kiểm tra lần chạy gần nhất trong log đã có --enforce-eager chưa (để không báo lại lỗi Segfault của bản cũ)."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+        start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=-1)
+        return start >= 0 and "--enforce-eager" in lines[start]
+    except OSError:
+        return False
+
+
 def _llm_start_server(root: str) -> None:
     paths, state = _llm_paths(root), _llm_state()
-    # Chỉ một vLLM: bản đang chạy hoặc đang nạp (kể cả do lần khởi động ComfyUI trước bật) thì để yên, bản treo quá lâu thì tắt.
+    # Chỉ một vLLM: bản đang chạy hoặc đang nạp (với cấu hình mới --enforce-eager) thì để yên, bản cũ hoặc treo quá lâu thì tắt.
     running = _llm_pid_running(paths)
-    if running and (_llm_alive() or time.time() - running[1] < LLM_START_GRACE_SEC):
+    if running and (_llm_alive() or (_llm_last_run_eager(paths["server_log"]) and time.time() - running[1] < LLM_START_GRACE_SEC)):
         state["stage"] = "Khởi động vLLM"
         return
     _llm_stop(paths)
@@ -2043,7 +2077,8 @@ def _llm_start_server(root: str) -> None:
             return
         if share < LLM_GPU_SHARE:
             max_len = 32768
-    # DeepGEMM dịch kernel lúc chạy và đòi nvcc >= 12.9, CUDA trên H200 cũ hơn (log 2026-11-06). Tắt để vLLM dùng kernel FP8 khác.
+    # DeepGEMM dịch kernel lúc chạy và đòi nvcc >= 12.9, CUDA trên H200 cũ hơn (log 2026-11-06).
+    # --enforce-eager tắt torch.compile (AOT Inductor) và CUDA graph PIECEWISE bị lỗi Segfault (aoti_torch_new_tensor_handle) trên H200.
     env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID", CUDA_VISIBLE_DEVICES=str(gpu),
                VLLM_USE_DEEP_GEMM="0", VLLM_MOE_USE_DEEP_GEMM="0")
     cmd = [
@@ -2051,6 +2086,7 @@ def _llm_start_server(root: str) -> None:
         "--model", paths["model"], "--served-model-name", LLM_SERVED_NAME,
         "--host", "127.0.0.1", "--port", str(LLM_PORT),
         "--gpu-memory-utilization", str(share), "--max-model-len", str(max_len),
+        "--enforce-eager",
         "--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
     ]
     log = open(paths["server_log"], "a", encoding="utf-8")
@@ -2126,20 +2162,30 @@ def install_llm(unique_id: Any = None) -> str:
         report = "\n".join([f"❌ {state['error']} Bấm Queue lần nữa để thử lại.", _log_tail(paths["setup_log"])])
         state["error"] = ""
         return report
-    if _llm_ready(root) and state["stage"] == "Khởi động vLLM":
-        tail = _log_tail(paths["server_log"], 4)
+    if _llm_ready(root) and (state["stage"] == "Khởi động vLLM" or _llm_pid_running(paths) is not None):
         proc = state.get("proc")
         # Sau khi ComfyUI khởi động lại thì không còn proc trong RAM, xem file pid thay thế.
         dead = proc.poll() is not None if proc is not None else _llm_pid_running(paths) is None
-        if dead:
-            state.update(stage="", proc=None)
+        if not dead:
+            state["stage"] = "Khởi động vLLM"
+            return "\n".join(["⏳ vLLM đang khởi động, thường 2-3 phút. Bấm Queue lại để xem tiến độ.", _llm_progress(paths["server_log"])])
+        state.update(stage="", proc=None)
+        if _llm_last_run_eager(paths["server_log"]):
             return "\n".join(["❌ vLLM dừng khi khởi động. Gửi các dòng dưới đây để sửa, rồi bấm Queue để thử lại.",
                               _llm_root_cause(paths["server_log"])])
-        return "\n".join(["⏳ vLLM đang khởi động, thường 2-5 phút. Bấm Queue lại để xem tiến độ.", _llm_progress(paths["server_log"])])
+    if _llm_ready(root):
+        _llm_start_server(root)
+        if state["error"]:
+            err = state["error"]
+            state["error"] = ""
+            return f"❌ {err}"
+        gpu = state.get("gpu")
+        return "\n".join([
+            f"⏳ Đã bật vLLM mới (--enforce-eager) trên GPU {gpu if gpu is not None else 0}, thường mất 2-3 phút nạp 42 phần trọng số. Bấm Queue lại sau 30 giây để xem % tiến độ.",
+            _llm_progress(paths["server_log"]),
+        ])
     state.update(busy=True, error="", stage="Chuẩn bị")
     threading.Thread(target=_llm_setup, args=(root,), name="VStoneLLMSetup", daemon=True).start()
-    if _llm_ready(root):
-        return "⏳ Đang khởi động vLLM, thường 2-5 phút. Bấm Queue lại để xem nó đang làm gì."
     return ("⏳ Bắt đầu cài LLM ngầm: môi trường riêng, vLLM (khoảng 10 phút), model khoảng 35 GB. "
             "ComfyUI vẫn dùng bình thường. Bấm Queue lại để xem tiến độ.")
 
