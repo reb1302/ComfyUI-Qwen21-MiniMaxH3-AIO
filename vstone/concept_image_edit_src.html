@@ -167,6 +167,16 @@ textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--fo
 .imgpick.over{border-color:var(--paper)}
 
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.chat{position:absolute;inset:0;z-index:1;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;padding:8px}
+.chatlog{overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px}
+.msg{max-width:min(760px,92%);padding:10px 12px;border-radius:6px;white-space:pre-wrap;word-break:break-word;line-height:1.45;position:relative}
+.msg.user{align-self:flex-end;background:var(--paper);color:var(--paper-ink)}
+.msg.bot{align-self:flex-start;background:var(--raised);border:1px solid var(--line);padding-right:40px}
+.msg.bot .msgcopy{position:absolute;top:4px;right:4px;opacity:.6}
+.msg.err{color:var(--warn)}
+.chatempty{margin:auto;color:var(--ink-2);text-align:center}
+.chatin{display:flex;gap:8px;align-items:flex-end}
+.chatin textarea{flex:1;min-height:44px;max-height:200px;resize:vertical}
 .size{display:flex;align-items:center;gap:7px}
 .size input{width:150px;accent-color:var(--paper)}
 .size span{display:block;background:var(--ink-2);border-radius:50%}
@@ -260,6 +270,7 @@ a.btn{color:inherit;text-decoration:none}
     <button class="tab" id="tabSheet" type="button" role="tab" aria-selected="false">Char sheet</button>
     <button class="tab" id="tabRotate" type="button" role="tab" aria-selected="false">Xoay</button>
     <button class="tab" id="tabSwap" type="button" role="tab" aria-selected="false">Đổi người</button>
+    <button class="tab" id="tabChat" type="button" role="tab" aria-selected="false">Chat</button>
   </div>
   <div class="main" id="main">
     <nav class="strip" id="strip" aria-label="Cọ và công cụ">
@@ -293,6 +304,13 @@ a.btn{color:inherit;text-decoration:none}
       </div>
       <div class="sheetslots rotslots" id="rotateSlots"></div>
       <p class="envhint" id="rotHint"></p>
+    </section>
+
+    <section class="sheetpanel" id="chatPanel" aria-label="Chat" hidden>
+      <div class="viewchips" id="chatMode" role="group" aria-label="Việc cần làm"></div>
+      <p class="envhint" id="chatHint"></p>
+      <button class="viewchip" id="chatClear" type="button">Cuộc trò chuyện mới</button>
+      <p class="envhint">Model Qwen3.6-35B-A3B chạy trên H200.</p>
     </section>
 
     <section class="sheetpanel" id="swapPanel" aria-label="Đổi người" hidden>
@@ -336,6 +354,13 @@ a.btn{color:inherit;text-decoration:none}
             <button class="viewchip" id="rotReset" type="button">Chính diện</button>
             <button class="viewchip" id="rotRetry" type="button" hidden>Dựng lại</button>
           </div>
+        </div>
+      </div>
+      <div class="chat" id="chat" hidden>
+        <div class="chatlog" id="chatLog" aria-live="polite"><p class="chatempty" id="chatEmpty">Gõ hoặc dán nội dung bên dưới</p></div>
+        <div class="chatin">
+          <textarea class="field" id="chatInput" placeholder="Nhập nội dung, Enter để gửi, Shift+Enter xuống dòng" aria-label="Nội dung chat"></textarea>
+          <button class="btn" id="chatSend" type="button">Gửi</button>
         </div>
       </div>
       <div class="swap" id="swap" hidden>
@@ -1336,6 +1361,7 @@ function syncStage() {
   $('sheetEmpty').hidden = S.tab !== 'sheet';
   $('rot').hidden = S.tab !== 'rotate';
   $('swap').hidden = S.tab !== 'swap';
+  $('chat').hidden = S.tab !== 'chat';
 }
 function takeBase(file) {
   if (file && file.type.startsWith('image/')) loadFile(file, img => setBase(img, false));
@@ -2766,6 +2792,129 @@ function sampleSwapScene() {
   g.fill();
   return c;
 }
+// Tab Chat: gọi LLM qua /vstone/llm trên cổng ComfyUI (mục 7 của stoneV_CloudSyncHub), trả lời dạng stream.
+const CHAT_MODES = [
+  { id: 'ko2vi', label: 'Hàn → Việt', hint: 'Dán tiếng Hàn, nhận bản dịch tiếng Việt.', think: false,
+    system: 'Translate the user\'s Korean text into natural, accurate Vietnamese. Keep names, numbers, formatting and line breaks. Output only the translation.' },
+  { id: 'vi2ko', label: 'Việt → Hàn', hint: 'Dán tiếng Việt, nhận bản dịch tiếng Hàn.', think: false,
+    system: 'Translate the user\'s Vietnamese text into natural, accurate Korean suited to a professional film studio. Keep names, numbers, formatting and line breaks. Output only the translation.' },
+  { id: 'prompt', label: 'Viết prompt', hint: 'Tả bằng tiếng Việt, nhận prompt tiếng Anh cho Qwen Image.', think: false,
+    system: 'Turn the user\'s description into one clear English prompt for an image generation or editing model. Describe subject, setting, lighting, camera and style concretely. Output only the prompt.' },
+  { id: 'code', label: 'Code', hint: 'Hỏi về code, script, tiện ích.', think: true,
+    system: 'You are a concise coding assistant. Answer in Vietnamese, with complete, working code when code is needed.' },
+  { id: 'free', label: 'Tự do', hint: 'Hỏi gì cũng được.', think: false, system: '' },
+];
+const LLM_MODEL = 'qwen3.6-35b-a3b';
+const Chat = { mode: 'ko2vi', history: [], busy: false, abort: null };
+function chatBubble(role, content) {
+  $('chatEmpty').hidden = true;
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.textContent = content;
+  if (role === 'bot') {
+    const copy = iconButton('copy', 'Chép', () => copyText(div.firstChild ? div.firstChild.textContent : '').then(ok => {
+      if (ok) { copy.innerHTML = icon('check'); setTimeout(() => { copy.innerHTML = icon('copy'); }, 1200); }
+    }));
+    copy.classList.add('msgcopy');
+    div.textContent = '';
+    div.append(document.createTextNode(content), copy);
+  }
+  $('chatLog').append(div);
+  $('chatLog').scrollTop = $('chatLog').scrollHeight;
+  return div;
+}
+function syncChat() {
+  $('chatMode').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.mode === Chat.mode)));
+  $('chatHint').textContent = CHAT_MODES.find(m => m.id === Chat.mode).hint;
+  $('chatSend').textContent = Chat.busy ? 'Dừng' : 'Gửi';
+}
+async function sendChat() {
+  if (Chat.busy) { if (Chat.abort) Chat.abort.abort(); return; }
+  const content = $('chatInput').value.trim();
+  if (!content) return;
+  const mode = CHAT_MODES.find(m => m.id === Chat.mode);
+  $('chatInput').value = '';
+  chatBubble('user', content);
+  Chat.history.push({ role: 'user', content });
+  const bubble = chatBubble('bot', '…');
+  const textNode = bubble.firstChild;
+  if (!ON_COMFY) {
+    textNode.textContent = 'Bản xem trước: chưa nối LLM. Trên H200, câu trả lời sẽ hiện ở đây, chạy dần từng chữ.';
+    return;
+  }
+  Chat.busy = true;
+  Chat.abort = new AbortController();
+  syncChat();
+  let answer = '';
+  try {
+    const messages = (mode.system ? [{ role: 'system', content: mode.system }] : []).concat(Chat.history.slice(-20));
+    const res = await fetch('/vstone/llm/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: Chat.abort.signal,
+      body: JSON.stringify({ model: LLM_MODEL, messages, stream: true, temperature: mode.think ? 0.6 : 0.3, chat_template_kwargs: { enable_thinking: mode.think } }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      throw new Error(detail.error || (detail.message) || `LLM lỗi ${res.status}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    textNode.textContent = mode.think ? 'Đang suy nghĩ…' : '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+        const delta = (JSON.parse(line.slice(6)).choices[0] || {}).delta || {};
+        if (delta.content) {
+          answer += delta.content;
+          textNode.textContent = answer;
+          $('chatLog').scrollTop = $('chatLog').scrollHeight;
+        }
+      }
+    }
+    Chat.history.push({ role: 'assistant', content: answer });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      textNode.textContent = answer || 'Đã dừng.';
+      if (answer) Chat.history.push({ role: 'assistant', content: answer });
+    } else {
+      bubble.classList.add('err');
+      textNode.textContent = `${e.message || e}. Nếu LLM chưa chạy, mở ComfyUI và chạy mục 7 của node stoneV_CloudSyncHub.`;
+      Chat.history.pop();
+    }
+  } finally {
+    Chat.busy = false;
+    Chat.abort = null;
+    syncChat();
+  }
+}
+function buildChatPanel() {
+  $('chatMode').innerHTML = CHAT_MODES.map(m => `<button class="viewchip" type="button" data-mode="${m.id}" aria-pressed="false">${m.label}</button>`).join('');
+  $('chatMode').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip) return;
+    Chat.mode = chip.dataset.mode;
+    syncChat();
+    $('chatInput').focus();
+  });
+  $('chatClear').addEventListener('click', () => {
+    if (Chat.abort) Chat.abort.abort();
+    Chat.history = [];
+    $('chatLog').querySelectorAll('.msg').forEach(m => m.remove());
+    $('chatEmpty').hidden = false;
+  });
+  $('chatSend').addEventListener('click', sendChat);
+  $('chatInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(); }
+  });
+  syncChat();
+}
 function switchTab(tab) {
   S.tab = tab;
   const edit = tab === 'edit';
@@ -2788,6 +2937,10 @@ function switchTab(tab) {
   if (edit) fit();
   if (tab === 'rotate') syncRotateMode();
   if (tab === 'swap') syncSwapMode();
+  $('tabChat').setAttribute('aria-selected', String(tab === 'chat'));
+  $('chatPanel').hidden = tab !== 'chat';
+  document.querySelectorAll('.bar > :not(.grow)').forEach(el => { if (!el.classList.contains('edit-only')) el.hidden = tab === 'chat'; });
+  if (tab === 'chat') $('chatInput').focus();
 }
 
 function buildApiPrompt({ image1, refs, text, resolution, seed, lora, latent }) {
@@ -3430,6 +3583,7 @@ $('tabEdit').addEventListener('click', () => switchTab('edit'));
 $('tabSheet').addEventListener('click', () => switchTab('sheet'));
 $('tabRotate').addEventListener('click', () => switchTab('rotate'));
 $('tabSwap').addEventListener('click', () => switchTab('swap'));
+$('tabChat').addEventListener('click', () => switchTab('chat'));
 
 function sampleScene() {
   const c = document.createElement('canvas');
@@ -3474,6 +3628,7 @@ buildSheetPanel();
 buildEnvBox();
 buildRotatePanel();
 buildSwapPanel();
+buildChatPanel();
 renderTiles();
 if (ON_COMFY) {
   clearBase();
