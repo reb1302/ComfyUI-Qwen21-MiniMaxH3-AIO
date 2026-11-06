@@ -1925,6 +1925,28 @@ def _log_tail(path: str, lines: int = 6) -> str:
         return ""
 
 
+LLM_RUN_MARK = "=== VStone: bật vLLM"
+LLM_ERROR_WORDS = ("Error", "error:", "Exception", "CUDA", "memory", "OOM", "not supported", "No such file", "Traceback")
+
+
+def _llm_root_cause(path: str, limit: int = 15) -> str:
+    """Lỗi gốc của lần bật gần nhất: dòng cuối của log chỉ là "Engine core initialization failed", lỗi thật nằm phía trên."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return ""
+    start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=0)
+    run = lines[start:]
+    picked: list[str] = []
+    for line in run:
+        line = line.strip()
+        if line and any(word in line for word in LLM_ERROR_WORDS) and line not in picked:
+            picked.append(line[:300])
+    head = run[0] if run and run[0].startswith(LLM_RUN_MARK) else ""
+    return "\n".join(([head] if head else []) + picked[-limit:] + [f"(Log đầy đủ: {path})"])
+
+
 def _llm_start_server(root: str) -> None:
     paths = _llm_paths(root)
     gpu = _llm_pick_gpu()
@@ -1937,6 +1959,8 @@ def _llm_start_server(root: str) -> None:
         "--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
     ]
     log = open(paths["server_log"], "a", encoding="utf-8")
+    log.write(f"\n{LLM_RUN_MARK} {time.strftime('%Y-%m-%d %H:%M:%S')} trên GPU {gpu}: {' '.join(cmd[3:])}\n")
+    log.flush()
     # Phiên riêng: vLLM sống sót khi ComfyUI tự khởi động lại bằng os.execv.
     proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
     _llm_state().update(gpu=gpu, proc=proc)
@@ -2009,7 +2033,8 @@ def install_llm(unique_id: Any = None) -> str:
         proc = state.get("proc")
         if proc is not None and proc.poll() is not None:
             state.update(stage="", proc=None)
-            return "\n".join(["❌ vLLM dừng khi khởi động. Bấm Queue lần nữa để thử lại.", tail])
+            return "\n".join(["❌ vLLM dừng khi khởi động. Gửi các dòng dưới đây để sửa, rồi bấm Queue để thử lại.",
+                              _llm_root_cause(paths["server_log"])])
         return "\n".join(["⏳ vLLM đang nạp model, 2-5 phút. Bấm Queue lại để kiểm tra.", tail])
     state.update(busy=True, error="", stage="Chuẩn bị")
     threading.Thread(target=_llm_setup, args=(root,), name="VStoneLLMSetup", daemon=True).start()
