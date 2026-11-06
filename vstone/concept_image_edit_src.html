@@ -46,6 +46,15 @@ svg{display:block}
 .more{position:absolute;right:-5px;bottom:-5px;width:18px;height:18px;border-radius:50%;background:var(--paper);color:var(--paper-ink);display:none;place-items:center}
 .more svg{width:11px;height:11px}
 .tile[data-active="true"] .more{display:grid}
+.tilewrap{position:relative}
+.tilex{position:absolute;left:-6px;top:-6px;z-index:1;width:18px;height:18px;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--well);color:var(--ink);cursor:pointer;display:none;place-items:center}
+.tilex svg{width:10px;height:10px}
+.tilex:hover{background:var(--paper);color:var(--paper-ink);border-color:var(--paper)}
+.tilewrap:hover .tilex,.tilewrap:focus-within .tilex,.tile[data-active="true"] + .tilex{display:grid}
+.qstate{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.qdot{width:8px;height:8px;flex:none;border:1.5px solid var(--ink-2);border-radius:50%}
+.qstate[data-busy="true"]{color:var(--ink)}
+.qstate[data-busy="true"] .qdot{background:var(--warn);border-color:var(--warn)}
 .add{width:48px;height:48px;flex:none;margin-block:5px;padding:0;background:transparent;border:1.5px dashed var(--ink-2);border-radius:6px;color:var(--ink);cursor:pointer;display:grid;place-items:center}
 .add:hover{border-style:solid;background:var(--surface)}
 .add.nudge{border-color:var(--paper);background:var(--raised)}
@@ -140,6 +149,11 @@ svg{display:block}
 .upinfo{position:absolute;left:8px;top:8px;display:grid;gap:2px;max-width:calc(100% - 16px);padding:5px 9px;font:400 12px/1.45 var(--font-data);font-variant-numeric:tabular-nums;color:var(--ink);background:var(--well);border:1px solid var(--line);border-radius:3px;pointer-events:none}
 .upinfo .upwarn{font-family:var(--font-ui);color:var(--warn)}
 .upslots .sheetbox{height:180px}
+.upview.comparing{cursor:ew-resize;touch-action:none;user-select:none}
+.upview.comparing.panning{cursor:grabbing}
+.uptools{position:absolute;right:8px;top:8px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.uptools .viewchip{padding:3px 10px;font-size:12px;background:var(--well)}
+.upview .rotnote{top:auto;bottom:8px}
 .rotslider{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
 .rotslider input{width:220px;accent-color:var(--paper)}
 .capbox{position:absolute;pointer-events:none;outline:2px dashed #fff;box-shadow:0 0 0 1px #000,0 0 0 9999px #00000066}
@@ -401,6 +415,12 @@ a.btn{color:inherit;text-decoration:none}
           <canvas id="upCanvas"></canvas>
           <div class="rotmsg" id="upMsg">Bỏ ảnh cần upscale vào</div>
           <div class="upinfo" id="upInfo" hidden></div>
+          <div class="uptools" id="upTools" hidden>
+            <button class="viewchip" id="upFit" type="button" title="Cả ảnh vừa khung">Vừa khung</button>
+            <button class="viewchip" id="upOne" type="button" title="Xem đúng từng điểm ảnh của kết quả">100%</button>
+            <button class="viewchip" id="upOpen" type="button" title="Mở ảnh kết quả để tải về hoặc sửa tiếp">Xem ảnh</button>
+          </div>
+          <div class="rotnote" id="upNote" hidden>Giả lập để xem giao diện, chưa phải ảnh upscale thật</div>
         </div>
       </div>
       <div class="frame" id="frame">
@@ -511,6 +531,7 @@ a.btn{color:inherit;text-decoration:none}
       <option value="4">Gen ở 4 MP</option>
       <option value="0">Gen ở cỡ gốc</option>
     </select>
+    <span class="qstate" id="qState" title="Hàng đợi chung của ComfyUI trên H200, mọi họa sĩ dùng chung, chạy từng việc một"><span class="qdot" aria-hidden="true"></span><span id="qText">Chưa kết nối ComfyUI</span></span>
     <select class="field model" id="model" aria-label="Model">
       <option>Qwen 2.1</option>
       <option disabled>Flux 2 (chưa có model)</option>
@@ -881,7 +902,17 @@ function renderTiles() {
       selectBrush(b.id);
       openPop(b.id);
     });
-    wrap.append(t);
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'tilex';
+    x.title = 'Xoá cọ này (Ctrl+Z để lấy lại)';
+    x.setAttribute('aria-label', `Xoá cọ ${T.label}, màu ${c.vi}`);
+    x.innerHTML = icon('close');
+    x.addEventListener('click', e => { e.stopPropagation(); deleteBrush(b.id); });
+    const cell = document.createElement('div');
+    cell.className = 'tilewrap';
+    cell.append(t, x);
+    wrap.append(cell);
   });
   $('addBrush').hidden = S.brushes.length >= PALETTE.length;
 }
@@ -3017,6 +3048,59 @@ function upscaleTarget(w, h, mp) {
   const s = Math.sqrt(mp * 1e6 / (w * h)), m = UPSCALE_TILE.multiple;
   return { w: Math.max(m, Math.round(w * s / m) * m), h: Math.max(m, Math.round(h * s / m) * m) };
 }
+function setUpInfo(lines) {
+  $('upInfo').replaceChildren(...lines.map((line, i) => {
+    const span = document.createElement('span');
+    span.textContent = line;
+    if (i) span.className = 'upwarn';
+    return span;
+  }));
+}
+// So sánh trước và sau như node Compare trong workflow của tác giả: rê chuột để kéo đường chia, lăn chuột để phóng, kéo để di chuyển.
+const UpView = { zoom: 1, cx: 0, cy: 0, split: 0.5, drag: null };
+const upResult = () => (Up.result && Up.resultFor === Up.slots[0].ref ? Up.result : null);
+function upLayout(box, res) {
+  const rw = res.naturalWidth || res.width, rh = res.naturalHeight || res.height;
+  const fitScale = Math.min(box.width / rw, box.height / rh);
+  const scale = fitScale * UpView.zoom;
+  return { rw, rh, fitScale, scale, x: box.width / 2 - UpView.cx * scale, y: box.height / 2 - UpView.cy * scale };
+}
+function clampUpView(box, res) {
+  const L = upLayout(box, res);
+  const halfW = box.width / 2 / L.scale, halfH = box.height / 2 / L.scale;
+  UpView.cx = L.rw <= 2 * halfW ? L.rw / 2 : Math.min(L.rw - halfW, Math.max(halfW, UpView.cx));
+  UpView.cy = L.rh <= 2 * halfH ? L.rh / 2 : Math.min(L.rh - halfH, Math.max(halfH, UpView.cy));
+}
+// Phóng tối đa 200% điểm ảnh của kết quả.
+const upMaxZoom = (box, res) => Math.max(1, 2 / upLayout(box, res).fitScale);
+const upOneToOne = (box, res) => Math.max(1, 1 / upLayout(box, res).fitScale);
+function zoomUpAt(box, px, py, zoom) {
+  const res = upResult();
+  if (!res) return;
+  const before = upLayout(box, res);
+  const ix = (px - before.x) / before.scale, iy = (py - before.y) / before.scale;
+  UpView.zoom = Math.min(upMaxZoom(box, res), Math.max(1, zoom));
+  const after = upLayout(box, res);
+  UpView.cx = ix - (px - box.width / 2) / after.scale;
+  UpView.cy = iy - (py - box.height / 2) / after.scale;
+  drawUpscale();
+}
+function showUpscaleResult(ref, img, url) {
+  Object.assign(Up, { result: img, resultUrl: url, resultFor: ref });
+  Object.assign(UpView, { zoom: 1, split: 0.5, cx: (img.naturalWidth || img.width) / 2, cy: (img.naturalHeight || img.height) / 2, drag: null });
+  drawUpscale();
+}
+function drawUpLabel(g, text, x, y, align) {
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  g.font = `500 12px ${css('--font-ui')}`;
+  const w = g.measureText(text).width + 14;
+  const left = align === 'right' ? x - w : x;
+  g.fillStyle = css('--well');
+  g.fillRect(left, y, w, 22);
+  g.fillStyle = css('--ink');
+  g.textBaseline = 'middle';
+  g.fillText(text, left + 7, y + 11);
+}
 function drawUpscale() {
   const view = $('upView'), canvas = $('upCanvas');
   const box = view.getBoundingClientRect();
@@ -3026,24 +3110,96 @@ function drawUpscale() {
   const g = canvas.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, box.width, box.height);
-  const ref = Up.slots[0].ref;
+  const ref = Up.slots[0].ref, res = upResult();
   $('upMsg').hidden = !!ref;
   $('upInfo').hidden = !ref;
-  if (!ref) return;
+  $('upTools').hidden = !res;
+  view.classList.toggle('comparing', !!res);
+  // Khung đang ẩn thì chưa vẽ, tránh chia cho 0 khi tính tỉ lệ.
+  if (!ref || box.width < 2 || box.height < 2) return;
   const w = ref.naturalWidth || ref.width, h = ref.naturalHeight || ref.height;
-  const s = Math.min(box.width / w, box.height / h);
   g.imageSmoothingQuality = 'high';
+  if (res) {
+    clampUpView(box, res);
+    const L = upLayout(box, res);
+    const splitX = Math.round(box.width * UpView.split);
+    for (const [img, x0, x1] of [[ref, 0, splitX], [res, splitX, box.width]]) {
+      g.save();
+      g.beginPath();
+      g.rect(x0, 0, x1 - x0, box.height);
+      g.clip();
+      g.drawImage(img, L.x, L.y, L.rw * L.scale, L.rh * L.scale);
+      g.restore();
+    }
+    g.fillStyle = 'rgba(0,0,0,.55)';
+    g.fillRect(splitX - 1.5, 0, 3, box.height);
+    g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--paper').trim();
+    g.fillRect(splitX - 0.5, 0, 1, box.height);
+    if (splitX > 70) drawUpLabel(g, 'Trước', splitX - 8, box.height - 30, 'right');
+    if (box.width - splitX > 60) drawUpLabel(g, 'Sau', splitX + 8, box.height - 30, 'left');
+    setUpInfo([`Trước ${w} × ${h}  ·  Sau ${L.rw} × ${L.rh}  ·  ${Math.round(L.scale * 100)}%`]);
+    return;
+  }
+  const s = Math.min(box.width / w, box.height / h);
   g.drawImage(ref, (box.width - w * s) / 2, (box.height - h * s) / 2, w * s, h * s);
   const target = upscaleTarget(w, h, Up.mp), sourceMp = w * h / 1e6;
   const lines = [`${w} × ${h}  →  khoảng ${target.w} × ${target.h}`];
   if (sourceMp > Up.mp) lines.push(`Ảnh đã lớn hơn ${Up.mp} MP, kết quả sẽ nhỏ lại.`);
   else if (Up.mp > UPSCALE_TILE.max_growth * sourceMp) lines.push('Ảnh nhỏ: Qwen vẽ lại tối đa gấp 8 lần cỡ gốc, phần còn lại phóng to thường.');
-  $('upInfo').replaceChildren(...lines.map((line, i) => {
-    const span = document.createElement('span');
-    span.textContent = line;
-    if (i) span.className = 'upwarn';
-    return span;
-  }));
+  setUpInfo(lines);
+}
+// Chuột: rê để kéo đường chia, lăn để phóng, kéo để di chuyển khi đã phóng, bấm đúp để chuyển giữa vừa khung và 100%.
+// Màn cảm ứng: ở cỡ vừa khung thì kéo để chia, đã phóng thì kéo để di chuyển.
+function bindUpscaleCompare() {
+  const view = $('upView');
+  const at = e => { const r = view.getBoundingClientRect(); return { r, x: e.clientX - r.left, y: e.clientY - r.top }; };
+  view.addEventListener('pointerdown', e => {
+    if (!upResult() || e.button !== 0) return;
+    const p = at(e);
+    UpView.drag = { x: p.x, y: p.y, cx: UpView.cx, cy: UpView.cy, slide: UpView.zoom <= 1.001 };
+    if (UpView.drag.slide) UpView.split = Math.min(1, Math.max(0, p.x / p.r.width));
+    view.setPointerCapture(e.pointerId);
+    view.classList.toggle('panning', !UpView.drag.slide);
+    drawUpscale();
+  });
+  view.addEventListener('pointermove', e => {
+    const res = upResult();
+    if (!res) return;
+    const p = at(e);
+    if (UpView.drag && !UpView.drag.slide) {
+      const scale = upLayout(p.r, res).scale;
+      UpView.cx = UpView.drag.cx - (p.x - UpView.drag.x) / scale;
+      UpView.cy = UpView.drag.cy - (p.y - UpView.drag.y) / scale;
+    } else if (UpView.drag || e.pointerType === 'mouse') {
+      UpView.split = Math.min(1, Math.max(0, p.x / p.r.width));
+    } else {
+      return;
+    }
+    drawUpscale();
+  });
+  const end = () => { UpView.drag = null; view.classList.remove('panning'); };
+  view.addEventListener('pointerup', end);
+  view.addEventListener('pointercancel', end);
+  view.addEventListener('wheel', e => {
+    if (!upResult()) return;
+    e.preventDefault();
+    const p = at(e);
+    zoomUpAt(p.r, p.x, p.y, UpView.zoom * Math.exp(-e.deltaY * 0.0015));
+  }, { passive: false });
+  view.addEventListener('dblclick', e => {
+    const res = upResult();
+    if (!res) return;
+    const p = at(e);
+    zoomUpAt(p.r, p.x, p.y, UpView.zoom > 1.001 ? 1 : upOneToOne(p.r, res));
+  });
+  $('upFit').addEventListener('click', () => { UpView.zoom = 1; drawUpscale(); });
+  $('upOne').addEventListener('click', () => {
+    const res = upResult();
+    if (!res) return;
+    const r = view.getBoundingClientRect();
+    zoomUpAt(r, r.width / 2, r.height / 2, upOneToOne(r, res));
+  });
+  $('upOpen').addEventListener('click', () => { if (upResult()) openViewer(Up.result, Up.resultUrl); });
 }
 function syncUpscale() {
   syncSlotBoxes('upscaleSlots', Up.slots);
@@ -3074,6 +3230,7 @@ function buildUpscalePasses() {
 function buildUpscalePanel() {
   buildSlotBoxes('upscaleSlots', Up.slots, takeUpscaleFiles, syncUpscale);
   $('upscaleHint').textContent = UPSCALE_HINT;
+  bindUpscaleCompare();
   $('upscaleSize').addEventListener('click', e => {
     const chip = e.target.closest('.viewchip');
     if (!chip) return;
@@ -3129,7 +3286,8 @@ async function requireUpscaleParts(fast) {
 async function generateUpscale() {
   const pass = S.passes.find(p => p.kind === 'upscale');
   const text = promptFor(pass);
-  const source = fitReference(Up.slots[0].ref, UPSCALE_UPLOAD_MP);
+  const ref = Up.slots[0].ref;
+  const source = fitReference(ref, UPSCALE_UPLOAD_MP);
   const { mp, fast } = Up;
   const stamp = Date.now().toString(36);
   beginRun();
@@ -3142,7 +3300,7 @@ async function generateUpscale() {
     renderJob();
     const { img, url } = await loadOutput(await waitForImage(run.promptId));
     addResult(img, url, pass.name);
-    if (S.tab === 'upscale') openViewer(img, url);
+    showUpscaleResult(ref, img, url);
     hideJob();
     setStatus(`Xong trong ${clock(Date.now() - job.startedAt)}.`);
   } catch (e) {
@@ -3575,6 +3733,10 @@ function randomSeed() {
   return Math.floor(Math.random() * 2 ** 48);
 }
 function handleSocketMessage({ type, data }) {
+  if (type === 'status' && data && data.status && data.status.exec_info) {
+    Q.remaining = data.status.exec_info.queue_remaining;
+    renderQueueState();
+  }
   if (!run.active || !data) return;
   if (data.prompt_id && run.promptId && data.prompt_id !== run.promptId) return;
   if (type === 'execution_start') {
@@ -3632,14 +3794,67 @@ async function uploadAll(canvases, prefix) {
   for (let i = 0; i < canvases.length; i++) names.push(await uploadCanvas(canvases[i], `${prefix}${i + 1}.png`));
   return names;
 }
+// Hàng đợi chung của ComfyUI: nhiều họa sĩ dùng chung H200, ComfyUI chạy từng việc một. Số việc lấy từ socket, mất socket thì hỏi /api/queue.
+const Q = { remaining: null };
+function renderQueueState() {
+  const n = Q.remaining;
+  $('qState').dataset.busy = String(!!n);
+  $('qText').textContent = n === null ? 'Chưa kết nối ComfyUI' : n ? `ComfyUI đang bận: ${n} việc` : 'ComfyUI đang rảnh';
+}
+async function pollQueue() {
+  try {
+    const queue = await (await fetch('/api/queue')).json();
+    Q.remaining = (queue.queue_running || []).length + (queue.queue_pending || []).length;
+  } catch (e) {
+    Q.remaining = null;
+  }
+  renderQueueState();
+}
+// Báo khi xong lúc họa sĩ đang ở tab hoặc cửa sổ khác: đổi tiêu đề tab và kêu một tiếng ngắn.
+// Trang chạy http trong mạng nội bộ nên thông báo hệ thống của trình duyệt không dùng được.
+let audioCtx = null;
+function unlockSound() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) {
+    audioCtx = null;
+  }
+}
+function chime(ok) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  (ok ? [660, 880] : [440, 330]).forEach((freq, i) => {
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    const at = t + i * 0.16;
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.15, at + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.3);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(at);
+    osc.stop(at + 0.32);
+  });
+}
+function notifyFinished(ok) {
+  if (!document.hidden) return;
+  document.title = `${ok ? '✓ Xong' : '✕ Lỗi'} · ${BASE_TITLE}`;
+  chime(ok);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && !run.active) document.title = BASE_TITLE;
+});
 async function generate() {
+  unlockSound();
   if (run.active) {
     run.cancelled = true;
     job.cancelling = true;
     renderJob();
     if (run.promptId) {
       fetch('/api/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ delete: [run.promptId] }) });
-      fetch('/api/interrupt', { method: 'POST' });
+      // Có prompt_id thì ComfyUI chỉ dừng khi việc đang chạy đúng là việc này, không dừng nhầm việc của họa sĩ khác.
+      fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: run.promptId }) });
     }
     return;
   }
@@ -3714,6 +3929,7 @@ async function generate() {
 function beginRun() {
   run.active = true;
   run.cancelled = false;
+  run.outcome = 'done';
   run.promptId = null;
   job.startedAt = Date.now();
   job.cancelling = false;
@@ -3724,6 +3940,7 @@ function beginRun() {
   syncGen();
 }
 function failRun(e) {
+  run.outcome = run.cancelled ? 'cancel' : 'error';
   if (run.cancelled) {
     hideJob();
     setStatus('Đã dừng.');
@@ -3734,6 +3951,7 @@ function failRun(e) {
 function endRun() {
   run.active = false;
   run.promptId = null;
+  if (run.outcome !== 'cancel') notifyFinished(run.outcome === 'done');
   syncGen();
   if (S.tab === 'rotate') syncRotateMode();
 }
@@ -3878,6 +4096,8 @@ renderTiles();
 if (ON_COMFY) {
   clearBase();
   connectProgress();
+  pollQueue();
+  setInterval(() => { if (!socketOpen) pollQueue(); }, 10000);
 } else {
   setBase(sampleScene(), true);
   const sample = sampleScene();
@@ -3892,6 +4112,22 @@ if (ON_COMFY) {
   Up.slots[0].ref = shot;
   Up.slots[0].refUrl = shot.toDataURL('image/jpeg', 0.8);
   syncUpscale();
+  // Bản xem trước: kết quả giả để thấy phần so sánh, và hàng đợi giả.
+  const big = upscaleTarget(shot.width, shot.height, Up.mp);
+  const fake = newCanvas(big.w, big.h), fg = fake.getContext('2d');
+  fg.imageSmoothingQuality = 'high';
+  fg.drawImage(shot, 0, 0, big.w, big.h);
+  const px = fg.getImageData(0, 0, big.w, big.h);
+  for (let i = 0; i < px.data.length; i += 4) {
+    const n = ((i * 2654435761) >>> 24) / 255 - 0.5;
+    for (let k = 0; k < 3; k++) px.data[i + k] = Math.max(0, Math.min(255, px.data[i + k] + n * 22));
+  }
+  fg.putImageData(px, 0, 0);
+  showUpscaleResult(shot, fake, fake.toDataURL('image/jpeg', 0.9));
+  $('upNote').hidden = false;
+  Q.remaining = 2;
+  renderQueueState();
+  $('qText').textContent += ' (giả lập)';
 }
 new ResizeObserver(() => {
   if (S.tab === 'rotate') { layoutRotateFrame(); RotateView.request(); }
