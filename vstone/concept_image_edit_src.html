@@ -2806,11 +2806,11 @@ const CHAT_MODES = [
     system: 'Translate the user\'s Vietnamese text into natural, accurate Korean suited to a professional film studio. Keep names, numbers, formatting and line breaks. Output only the translation.' },
   { id: 'prompt', label: 'Viết prompt', hint: 'Tả bằng tiếng Việt, nhận prompt tiếng Anh cho Qwen Image.', think: false,
     system: 'Turn the user\'s description into one clear English prompt for an image generation or editing model. Describe subject, setting, lighting, camera and style concretely. Output only the prompt.' },
-  { id: 'code', label: 'Code', hint: 'Hỏi về code, script, tiện ích.', think: true,
+  { id: 'code', label: 'Code', hint: 'Hỏi về code, script, tiện ích.', think: false,
     system: 'You are a concise coding assistant. Answer in Vietnamese, with complete, working code when code is needed.' },
   { id: 'free', label: 'Tự do', hint: 'Hỏi gì cũng được.', think: false, system: '' },
 ];
-const LLM_MODEL = 'qwen3.8-27b-abliterated';
+const LLM_MODEL = 'qwen3.6-35b-a3b';
 const Chat = { mode: 'ko2vi', think: false, history: [], busy: false, abort: null };
 function chatBubble(role, content) {
   $('chatEmpty').hidden = true;
@@ -2857,12 +2857,21 @@ async function sendChat() {
   syncChat();
   let answer = '', thought = '', thinkBox = null, thinkSum = null, thinkBody = null;
   try {
-    const messages = (mode.system ? [{ role: 'system', content: mode.system }] : []).concat(Chat.history.slice(-20));
+    const sys = mode.system + (think ? ' Think briefly (under 150 words) before giving the final answer.' : '');
+    const messages = (sys ? [{ role: 'system', content: sys.trim() }] : []).concat(Chat.history.slice(-20));
     const res = await fetch('/vstone/llm/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: Chat.abort.signal,
-      body: JSON.stringify({ model: LLM_MODEL, messages, stream: true, temperature: think ? 0.6 : 0.3, chat_template_kwargs: { enable_thinking: think } }),
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        messages,
+        stream: true,
+        max_tokens: think ? 4096 : 2048,
+        temperature: think ? 0.6 : 0.3,
+        presence_penalty: 0.3,
+        chat_template_kwargs: { enable_thinking: think },
+      }),
     });
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}));
@@ -2909,7 +2918,10 @@ async function sendChat() {
         }
       }
     }
-    Chat.history.push({ role: 'assistant', content: answer });
+    if (!answer) {
+      textNode.textContent = thought ? '(Đã suy nghĩ xong ở khung trên. Nếu muốn trả lời thẳng nhanh hơn, hãy tắt nút "Suy nghĩ sâu".)' : '(Không nhận được câu trả lời.)';
+    }
+    Chat.history.push({ role: 'assistant', content: answer || thought });
   } catch (e) {
     if (e.name === 'AbortError') {
       textNode.textContent = answer || 'Đã dừng.';
