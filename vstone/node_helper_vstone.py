@@ -1852,6 +1852,216 @@ def install_bfs_swap_packs(unique_id: Any = None) -> str:
     return "\n".join(["🔄 Đã cài pack cho BFS, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."] + details)
 
 
+# ------------------------------------------------------------------------------
+# LLM Qwen3.6-35B-A3B chạy bằng vLLM trong môi trường riêng (vLLM kéo torch riêng, không được đụng torch của ComfyUI).
+# vLLM nghe ở cổng nội bộ, trang HTML gọi qua /vstone/llm trên chính cổng của ComfyUI, nên không cần mở thêm cổng.
+# ------------------------------------------------------------------------------
+LLM_ROUTE = "/vstone/llm"
+LLM_MODEL_REPO = "Qwen/Qwen3.6-35B-A3B-FP8"
+LLM_SERVED_NAME = "qwen3.6-35b-a3b"
+LLM_PORT = 8010
+LLM_GPU_SHARE = 0.4
+LLM_MAX_LEN = 65536
+LLM_RESTARTED_ENV = "VSTONE_LLM_ROUTE_RESTARTED"
+
+
+def _llm_paths(root: str) -> dict[str, str]:
+    base = os.path.join(root, "vstone_llm")
+    venv = os.path.join(base, "venv")
+    python = os.path.join(venv, "Scripts", "python.exe") if os.name == "nt" else os.path.join(venv, "bin", "python")
+    return {
+        "base": base,
+        "venv": venv,
+        "python": python,
+        "vllm_ok": os.path.join(venv, ".vllm_installed"),
+        "model": os.path.join(base, "Qwen3.6-35B-A3B-FP8"),
+        "model_ok": os.path.join(base, "Qwen3.6-35B-A3B-FP8", ".download_complete"),
+        "setup_log": os.path.join(base, "setup.log"),
+        "server_log": os.path.join(base, "vllm.log"),
+    }
+
+
+def _llm_state() -> dict[str, Any]:
+    state = getattr(sys, "_vstone_llm_state", None)
+    if state is None:
+        state = {"stage": "", "error": "", "gpu": None, "busy": False}
+        setattr(sys, "_vstone_llm_state", state)
+    return state
+
+
+def _llm_alive() -> bool:
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{LLM_PORT}/v1/models", timeout=2) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def _llm_pick_gpu() -> int:
+    """Card còn trống nhiều bộ nhớ nhất, để LLM và ComfyUI chia đều hai card."""
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=index,memory.free", "--format=csv,noheader,nounits"],
+                             capture_output=True, text=True, timeout=20, check=True).stdout
+        rows = [line.split(",") for line in out.strip().splitlines() if line.strip()]
+        return int(max(rows, key=lambda r: int(r[1]))[0])
+    except Exception:
+        return 0
+
+
+def _log_tail(path: str, lines: int = 6) -> str:
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return "".join(f.readlines()[-lines:]).strip()
+    except OSError:
+        return ""
+
+
+def _llm_start_server(root: str) -> None:
+    paths = _llm_paths(root)
+    gpu = _llm_pick_gpu()
+    env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID", CUDA_VISIBLE_DEVICES=str(gpu))
+    cmd = [
+        paths["python"], "-m", "vllm.entrypoints.openai.api_server",
+        "--model", paths["model"], "--served-model-name", LLM_SERVED_NAME,
+        "--host", "127.0.0.1", "--port", str(LLM_PORT),
+        "--gpu-memory-utilization", str(LLM_GPU_SHARE), "--max-model-len", str(LLM_MAX_LEN),
+        "--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
+    ]
+    log = open(paths["server_log"], "a", encoding="utf-8")
+    # Phiên riêng: vLLM sống sót khi ComfyUI tự khởi động lại bằng os.execv.
+    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
+    _llm_state().update(gpu=gpu, proc=proc)
+
+
+def _llm_setup(root: str) -> None:
+    state, paths = _llm_state(), _llm_paths(root)
+    os.makedirs(paths["base"], exist_ok=True)
+    steps = []
+    if not os.path.isfile(paths["vllm_ok"]):
+        if not os.path.isfile(paths["python"]):
+            steps.append(("Tạo môi trường riêng", [sys.executable, "-m", "venv", paths["venv"]], None))
+        steps.append(("Cập nhật pip", [paths["python"], "-m", "pip", "install", "-U", "pip"], None))
+        steps.append(("Cài vLLM, khoảng 10 phút", [paths["python"], "-m", "pip", "install", "-U", "vllm"], paths["vllm_ok"]))
+    if not os.path.isfile(paths["model_ok"]):
+        download = f"from huggingface_hub import snapshot_download; snapshot_download({LLM_MODEL_REPO!r}, local_dir={paths['model']!r})"
+        steps.append(("Tải model khoảng 35 GB", [paths["python"], "-c", download], paths["model_ok"]))
+    try:
+        with open(paths["setup_log"], "a", encoding="utf-8") as log:
+            for label, cmd, marker in steps:
+                state["stage"] = label
+                log.write(f"\n=== {label}: {' '.join(cmd)}\n")
+                log.flush()
+                res = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=False)
+                if res.returncode != 0:
+                    state["error"] = f"{label} lỗi (mã {res.returncode})."
+                    return
+                if marker:
+                    os.makedirs(os.path.dirname(marker), exist_ok=True)
+                    with open(marker, "w", encoding="utf-8") as f:
+                        f.write(time.strftime("%Y-%m-%d %H:%M:%S"))
+        state["stage"] = "Khởi động vLLM"
+        if not _llm_alive():
+            _llm_start_server(root)
+    except Exception as e:
+        state["error"] = str(e)
+    finally:
+        state["busy"] = False
+
+
+def _llm_ready(root: str) -> bool:
+    paths = _llm_paths(root)
+    return os.path.isfile(paths["vllm_ok"]) and os.path.isfile(paths["model_ok"])
+
+
+def install_llm(unique_id: Any = None) -> str:
+    """Cài và chạy LLM ngầm, mỗi lần Queue báo tiến độ. Dòng đầu của báo cáo là kết luận."""
+    root = _get_comfy_root()
+    if not root:
+        return "❌ Không tìm thấy thư mục ComfyUI."
+    state, paths = _llm_state(), _llm_paths(root)
+    if _llm_alive():
+        if not getattr(sys, "_vstone_llm_route", False):
+            if os.environ.get(LLM_RESTARTED_ENV) == "1":
+                return "❌ vLLM đang chạy nhưng ComfyUI chưa mở được đường dẫn /vstone/llm. Xem log khởi động."
+            os.environ[LLM_RESTARTED_ENV] = "1"
+            _restart_comfyui_after(5.0)
+            return "🔄 vLLM đã chạy. ComfyUI khởi động lại một lần để mở đường dẫn /vstone/llm. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa."
+        gpu = state.get("gpu")
+        return (f"✅ LLM {LLM_SERVED_NAME} đang chạy{f' trên GPU {gpu}' if gpu is not None else ''}. "
+                f"Gọi qua {LLM_ROUTE}/v1/chat/completions trên cổng ComfyUI.")
+    if state["busy"]:
+        return "\n".join([f"⏳ Đang làm: {state['stage']}. Bấm Queue lại để xem tiến độ.", _log_tail(paths["setup_log"], 3)])
+    if state["error"]:
+        report = "\n".join([f"❌ {state['error']} Bấm Queue lần nữa để thử lại.", _log_tail(paths["setup_log"])])
+        state["error"] = ""
+        return report
+    if _llm_ready(root) and state["stage"] == "Khởi động vLLM":
+        tail = _log_tail(paths["server_log"], 4)
+        proc = state.get("proc")
+        if proc is not None and proc.poll() is not None:
+            state.update(stage="", proc=None)
+            return "\n".join(["❌ vLLM dừng khi khởi động. Bấm Queue lần nữa để thử lại.", tail])
+        return "\n".join(["⏳ vLLM đang nạp model, 2-5 phút. Bấm Queue lại để kiểm tra.", tail])
+    state.update(busy=True, error="", stage="Chuẩn bị")
+    threading.Thread(target=_llm_setup, args=(root,), name="VStoneLLMSetup", daemon=True).start()
+    if _llm_ready(root):
+        return "⏳ Đang khởi động vLLM, 2-5 phút. Bấm Queue lại để kiểm tra."
+    return ("⏳ Bắt đầu cài LLM ngầm: môi trường riêng, vLLM (khoảng 10 phút), model khoảng 35 GB. "
+            "ComfyUI vẫn dùng bình thường. Bấm Queue lại để xem tiến độ.")
+
+
+def _register_llm_route() -> None:
+    """Chuyển /vstone/llm/<đường dẫn> sang vLLM nội bộ, kể cả trả lời dạng stream. Chỉ đăng ký được lúc ComfyUI khởi động."""
+    if globals().get("_DISABLE_DAEMON_ON_EXEC") or getattr(sys, "_vstone_llm_route", False):
+        return
+    try:
+        from aiohttp import ClientSession, ClientTimeout, web
+        from server import PromptServer
+        routes = PromptServer.instance.routes
+    except Exception:
+        return
+
+    @routes.route("*", LLM_ROUTE + "/{tail:.*}")
+    async def _vstone_llm_proxy(request):
+        url = f"http://127.0.0.1:{LLM_PORT}/{request.match_info['tail']}"
+        if request.query_string:
+            url += "?" + request.query_string
+        body = await request.read()
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=None, sock_connect=5)) as session:
+                async with session.request(request.method, url, data=body,
+                                           headers={"Content-Type": request.headers.get("Content-Type", "application/json")}) as upstream:
+                    resp = web.StreamResponse(status=upstream.status,
+                                              headers={"Content-Type": upstream.headers.get("Content-Type", "application/json")})
+                    await resp.prepare(request)
+                    async for chunk in upstream.content.iter_any():
+                        await resp.write(chunk)
+                    await resp.write_eof()
+                    return resp
+        except Exception as e:
+            return web.json_response({"error": f"LLM chưa chạy ({e}). Chạy mục 7 của node stoneV_CloudSyncHub."}, status=503)
+
+    setattr(sys, "_vstone_llm_route", True)
+
+
+def _llm_on_load() -> None:
+    """Đã cài xong thì tự bật lại vLLM khi ComfyUI khởi động, nếu nó chưa chạy."""
+    if globals().get("_DISABLE_DAEMON_ON_EXEC") or getattr(sys, "_vstone_llm_autostart", False):
+        return
+    root = _get_comfy_root()
+    if not root or not _llm_ready(root):
+        return
+    setattr(sys, "_vstone_llm_autostart", True)
+
+    def _later():
+        time.sleep(20)
+        if not _llm_alive():
+            _llm_state()["stage"] = "Khởi động vLLM"
+            _llm_start_server(root)
+
+    threading.Thread(target=_later, name="VStoneLLMAutostart", daemon=True).start()
+
+
 def _start_background_sync_daemon(interval_sec: int = 30):
     """Chạy ngầm kiểm tra GitHub mỗi 30 giây khi đang chạy trong ComfyUI trên máy H200."""
     try:
@@ -1889,6 +2099,11 @@ try:
     _start_background_sync_daemon(30)
 except Exception:
     pass
+try:
+    _register_llm_route()
+    _llm_on_load()
+except Exception as _llm_err:
+    print(f"[VStone] LLM: {_llm_err}", flush=True)
 
 
 # ==============================================================================
@@ -2725,6 +2940,7 @@ class stoneV_CloudSyncHub:
                     "4. Cài pack AusBoss cho outpaint Qwen (tự khởi động lại)",
                     "5. Cài AnyAngle Studio để xoay vật thể (tự khởi động lại)",
                     "6. Cài pack cho BFS đổi mặt / đổi nhân vật (tự khởi động lại)",
+                    "7. Cài LLM Qwen3.6 (vLLM)",
                 ], {
                     "default": "3. Pull Code + Download Model (Cập nhật tất cả)"
                 }),
@@ -2788,6 +3004,11 @@ class stoneV_CloudSyncHub:
 
         if action.startswith("5."):
             report = install_anyangle_studio(unique_id)
+            _vstone_ui_status(unique_id, report)
+            return {"ui": {"text": [report]}, "result": (report,)}
+
+        if action.startswith("7."):
+            report = install_llm(unique_id)
             _vstone_ui_status(unique_id, report)
             return {"ui": {"text": [report]}, "result": (report,)}
 
