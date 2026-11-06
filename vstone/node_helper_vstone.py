@@ -1499,6 +1499,14 @@ def _run_install_cmd(cmd: list[str], timeout: int) -> tuple[bool, str]:
     return res.returncode == 0, (res.stderr or res.stdout or "").strip()[-300:]
 
 
+def _module_missing(name: str) -> bool:
+    """find_spec ném ValueError khi module đã nạp mà không có __spec__ (pack khác đặt module thay thế vào sys.modules). Đã nạp thì coi là có."""
+    if name in sys.modules:
+        return False
+    importlib.invalidate_caches()
+    return importlib.util.find_spec(name) is None
+
+
 def _fetch_node_pack(pack: dict[str, Any], pack_dir: str) -> tuple[bool, str]:
     """Clone hoặc pull pack. Máy không có git, hoặc thư mục không phải repo git, thì tải zip từ GitHub."""
     git_bin = shutil.which("git")
@@ -1742,7 +1750,7 @@ def install_anyangle_studio(unique_id: Any = None) -> str:
 
     details: list[str] = []
     for module, spec in ANYANGLE_PIP.items():
-        if importlib.util.find_spec(module) is None:
+        if _module_missing(module):
             _vstone_ui_status(unique_id, f"Đang cài thư viện {spec}...")
             pip_ok, pip_tail = _run_install_cmd([sys.executable, "-m", "pip", "install", spec], 900)
             details.append(f"Thư viện {spec}: " + ("đã cài." if pip_ok else f"LỖI {pip_tail}"))
@@ -1843,8 +1851,7 @@ def install_bfs_swap_packs(unique_id: Any = None) -> str:
             return "\n".join([f"❌ Không tải được pack {pack['dir']}, chưa khởi động lại. {tail}"] + details)
         details.append(f"Pack {pack['dir']}: đã tải về.")
         for module, spec in pack["pip"].items():
-            importlib.invalidate_caches()
-            if importlib.util.find_spec(module) is None:
+            if _module_missing(module):
                 _vstone_ui_status(unique_id, f"Đang cài thư viện {spec}...")
                 pip_ok, pip_tail = _run_install_cmd([sys.executable, "-m", "pip", "install", spec], 900)
                 details.append(f"Thư viện {spec}: " + ("đã cài." if pip_ok else f"LỖI {pip_tail}"))
