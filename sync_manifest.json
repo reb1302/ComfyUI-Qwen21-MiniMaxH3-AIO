@@ -548,6 +548,7 @@
     "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/1A_MiniMaxH3_Fun_ControlNet_Inpaint_SAM31_MaskOnly.json",
     "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/1B_MiniMaxH3_Fun_ControlNet_Inpaint_SAM31_Qwen21_FirstFrame.json",
     "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/2_Netflix_VOID_Object_Shadow_Removal_SAM31.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/2B_Netflix_VOID_Click_Box_Select_SAM31.json",
     "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/3_ByteDance_Bernini_R_Video_Editing.json",
     "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/4_Wan21_VACE_14B_Video_Inpainting_SAM31.json",
     "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/5_SAM31_Multiplex_Video_Roto.json",

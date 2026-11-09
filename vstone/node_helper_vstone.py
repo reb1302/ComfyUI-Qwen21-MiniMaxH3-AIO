@@ -386,6 +386,7 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_outpaint.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/2B_Netflix_VOID_Click_Box_Select_SAM31.json",
 ]
 
 
@@ -737,7 +738,7 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-VSTONE_RUNTIME_PATCH_VER = 7
+VSTONE_RUNTIME_PATCH_VER = 8
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -1364,6 +1365,399 @@ def apply_comfy_runtime_fixes() -> str:
             setattr(comfy.sd, "_vstone_sd_hook_ver", VSTONE_RUNTIME_PATCH_VER)
     except Exception as e:
         print(f"[VStone Runtime] Warning hooking comfy.sd: {e}")
+
+    # 3c. Hook PointsEditor (KJNodes), SAM3_Detect & SAM3_VideoTrack for seamless Click + Bounding Box selection:
+    #     - PointsEditor: allow empty coordinates ("[]") without raising ValueError (so first run loads Frame 1 and box-only selection works),
+    #       auto-scale coordinates/boxes to bg_image dimensions, and store drawn boxes in sys._vstone_last_points_editor_boxes.
+    #     - SAM3_Detect: accept both BOUNDING_BOX and BBOX on bboxes input, auto-convert PointsEditor tuples/boxes,
+    #       and combine point_inputs + box_inputs in sam3_model.forward_segment when both are provided.
+    #     - SAM3_VideoTrack: fast-return empty track when initial_mask is all-zeros and conditioning is empty (instant Frame 1 preview load).
+    try:
+        import io as _py_io
+        import base64 as _b64
+        from PIL import Image as _PILImage
+        import numpy as _np
+        import nodes
+
+        pe_cls = getattr(nodes, "NODE_CLASS_MAPPINGS", {}).get("PointsEditor")
+        if pe_cls is not None and getattr(pe_cls, "_vstone_pe_hook_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+            orig_pointdata = getattr(pe_cls, "_vstone_orig_pointdata", None) or getattr(pe_cls, "pointdata", None)
+            if orig_pointdata is not None:
+                setattr(pe_cls, "_vstone_orig_pointdata", orig_pointdata)
+
+                def _vstone_pointdata(self, points_store, bbox_store, width, height, coordinates, neg_coordinates, normalize, bboxes, bbox_format="xyxy", bg_image=None):
+                    try:
+                        raw_pos = json.loads(coordinates) if coordinates else []
+                    except Exception:
+                        raw_pos = []
+                    try:
+                        raw_neg = json.loads(neg_coordinates) if neg_coordinates else []
+                    except Exception:
+                        raw_neg = []
+                    try:
+                        raw_bboxes = json.loads(bboxes) if bboxes else []
+                    except Exception:
+                        raw_bboxes = []
+
+                    w_in = max(1, int(width) if width else 512)
+                    h_in = max(1, int(height) if height else 512)
+                    if bg_image is not None and hasattr(bg_image, "shape") and bg_image.ndim == 4:
+                        out_h, out_w = int(bg_image.shape[1]), int(bg_image.shape[2])
+                    else:
+                        out_h, out_w = h_in, w_in
+
+                    sx = float(out_w) / float(w_in)
+                    sy = float(out_h) / float(h_in)
+
+                    pos_coordinates = []
+                    if isinstance(raw_pos, list):
+                        for coord in raw_pos:
+                            if isinstance(coord, dict) and coord.get("x") is not None and coord.get("y") is not None:
+                                cx = float(coord["x"])
+                                cy = float(coord["y"])
+                                if normalize:
+                                    pos_coordinates.append({"x": cx / w_in, "y": cy / h_in})
+                                else:
+                                    pos_coordinates.append({"x": int(round(cx * sx)), "y": int(round(cy * sy))})
+
+                    neg_list = []
+                    if isinstance(raw_neg, list):
+                        for coord in raw_neg:
+                            if isinstance(coord, dict) and coord.get("x") is not None and coord.get("y") is not None:
+                                cx = float(coord["x"])
+                                cy = float(coord["y"])
+                                if normalize:
+                                    neg_list.append({"x": cx / w_in, "y": cy / h_in})
+                                else:
+                                    neg_list.append({"x": int(round(cx * sx)), "y": int(round(cy * sy))})
+
+                    mask = _np.zeros((out_h, out_w), dtype=_np.uint8)
+                    valid_bboxes = []
+                    sam3_bbox_dicts = []
+                    if isinstance(raw_bboxes, list):
+                        for b in raw_bboxes:
+                            if isinstance(b, dict) and all(b.get(k) is not None for k in ("startX", "startY", "endX", "endY")):
+                                x_min = int(round(min(float(b["startX"]), float(b["endX"])) * sx))
+                                y_min = int(round(min(float(b["startY"]), float(b["endY"])) * sy))
+                                x_max = int(round(max(float(b["startX"]), float(b["endX"])) * sx))
+                                y_max = int(round(max(float(b["startY"]), float(b["endY"])) * sy))
+                                x_min = max(0, min(out_w, x_min))
+                                x_max = max(0, min(out_w, x_max))
+                                y_min = max(0, min(out_h, y_min))
+                                y_max = max(0, min(out_h, y_max))
+                                if x_max > x_min and y_max > y_min:
+                                    valid_bboxes.append((x_min, y_min, x_max, y_max))
+                                    sam3_bbox_dicts.append({
+                                        "x": float(x_min),
+                                        "y": float(y_min),
+                                        "width": float(x_max - x_min),
+                                        "height": float(y_max - y_min),
+                                    })
+                                    mask[y_min:y_max, x_min:x_max] = 1
+
+                    setattr(sys, "_vstone_last_points_editor_boxes", sam3_bbox_dicts)
+
+                    if bbox_format == "xywh":
+                        out_bboxes = [(x1, y1, x2 - x1, y2 - y1) for (x1, y1, x2, y2) in valid_bboxes]
+                    else:
+                        out_bboxes = list(valid_bboxes)
+
+                    mask_tensor = torch.from_numpy(mask).unsqueeze(0).float().cpu()
+                    if bg_image is not None and len(valid_bboxes) > 0:
+                        x1, y1, x2, y2 = valid_bboxes[0]
+                        cropped_image = bg_image[:, y1:y2, x1:x2, :]
+                    elif bg_image is not None:
+                        cropped_image = bg_image
+                    else:
+                        cropped_image = torch.zeros(1, out_h, out_w, 3, dtype=torch.float32)
+
+                    res_tuple = (json.dumps(pos_coordinates), json.dumps(neg_list), out_bboxes, mask_tensor, cropped_image)
+                    if bg_image is None:
+                        return res_tuple
+                    frame0_np = (bg_image[0, :, :, :3].detach().cpu().clamp(0.0, 1.0).numpy() * 255.0).astype(_np.uint8)
+                    pil_img = _PILImage.fromarray(frame0_np)
+                    buffered = _py_io.BytesIO()
+                    pil_img.save(buffered, format="JPEG", quality=80)
+                    img_base64 = _b64.b64encode(buffered.getvalue()).decode("utf-8")
+                    return {
+                        "ui": {"bg_image": [img_base64]},
+                        "result": res_tuple,
+                    }
+
+                pe_cls.pointdata = _vstone_pointdata
+                setattr(pe_cls, "_vstone_pe_hook_ver", VSTONE_RUNTIME_PATCH_VER)
+    except Exception as e:
+        print(f"[VStone Runtime] Warning hooking PointsEditor: {e}")
+
+    try:
+        from comfy_api.latest import io as _comfy_io
+        import comfy.model_management
+        import comfy.utils
+        import torch.nn.functional as _F
+
+        for sd_cls in _get_target_node_classes("SAM3_Detect", "comfy_extras.nodes_sam3"):
+            if getattr(sd_cls, "_vstone_sam3_hook_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_def_schema = _unwrap_to_true_orig(sd_cls, "define_schema")
+                orig_sd_exec = _unwrap_to_true_orig(sd_cls, "execute")
+                if orig_def_schema is not None:
+                    setattr(sd_cls, "_vstone_orig_define_schema", orig_def_schema)
+
+                    def _safe_sam3_define_schema(cls, _orig=orig_def_schema):
+                        schema = _orig.__get__(None, cls)() if hasattr(_orig, "__get__") else _orig(cls)
+                        try:
+                            new_inputs = []
+                            for inp in schema.inputs:
+                                if getattr(inp, "id", None) == "bboxes":
+                                    new_inputs.append(
+                                        _comfy_io.MultiType.Input(
+                                            _comfy_io.BoundingBox.Input(
+                                                "bboxes",
+                                                display_name="bboxes",
+                                                force_input=True,
+                                                optional=True,
+                                                tooltip="Bounding boxes to segment within (BOUNDING_BOX or KJNodes BBOX)",
+                                            ),
+                                            [_comfy_io.BoundingBox, _comfy_io.BBOX],
+                                        )
+                                    )
+                                else:
+                                    new_inputs.append(inp)
+                            schema.inputs = new_inputs
+                        except Exception:
+                            pass
+                        return schema
+
+                    sd_cls.define_schema = classmethod(_safe_sam3_define_schema)
+
+                if orig_sd_exec is not None:
+                    setattr(sd_cls, "_vstone_orig_execute", orig_sd_exec)
+
+                    def _safe_sam3_detect_execute(cls, model, image, conditioning=None, bboxes=None, positive_coords=None, negative_coords=None, threshold=0.5, refine_iterations=2, individual_masks=False, _orig=orig_sd_exec):
+                        import comfy_extras.nodes_sam3 as _ns3
+                        B, H, W, C = image.shape
+
+                        def _norm_box_list(raw_b):
+                            if raw_b is None:
+                                return []
+                            if isinstance(raw_b, str):
+                                try:
+                                    raw_b = json.loads(raw_b)
+                                except Exception:
+                                    return []
+                            if isinstance(raw_b, dict):
+                                raw_b = [raw_b]
+                            if not isinstance(raw_b, (list, tuple)):
+                                return []
+                            out = []
+                            for item in raw_b:
+                                if isinstance(item, dict):
+                                    if "x" in item and "y" in item and "width" in item and "height" in item:
+                                        if float(item["width"]) > 0 and float(item["height"]) > 0:
+                                            out.append({
+                                                "x": float(item["x"]),
+                                                "y": float(item["y"]),
+                                                "width": float(item["width"]),
+                                                "height": float(item["height"]),
+                                            })
+                                    elif all(item.get(k) is not None for k in ("startX", "startY", "endX", "endY")):
+                                        x1 = min(float(item["startX"]), float(item["endX"]))
+                                        y1 = min(float(item["startY"]), float(item["endY"]))
+                                        x2 = max(float(item["startX"]), float(item["endX"]))
+                                        y2 = max(float(item["startY"]), float(item["endY"]))
+                                        if x2 > x1 and y2 > y1:
+                                            out.append({"x": x1, "y": y1, "width": x2 - x1, "height": y2 - y1})
+                                elif isinstance(item, (list, tuple)) and len(item) == 4:
+                                    pe_boxes = getattr(sys, "_vstone_last_points_editor_boxes", None)
+                                    if isinstance(pe_boxes, list) and len(pe_boxes) == len(raw_b):
+                                        return list(pe_boxes)
+                                    x1, y1, v3, v4 = float(item[0]), float(item[1]), float(item[2]), float(item[3])
+                                    if v3 > x1 and v4 > y1:
+                                        out.append({"x": x1, "y": y1, "width": v3 - x1, "height": v4 - y1})
+                                    elif v3 > 0 and v4 > 0:
+                                        out.append({"x": x1, "y": y1, "width": v3, "height": v4})
+                            return out
+
+                        per_frame_boxes = None
+                        if isinstance(bboxes, list) and len(bboxes) > 0 and isinstance(bboxes[0], list) and (len(bboxes[0]) == 0 or isinstance(bboxes[0][0], dict)):
+                            norm_pf = [_norm_box_list(fb) for fb in bboxes]
+                            if any(len(fb) > 0 for fb in norm_pf):
+                                per_frame_boxes = norm_pf
+                                while len(per_frame_boxes) < B:
+                                    per_frame_boxes.append(per_frame_boxes[-1])
+                        else:
+                            flat_boxes = _norm_box_list(bboxes)
+                            if not flat_boxes:
+                                pe_fallback = getattr(sys, "_vstone_last_points_editor_boxes", None)
+                                if isinstance(pe_fallback, list) and len(pe_fallback) > 0 and (positive_coords is not None or negative_coords is not None):
+                                    flat_boxes = list(pe_fallback)
+                            if flat_boxes:
+                                per_frame_boxes = [flat_boxes] * B
+
+                        try:
+                            pos_pts = json.loads(positive_coords) if positive_coords else []
+                        except Exception:
+                            pos_pts = []
+                        try:
+                            neg_pts = json.loads(negative_coords) if negative_coords else []
+                        except Exception:
+                            neg_pts = []
+                        has_points = len(pos_pts) > 0 or len(neg_pts) > 0
+                        has_cond = conditioning is not None and len(conditioning) > 0
+
+                        if not has_points and per_frame_boxes is None and not has_cond:
+                            idev = comfy.model_management.intermediate_device()
+                            empty_m = torch.zeros((0, H, W) if individual_masks else (B, H, W), device=idev)
+                            return _comfy_io.NodeOutput(empty_m, [[] for _ in range(B)])
+
+                        def _boxes_to_tensor(box_list):
+                            coords = []
+                            for d in box_list:
+                                cx = (d["x"] + d["width"] / 2.0) / W
+                                cy = (d["y"] + d["height"] / 2.0) / H
+                                coords.append([cx, cy, d["width"] / W, d["height"] / H])
+                            return torch.tensor([coords], dtype=torch.float32)
+
+                        pf_tensors = None
+                        if per_frame_boxes is not None:
+                            pf_tensors = [_boxes_to_tensor(fb) if fb else None for fb in per_frame_boxes]
+
+                        image_in = comfy.utils.common_upscale(image[..., :3].movedim(-1, 1), 1008, 1008, "bilinear", crop="disabled")
+                        comfy.model_management.load_model_gpu(model)
+                        device = comfy.model_management.get_torch_device()
+                        dtype = model.model.get_dtype()
+                        sam3_model = model.model.diffusion_model
+
+                        point_inputs = None
+                        if has_points:
+                            all_coords = [[p["x"] / W * 1008.0, p["y"] / H * 1008.0] for p in pos_pts] + \
+                                         [[p["x"] / W * 1008.0, p["y"] / H * 1008.0] for p in neg_pts]
+                            all_labels = [1] * len(pos_pts) + [0] * len(neg_pts)
+                            point_inputs = {
+                                "point_coords": torch.tensor([all_coords], dtype=dtype, device=device),
+                                "point_labels": torch.tensor([all_labels], dtype=torch.int32, device=device),
+                            }
+
+                        cond_list = _ns3._extract_text_prompts(conditioning, device, dtype) if has_cond else []
+                        has_text = len(cond_list) > 0
+
+                        all_bbox_dicts = []
+                        all_masks = []
+                        pbar = comfy.utils.ProgressBar(B)
+
+                        for b in range(B):
+                            frame = image_in[b:b+1].to(device=device, dtype=dtype)
+                            b_boxes = None
+                            if pf_tensors is not None and pf_tensors[b] is not None:
+                                b_boxes = pf_tensors[b].to(device=device, dtype=dtype)
+
+                            frame_bbox_dicts = []
+                            frame_masks = []
+
+                            if not has_text and b_boxes is not None and point_inputs is not None:
+                                for box_cxcywh in b_boxes[0]:
+                                    cx, cy, bw, bh = box_cxcywh.tolist()
+                                    sam_box = torch.tensor([[[(cx - bw / 2.0) * 1008.0, (cy - bh / 2.0) * 1008.0],
+                                                             [(cx + bw / 2.0) * 1008.0, (cy + bh / 2.0) * 1008.0]]],
+                                                           device=device, dtype=dtype)
+                                    mask_logit = sam3_model.forward_segment(frame, point_inputs=point_inputs, box_inputs=sam_box)
+                                    for _ in range(max(0, refine_iterations - 1)):
+                                        mask_logit = sam3_model.forward_segment(frame, point_inputs=point_inputs, box_inputs=sam_box, mask_inputs=mask_logit)
+                                    mask = _F.interpolate(mask_logit, size=(H, W), mode="bilinear", align_corners=False)
+                                    frame_masks.append((mask[0] > 0).float())
+                            else:
+                                if point_inputs is not None:
+                                    mask_logit = sam3_model.forward_segment(frame, point_inputs=point_inputs)
+                                    for _ in range(max(0, refine_iterations - 1)):
+                                        mask_logit = sam3_model.forward_segment(frame, point_inputs=point_inputs, mask_inputs=mask_logit)
+                                    mask = _F.interpolate(mask_logit, size=(H, W), mode="bilinear", align_corners=False)
+                                    frame_masks.append((mask[0] > 0).float())
+
+                                if b_boxes is not None and not has_text:
+                                    for box_cxcywh in b_boxes[0]:
+                                        cx, cy, bw, bh = box_cxcywh.tolist()
+                                        sam_box = torch.tensor([[[(cx - bw / 2.0) * 1008.0, (cy - bh / 2.0) * 1008.0],
+                                                                 [(cx + bw / 2.0) * 1008.0, (cy + bh / 2.0) * 1008.0]]],
+                                                               device=device, dtype=dtype)
+                                        mask_logit = sam3_model.forward_segment(frame, box_inputs=sam_box)
+                                        for _ in range(max(0, refine_iterations - 1)):
+                                            mask_logit = sam3_model.forward_segment(frame, box_inputs=sam_box, mask_inputs=mask_logit)
+                                        mask = _F.interpolate(mask_logit, size=(H, W), mode="bilinear", align_corners=False)
+                                        frame_masks.append((mask[0] > 0).float())
+
+                            for text_embeddings, text_mask, max_det in cond_list:
+                                results = sam3_model(
+                                    frame, text_embeddings=text_embeddings, text_mask=text_mask,
+                                    boxes=b_boxes, threshold=threshold, orig_size=(H, W)
+                                )
+                                pred_boxes = results["boxes"][0]
+                                scores = results["scores"][0]
+                                masks = results["masks"][0]
+
+                                probs = scores.sigmoid()
+                                keep = probs > threshold
+                                kept_boxes = pred_boxes[keep].cpu()
+                                kept_scores = probs[keep].cpu()
+                                kept_masks = masks[keep]
+
+                                order = kept_scores.argsort(descending=True)[:max_det]
+                                kept_boxes = kept_boxes[order]
+                                kept_scores = kept_scores[order]
+                                kept_masks = kept_masks[order]
+
+                                for box, score in zip(kept_boxes, kept_scores):
+                                    frame_bbox_dicts.append({
+                                        "x": float(box[0]), "y": float(box[1]),
+                                        "width": float(box[2] - box[0]), "height": float(box[3] - box[1]),
+                                        "score": float(score),
+                                    })
+                                for m, box in zip(kept_masks, kept_boxes):
+                                    frame_masks.append(_ns3._refine_mask(
+                                        sam3_model, image[b], m, box, H, W, device, dtype, refine_iterations
+                                    ))
+
+                            all_bbox_dicts.append(frame_bbox_dicts)
+                            if len(frame_masks) > 0:
+                                combined = torch.cat(frame_masks, dim=0)
+                                if individual_masks:
+                                    all_masks.append(combined)
+                                else:
+                                    all_masks.append((combined > 0).any(dim=0).float())
+                            else:
+                                if individual_masks:
+                                    all_masks.append(torch.zeros(0, H, W, device=comfy.model_management.intermediate_device()))
+                                else:
+                                    all_masks.append(torch.zeros(H, W, device=comfy.model_management.intermediate_device()))
+                            pbar.update(1)
+
+                        idev = comfy.model_management.intermediate_device()
+                        all_masks = [m.to(idev) for m in all_masks]
+                        mask_out = torch.cat(all_masks, dim=0) if individual_masks else torch.stack(all_masks)
+                        if mask_out.numel() == 0:
+                            mask_out = torch.zeros(1, H, W, device=idev)
+                        return _comfy_io.NodeOutput(mask_out, all_bbox_dicts)
+
+                    sd_cls.execute = classmethod(_safe_sam3_detect_execute)
+                setattr(sd_cls, "_vstone_sam3_hook_ver", VSTONE_RUNTIME_PATCH_VER)
+
+        for vt_cls in _get_target_node_classes("SAM3_VideoTrack", "comfy_extras.nodes_sam3"):
+            if getattr(vt_cls, "_vstone_sam3_vt_hook_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+                orig_vt_exec = _unwrap_to_true_orig(vt_cls, "execute")
+                if orig_vt_exec is not None:
+                    setattr(vt_cls, "_vstone_orig_execute", orig_vt_exec)
+
+                    def _safe_sam3_videotrack_execute(cls, images, model, initial_mask=None, conditioning=None, detection_threshold=0.5, max_objects=0, detect_interval=1, _orig=orig_vt_exec):
+                        has_cond = conditioning is not None and len(conditioning) > 0
+                        has_mask = initial_mask is not None and hasattr(initial_mask, "numel") and initial_mask.numel() > 0 and bool((initial_mask > 0).any())
+                        if not has_cond and not has_mask:
+                            N, H, W = int(images.shape[0]), int(images.shape[1]), int(images.shape[2])
+                            return _comfy_io.NodeOutput({"packed_masks": None, "n_frames": N, "orig_size": (H, W), "scores": []})
+                        fn = _orig.__get__(None, cls) if hasattr(_orig, "__get__") else lambda *a, **kw: _orig(cls, *a, **kw)
+                        return fn(images, model, initial_mask=initial_mask, conditioning=conditioning, detection_threshold=detection_threshold, max_objects=max_objects, detect_interval=detect_interval)
+
+                    vt_cls.execute = classmethod(_safe_sam3_videotrack_execute)
+                setattr(vt_cls, "_vstone_sam3_vt_hook_ver", VSTONE_RUNTIME_PATCH_VER)
+    except Exception as e:
+        print(f"[VStone Runtime] Warning hooking SAM3: {e}")
 
     # 4. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()
