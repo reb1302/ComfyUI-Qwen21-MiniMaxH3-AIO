@@ -738,8 +738,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 10: Fix calling unwrapped classmethod define_schema(cls) / execute(cls, ...) on SAM3_Detect & SAM3_VideoTrack
-VSTONE_RUNTIME_PATCH_VER = 10
+# 11: Auto-update & hot-load all 28 Portable Workflow Pack custom node repos & pip deps on H200
+VSTONE_RUNTIME_PATCH_VER = 11
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -1773,11 +1773,35 @@ def apply_comfy_runtime_fixes() -> str:
     except Exception as e:
         print(f"[VStone Runtime] Warning hooking SAM3: {e}")
 
-    # 4. Check and recover ComfyUI prompt_worker & queue
+    # 4. Auto-install & hot-load Portable Workflow Pack custom nodes in background (once per patch version)
+    try:
+        if getattr(sys, "_vstone_portable_pack_bg_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+            if not any("_bg_portable_pack_installer" in t.name for t in threading.enumerate()):
+                setattr(sys, "_vstone_portable_pack_bg_ver", VSTONE_RUNTIME_PATCH_VER)
+
+                def _bg_install_packs():
+                    try:
+                        res_msg = install_portable_workflow_pack(unique_id=None, allow_restart=False)
+                        print(f"[VStone Auto-Pack] {res_msg.splitlines()[0] if res_msg else 'Done'}", flush=True)
+                    except Exception as _bg_err:
+                        print(f"[VStone Auto-Pack] Warning: {_bg_err}", flush=True)
+
+                threading.Thread(target=_bg_install_packs, name="_bg_portable_pack_installer", daemon=True).start()
+                all_notes_bg = "Started background update & hot-load for 28 Custom Node Packs"
+            else:
+                all_notes_bg = ""
+        else:
+            all_notes_bg = ""
+    except Exception:
+        all_notes_bg = ""
+
+    # 5. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()
     all_notes = []
     if restored:
         all_notes.append(f"Restored native nodes: {', '.join(restored)}")
+    if all_notes_bg:
+        all_notes.append(all_notes_bg)
     if q_notes:
         all_notes.extend(q_notes)
 
@@ -1935,41 +1959,121 @@ def _module_missing(name: str) -> bool:
 
 
 def _fetch_node_pack(pack: dict[str, Any], pack_dir: str) -> tuple[bool, str]:
-    """Clone hoặc pull pack. Máy không có git, hoặc thư mục không phải repo git, thì tải zip từ GitHub."""
+    """Clone hoặc pull/reset pack về commit mới nhất. Nếu git lỗi hoặc thư mục không phải repo git thì tải zip từ GitHub."""
     git_bin = shutil.which("git")
+    branch = pack.get("branch", "main")
     if git_bin and os.path.isdir(os.path.join(pack_dir, ".git")):
-        return _run_install_cmd([git_bin, "-C", pack_dir, "pull", "--ff-only"], 300)
+        ok, tail = _run_install_cmd([git_bin, "-C", pack_dir, "pull", "--ff-only"], 300)
+        if ok:
+            return True, tail
+        for br in dict.fromkeys([branch, "main", "master"]):
+            f_ok, _ = _run_install_cmd([git_bin, "-C", pack_dir, "fetch", "--depth", "1", "origin", br], 300)
+            if f_ok:
+                r_ok, r_tail = _run_install_cmd([git_bin, "-C", pack_dir, "reset", "--hard", "FETCH_HEAD"], 120)
+                if r_ok:
+                    return True, r_tail
     if git_bin and not os.path.exists(pack_dir):
         clone_url = f"https://github.com/{pack['repo']}.git"
-        return _run_install_cmd([git_bin, "clone", "--depth", "1", clone_url, pack_dir], 900)
-    zip_url = f"https://github.com/{pack['repo']}/archive/refs/heads/{pack['branch']}.zip"
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            with zipfile.ZipFile(io.BytesIO(_http_get_bytes(zip_url, timeout=600))) as archive:
-                archive.extractall(tmp)
-            shutil.copytree(os.path.join(tmp, os.listdir(tmp)[0]), pack_dir, dirs_exist_ok=True)
-        return True, ""
-    except Exception as e:
-        return False, str(e)
+        ok, tail = _run_install_cmd([git_bin, "clone", "--depth", "1", "-b", branch, clone_url, pack_dir], 900)
+        if not ok:
+            ok, tail = _run_install_cmd([git_bin, "clone", "--depth", "1", clone_url, pack_dir], 900)
+        if ok:
+            return True, tail
+    last_err = ""
+    for br in dict.fromkeys([branch, "main", "master"]):
+        zip_url = f"https://github.com/{pack['repo']}/archive/refs/heads/{br}.zip"
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                with zipfile.ZipFile(io.BytesIO(_http_get_bytes(zip_url, timeout=600))) as archive:
+                    archive.extractall(tmp)
+                shutil.copytree(os.path.join(tmp, os.listdir(tmp)[0]), pack_dir, dirs_exist_ok=True)
+            return True, ""
+        except Exception as e:
+            last_err = str(e)
+    return False, last_err
+
+
+_SKIP_PIP_PREFIXES = (
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "nvidia-vfx",
+    "amd-adlx",
+    "groundingdino-py",
+    "llama-cpp-python",
+    "pytest",
+    "git+https://github.com/facebookresearch/sam2",
+)
+
+
+def _should_skip_pip_spec(spec: str) -> bool:
+    s_low = spec.lower().strip()
+    if not s_low or s_low.startswith("-"):
+        return True
+    if "platform_system == \"windows\"" in s_low and os.name != "nt":
+        return True
+    for pref in _SKIP_PIP_PREFIXES:
+        if s_low == pref or s_low.startswith(pref + ">") or s_low.startswith(pref + "<") or s_low.startswith(pref + "=") or s_low.startswith(pref + "[") or s_low.startswith(pref + ";") or s_low.startswith(pref + "-"):
+            if pref == "torch" and s_low.startswith("torch-") and not s_low.startswith("torch=="):
+                continue
+            return True
+    return False
 
 
 def _pip_install_requirements(pack_dir: str) -> list[str]:
-    """Cài requirements.txt. Một gói lỗi làm hỏng cả file, nên khi lỗi thì cài lại từng gói và trả về các gói hỏng."""
+    """Cài requirements.txt an toàn (bỏ qua các gói ghi đè PyTorch hoặc gói lỗi C++ build gây treo)."""
     req_path = os.path.join(pack_dir, "requirements.txt")
     if not os.path.isfile(req_path):
         return []
-    pip_install = [sys.executable, "-m", "pip", "install"]
-    if _run_install_cmd(pip_install + ["-r", req_path], 1800)[0]:
+    pip_install = [sys.executable, "-m", "pip", "install", "--prefer-binary"]
+    specs: list[str] = []
+    try:
+        with open(req_path, encoding="utf-8", errors="ignore") as req_file:
+            for line in req_file:
+                spec = line.split("#")[0].strip()
+                if spec and not _should_skip_pip_spec(spec):
+                    specs.append(spec)
+    except Exception:
+        return []
+    if not specs:
+        return []
+    if _run_install_cmd(pip_install + specs, 600)[0]:
         return []
     failed: list[str] = []
-    with open(req_path, encoding="utf-8") as req_file:
-        for line in req_file:
-            spec = line.split("#")[0].strip()
-            if spec and not spec.startswith("-"):
-                ok, tail = _run_install_cmd(pip_install + [spec], 900)
-                if not ok:
-                    failed.append(f"{spec}: {tail}")
+    for spec in specs:
+        ok, tail = _run_install_cmd(pip_install + [spec], 240)
+        if not ok:
+            failed.append(f"{spec}: {tail[:120]}")
     return failed
+
+
+def _hot_load_custom_node_pack(pack_dir: str, module_parent: str = "custom_nodes") -> bool:
+    """Nạp nóng (Hot-load) một thư mục hoặc file custom_node vào RAM của ComfyUI (hỗ trợ cả V1 NODE_CLASS_MAPPINGS và V3 comfy_entrypoint)."""
+    if not pack_dir or not (os.path.isfile(pack_dir) or os.path.isfile(os.path.join(pack_dir, "__init__.py"))):
+        return False
+    try:
+        import asyncio
+        import inspect
+        import nodes
+        abs_target = os.path.abspath(pack_dir)
+        sys_module_name = os.path.splitext(pack_dir)[0] if os.path.isfile(pack_dir) else pack_dir.replace(".", "_x_")
+        for mod_key in list(sys.modules.keys()):
+            mod_obj = sys.modules.get(mod_key)
+            mod_file = getattr(mod_obj, "__file__", "") or ""
+            if mod_key == sys_module_name or mod_key.startswith(sys_module_name + ".") or (mod_file and os.path.abspath(mod_file).startswith(abs_target)):
+                sys.modules.pop(mod_key, None)
+        importlib.invalidate_caches()
+        res = nodes.load_custom_node(pack_dir, module_parent=module_parent)
+        if inspect.isawaitable(res):
+            loop = asyncio.new_event_loop()
+            try:
+                return bool(loop.run_until_complete(res))
+            finally:
+                loop.close()
+        return bool(res)
+    except Exception as e:
+        print(f"[VStone] Hot-load pack {os.path.basename(pack_dir)} warning: {e}", flush=True)
+        return False
 
 
 def _stop_download_processes() -> None:
@@ -2294,90 +2398,392 @@ def install_bfs_swap_packs(unique_id: Any = None) -> str:
 
 
 # ------------------------------------------------------------------------------
-# Cài trọn bộ 22 Custom Node Packs cho Portable Workflow Pack (46 Workflows: MiniMax-H3 VFX Edit, Swap, Netflix VOID, LTX 2.5, Qwen 2.1, VOSR2/SeedVR2)
+# Cài trọn bộ 28 Custom Node Packs cho Portable Workflow Pack (47 Workflows: MiniMax-H3 VFX Edit, HeadSwap/CharSwap/StyleTransfer/LMS/Live, Netflix VOID, LTX 2.5, Qwen 2.1, VOSR2/SeedVR2)
 # ------------------------------------------------------------------------------
 PORTABLE_PACK_CUSTOM_NODES: list[dict[str, Any]] = [
-    {"dir": "ComfyUI-VideoHelperSuite", "repo": "Kosinkadink/ComfyUI-VideoHelperSuite", "branch": "main"},
-    {"dir": "ComfyUI-KJNodes", "repo": "kijai/ComfyUI-KJNodes", "branch": "main"},
-    {"dir": "ComfyUI-Easy-Use", "repo": "yolain/ComfyUI-Easy-Use", "branch": "main"},
-    {"dir": "rgthree-comfy", "repo": "rgthree/rgthree-comfy", "branch": "main"},
-    {"dir": "ComfyUI_tinyterraNodes", "repo": "TinyTerra/ComfyUI_tinyterraNodes", "branch": "main"},
-    {"dir": "ComfyUI-BFSNodes", "repo": "alisson-anjos/ComfyUI-BFSNodes", "branch": "main"},
-    {"dir": "Comfyui_Minimax_h3_latent_Upscaler", "repo": "LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler", "branch": "main"},
-    {"dir": "ComfyUI-SolAttn_triton", "repo": "kijai/ComfyUI-SolAttn_triton", "branch": "main"},
-    {"dir": "ComfyUI-MiniMaxH3-Context-Loop", "repo": "ethanfel/ComfyUI-MiniMaxH3-Context-Loop", "branch": "main"},
-    {"dir": "ComfyUI-H3-Multishot", "repo": "jlucasmcrell/ComfyUI-H3-Multishot", "branch": "master"},
-    {"dir": "ComfyUI_MiniMax_H3_Extender", "repo": "tritant/ComfyUI_MiniMax_H3_Extender", "branch": "main"},
-    {"dir": "ComfyUI-MAINodes", "repo": "matlowai/ComfyUI-MAINodes", "branch": "main"},
-    {"dir": "ComfyUI-Spectrum-MiniMax-H3", "repo": "xmarre/ComfyUI-Spectrum-MiniMax-H3", "branch": "main"},
-    {"dir": "ComfyUI-ReservedVRAM", "repo": "Windecay/ComfyUI-ReservedVRAM", "branch": "main"},
-    {"dir": "CRT-Nodes", "repo": "PGCRT/CRT-Nodes", "branch": "main"},
-    {"dir": "ComfyUI-DaSiWa-Nodes", "repo": "darksidewalker/ComfyUI-DaSiWa-Nodes", "branch": "main"},
-    {"dir": "ComfyUI-VOSR2", "repo": "ylchen333/ComfyUI-VOSR2", "branch": "main"},
-    {"dir": "ComfyUI-Frame-Interpolation", "repo": "Fannovel16/ComfyUI-Frame-Interpolation", "branch": "main"},
-    {"dir": "comfyui-rmbg", "repo": "1038lab/comfyui-rmbg", "branch": "main"},
-    {"dir": "comfyui_controlnet_aux", "repo": "Fannovel16/comfyui_controlnet_aux", "branch": "main"},
-    {"dir": "RES4LYF", "repo": "ClownsharkBatwing/RES4LYF", "branch": "main"},
-    {"dir": "ComfyUI-GGUF", "repo": "city96/ComfyUI-GGUF", "branch": "main"},
+    {
+        "dir": "ComfyUI-VideoHelperSuite",
+        "repo": "Kosinkadink/ComfyUI-VideoHelperSuite",
+        "branch": "main",
+        "node_ids": ["VHS_VideoCombine", "VHS_LoadVideo", "VHS_LoadVideoFFmpeg", "VHS_VideoInfo", "VHS_VideoInfoLoaded"],
+        "pip": {"cv2": "opencv-python-headless", "imageio_ffmpeg": "imageio-ffmpeg"},
+    },
+    {
+        "dir": "ComfyUI-KJNodes",
+        "repo": "kijai/ComfyUI-KJNodes",
+        "branch": "main",
+        "node_ids": [
+            "ImageResizeKJv2",
+            "ImageConcatMulti",
+            "AddLabel",
+            "PointsEditor",
+            "MiniMaxChunkFeedForward",
+            "MiniMaxLowVRAMAttention",
+            "ModelPreviewOverrideKJ",
+            "MiniMaxH3MemoryEfficientSageAttentionPatch",
+            "LTX2SamplingPreviewOverride",
+            "LTX2_NAG",
+            "GrowMaskWithBlur",
+            "SomethingToString",
+            "ReplaceImagesInBatch",
+            "InsertImagesToBatchIndexed",
+            "GetImagesFromBatchIndexed",
+            "GetImageRangeFromBatch",
+            "SimpleCalculatorKJ",
+            "VAELoaderKJ",
+            "VRAM_Debug",
+            "PathchSageAttentionKJ",
+            "INTConstant",
+        ],
+        "pip": {"color_matcher": "color-matcher", "matplotlib": "matplotlib", "mss": "mss", "cv2": "opencv-python-headless", "scipy": "scipy"},
+    },
+    {
+        "dir": "ComfyUI-AIToolkit-MiniMaxH3",
+        "repo": "ostris/ComfyUI-AIToolkit-MiniMaxH3",
+        "branch": "main",
+        "node_ids": ["AIToolkitMiniMaxH3RefVideo"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-BFSNodes",
+        "repo": "alisson-anjos/ComfyUI-BFSNodes",
+        "branch": "main",
+        "node_ids": [
+            "BFSShotH3ConditioningSimple",
+            "BFSShotPlanner",
+            "BFSShotUnpack",
+            "BFSShotRepack",
+            "BFSShotJoin",
+            "BFSVideoCompare",
+            "LTXMultipleControls",
+            "LTXVEditAnythingLoopingSampler",
+            "LTXVEditAnythingModuleLoader",
+            "LTXVResizeReferenceByMask",
+        ],
+        "pip": {"librosa": "librosa", "cv2": "opencv-python-headless", "scenedetect": "scenedetect", "scipy": "scipy"},
+    },
+    {
+        "dir": "Comfyui_Minimax_h3_latent_Upscaler",
+        "repo": "LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+        "branch": "main",
+        "node_ids": ["MinimaxH3LatentUpscaler3D"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-SolAttn_triton",
+        "repo": "kijai/ComfyUI-SolAttn_triton",
+        "branch": "main",
+        "node_ids": ["SolAttnPatch"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-sol-attn",
+        "repo": "Saganaki22/ComfyUI-sol-attn",
+        "branch": "main",
+        "node_ids": ["MiniMaxH3ChunkFeedForward", "MiniMaxH3MemoryEfficientSolAttentionPatch"],
+        "pip": {},
+    },
+    {
+        "dir": "comfyui-rmbg",
+        "repo": "1038lab/comfyui-rmbg",
+        "branch": "main",
+        "node_ids": ["BiRefNetRMBG", "AILab_LamaRemover"],
+        "pip": {
+            "timm": "timm",
+            "kornia": "kornia",
+            "transparent_background": "transparent-background",
+            "onnxruntime": "onnxruntime-gpu",
+            "cv2": "opencv-python-headless",
+            "segment_anything": "segment-anything",
+            "hydra": "hydra-core",
+            "omegaconf": "omegaconf",
+            "iopath": "iopath",
+            "decord": "decord",
+            "ftfy": "ftfy",
+        },
+    },
+    {
+        "dir": "ComfyUI-Easy-Use",
+        "repo": "yolain/ComfyUI-Easy-Use",
+        "branch": "main",
+        "node_ids": ["easy int", "easy seed", "easy cleanGpuUsed", "easy simpleMath"],
+        "pip": {
+            "diffusers": "diffusers",
+            "accelerate": "accelerate",
+            "lark": "lark",
+            "onnxruntime": "onnxruntime",
+            "cv2": "opencv-python-headless",
+            "sentencepiece": "sentencepiece",
+            "spandrel": "spandrel",
+            "matplotlib": "matplotlib",
+            "peft": "peft",
+        },
+    },
+    {
+        "dir": "rgthree-comfy",
+        "repo": "rgthree/rgthree-comfy",
+        "branch": "main",
+        "node_ids": ["Image Comparer (rgthree)", "Power Lora Loader (rgthree)", "Any Switch (rgthree)"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI_tinyterraNodes",
+        "repo": "TinyTerra/ComfyUI_tinyterraNodes",
+        "branch": "main",
+        "node_ids": ["ttN concat"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-MiniMaxH3-Context-Loop",
+        "repo": "ethanfel/ComfyUI-MiniMaxH3-Context-Loop",
+        "branch": "main",
+        "node_ids": [
+            "MiniMaxH3ContexTrimSourceAV",
+            "MiniMaxH3ContexMaskedTarget",
+            "MiniMaxH3ContexMaskGridPreview",
+            "MiniMaxH3ChainAssemble",
+            "MiniMaxH3ChainLoopStart",
+            "MiniMaxH3ChainLoopEnd",
+        ],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-H3-Multishot",
+        "repo": "jlucasmcrell/ComfyUI-H3-Multishot",
+        "branch": "master",
+        "node_ids": [
+            "H3ClipLoaderAny",
+            "H3ModelLoaderAny",
+            "H3LoraStack",
+            "H3MultishotMemorySampler",
+            "H3MultishotSampler",
+            "H3StudioControls",
+            "H3Keyframes",
+        ],
+        "pip": {"einops": "einops", "scipy": "scipy"},
+    },
+    {
+        "dir": "ComfyUI_MiniMax_H3_Extender",
+        "repo": "tritant/ComfyUI_MiniMax_H3_Extender",
+        "branch": "main",
+        "node_ids": ["MiniMaxH3Extender"],
+        "pip": {"imageio_ffmpeg": "imageio-ffmpeg"},
+    },
+    {
+        "dir": "ComfyUI-MAINodes",
+        "repo": "matlowai/ComfyUI-MAINodes",
+        "branch": "main",
+        "node_ids": ["H3ExactRecover", "H3InjectSchedule", "H3JerkOracle", "H3TimeSmear", "H3V2VInit"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-Spectrum-MiniMax-H3",
+        "repo": "xmarre/ComfyUI-Spectrum-MiniMax-H3",
+        "branch": "main",
+        "node_ids": ["SpectrumApplyMiniMaxH3"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-ReservedVRAM",
+        "repo": "Windecay/ComfyUI-ReservedVRAM",
+        "branch": "main",
+        "node_ids": ["ReservedVRAMSetter"],
+        "pip": {"pynvml": "nvidia-ml-py"},
+    },
+    {
+        "dir": "CRT-Nodes",
+        "repo": "PGCRT/CRT-Nodes",
+        "branch": "main",
+        "node_ids": ["CRTFirstLastFrameSelector"],
+        "pip": {
+            "cv2": "opencv-python-headless",
+            "scipy": "scipy",
+            "color_matcher": "color-matcher",
+            "spandrel": "spandrel",
+            "librosa": "librosa",
+            "imageio_ffmpeg": "imageio-ffmpeg",
+            "soundfile": "soundfile",
+            "einops": "einops",
+            "rotary_embedding_torch": "rotary-embedding-torch",
+            "timm": "timm",
+            "ultralytics": "ultralytics",
+        },
+    },
+    {
+        "dir": "ComfyUI-DaSiWa-Nodes",
+        "repo": "darksidewalker/ComfyUI-DaSiWa-Nodes",
+        "branch": "main",
+        "node_ids": ["DaSiWa_NodeStatusSwitch", "DaSiWa_RTX_UpscalerRefiner"],
+        "pip": {"accelerate": "accelerate", "psutil": "psutil", "av": "av", "pynvml": "nvidia-ml-py"},
+    },
+    {
+        "dir": "ComfyUI-VOSR2",
+        "repo": "ylchen333/ComfyUI-VOSR2",
+        "branch": "main",
+        "node_ids": ["VOSR2ModelLoader", "VOSR2Upscale"],
+        "pip": {"huggingface_hub": "huggingface_hub"},
+    },
+    {
+        "dir": "ComfyUI-Frame-Interpolation",
+        "repo": "Fannovel16/ComfyUI-Frame-Interpolation",
+        "branch": "main",
+        "node_ids": ["FILM VFI"],
+        "pip": {"einops": "einops", "cv2": "opencv-python-headless", "scipy": "scipy", "skimage": "scikit-image"},
+    },
+    {
+        "dir": "comfyui_controlnet_aux",
+        "repo": "Fannovel16/comfyui_controlnet_aux",
+        "branch": "main",
+        "node_ids": ["CannyEdgePreprocessor", "DWPreprocessor", "MiDaS-DepthMapPreprocessor"],
+        "pip": {
+            "scipy": "scipy",
+            "cv2": "opencv-python-headless",
+            "filelock": "filelock",
+            "einops": "einops",
+            "yaml": "pyyaml",
+            "skimage": "scikit-image",
+            "omegaconf": "omegaconf",
+        },
+    },
+    {
+        "dir": "RES4LYF",
+        "repo": "ClownsharkBatwing/RES4LYF",
+        "branch": "main",
+        "node_ids": ["ClownsharKSampler_Beta"],
+        "pip": {"cv2": "opencv-python-headless", "matplotlib": "matplotlib", "pywt": "PyWavelets"},
+    },
+    {
+        "dir": "ComfyUI-GGUF",
+        "repo": "city96/ComfyUI-GGUF",
+        "branch": "main",
+        "node_ids": ["UnetLoaderGGUF"],
+        "pip": {"gguf": "gguf>=0.13.0", "sentencepiece": "sentencepiece", "google.protobuf": "protobuf"},
+    },
+    {
+        "dir": "ComfyUI_JoyAI_Echo_GGUF_Nodes",
+        "repo": "RealRebelAI/ComfyUI_JoyAI_Echo_GGUF_Nodes",
+        "branch": "main",
+        "node_ids": ["JoyEcho_LLMEnhance"],
+        "pip": {"einops": "einops", "scipy": "scipy"},
+    },
+    {
+        "dir": "WhatDreamsCost-ComfyUI",
+        "repo": "WhatDreamscost/WhatDreamsCost-ComfyUI",
+        "branch": "main",
+        "node_ids": ["LoadAudioUI"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-Custom-Scripts",
+        "repo": "pythongosssss/ComfyUI-Custom-Scripts",
+        "branch": "main",
+        "node_ids": ["ShowText|pysssss"],
+        "pip": {},
+    },
+    {
+        "dir": "ComfyUI-Impact-Pack",
+        "repo": "ltdrdata/ComfyUI-Impact-Pack",
+        "branch": "Main",
+        "node_ids": ["ImpactInversedSwitch"],
+        "pip": {
+            "segment_anything": "segment-anything",
+            "skimage": "scikit-image",
+            "piexif": "piexif",
+            "cv2": "opencv-python-headless",
+            "scipy": "scipy",
+            "dill": "dill",
+            "matplotlib": "matplotlib",
+        },
+    },
 ]
 PORTABLE_PACK_RESTARTED_ENV = "VSTONE_PORTABLE_PACK_RESTARTED"
+_PORTABLE_PACK_LOCK = sys.__dict__.setdefault("_vstone_portable_pack_lock", threading.Lock())
 
 
-def install_portable_workflow_pack(unique_id: Any = None) -> str:
-    """Cài toàn bộ 22 custom node packs + bản vá Netflix VOID của Portable Workflow Pack (46 workflows), sau đó tự khởi động lại ComfyUI."""
+def install_portable_workflow_pack(unique_id: Any = None, allow_restart: bool = True) -> str:
+    """Cài/cập nhật trọn bộ 28 custom node packs + pip + bản vá Netflix VOID của Portable Workflow Pack, nạp nóng vào RAM ComfyUI."""
     root = _get_comfy_root()
     if not root:
         return "❌ Không tìm thấy thư mục ComfyUI."
-    custom_nodes = os.path.join(root, "custom_nodes")
-    os.makedirs(custom_nodes, exist_ok=True)
-    installed_dirs = {name.lower(): name for name in os.listdir(custom_nodes)}
-
-    details: list[str] = []
-    newly_installed = 0
-    total = len(PORTABLE_PACK_CUSTOM_NODES)
-    for idx, pack in enumerate(PORTABLE_PACK_CUSTOM_NODES, start=1):
-        existing_name = installed_dirs.get(pack["dir"].lower())
-        pack_dir = os.path.join(custom_nodes, existing_name or pack["dir"])
-        if existing_name and os.path.isfile(os.path.join(pack_dir, "__init__.py")):
-            details.append(f"[{idx}/{total}] {pack['dir']}: đã có sẵn.")
-            continue
-        _vstone_ui_status(unique_id, f"Đang cài pack [{idx}/{total}] {pack['dir']} ({pack['repo']})...")
-        ok, tail = _fetch_node_pack(pack, pack_dir)
-        if not ok:
-            # Thử lại với nhánh master nếu repo mặc định là master
-            pack_master = dict(pack, branch="master")
-            ok, tail = _fetch_node_pack(pack_master, pack_dir)
-        if ok and os.path.isdir(pack_dir):
-            newly_installed += 1
-            details.append(f"[{idx}/{total}] {pack['dir']}: đã tải về.")
-            for failure in _pip_install_requirements(pack_dir):
-                details.append(f"  ⚠️ pip ({pack['dir']}): {failure}")
-        else:
-            details.append(f"[{idx}/{total}] ❌ {pack['dir']}: lỗi tải ({tail})")
-
-    # Áp dụng bản vá Netflix VOID (patches/nodes_void.py -> ComfyUI/comfy_extras/nodes_void.py)
+    if not _PORTABLE_PACK_LOCK.acquire(blocking=allow_restart):
+        return "⏳ Luồng cài đặt Portable Workflow Pack đang chạy ngầm, vui lòng chờ 1-2 phút."
     try:
-        commit_ref = _get_latest_commit_sha()
-        raw_ref_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{commit_ref}"
-        void_bytes = _http_get_bytes(f"{raw_ref_base}/patches/nodes_void.py?_t={int(time.time())}", timeout=15)
-        if void_bytes and len(void_bytes) > 500:
-            void_dst = os.path.join(root, "comfy_extras", "nodes_void.py")
-            _atomic_write_bytes(void_dst, void_bytes, min_bytes=500)
-            details.append("Patch Netflix VOID (comfy_extras/nodes_void.py): đã cập nhật.")
-    except Exception as e:
-        details.append(f"Patch Netflix VOID: {e}")
+        custom_nodes = os.path.join(root, "custom_nodes")
+        os.makedirs(custom_nodes, exist_ok=True)
+        installed_dirs = {name.lower(): name for name in os.listdir(custom_nodes)}
 
-    if newly_installed > 0 and os.environ.get(PORTABLE_PACK_RESTARTED_ENV) != "1":
-        os.environ[PORTABLE_PACK_RESTARTED_ENV] = "1"
-        _restart_comfyui_after(5.0)
+        details: list[str] = []
+        newly_installed = 0
+        total = len(PORTABLE_PACK_CUSTOM_NODES)
+        for idx, pack in enumerate(PORTABLE_PACK_CUSTOM_NODES, start=1):
+            existing_name = installed_dirs.get(pack["dir"].lower())
+            pack_dir = os.path.join(custom_nodes, existing_name or pack["dir"])
+            has_init = os.path.isfile(os.path.join(pack_dir, "__init__.py"))
+            node_ids = pack.get("node_ids", [])
+            missing_before = _missing_node_ids(node_ids) if node_ids else ([] if has_init else [pack["dir"]])
+            pip_map = pack.get("pip", {})
+            missing_pip = [ (mod, spec) for mod, spec in pip_map.items() if _module_missing(mod) ]
+
+            if has_init and not missing_before and not missing_pip:
+                details.append(f"[{idx}/{total}] ✅ {pack['dir']}: đã nạp đủ node ({len(node_ids)} node).")
+                continue
+
+            if unique_id is not None:
+                _vstone_ui_status(unique_id, f"Đang cài/cập nhật [{idx}/{total}] {pack['dir']} ({pack['repo']})...")
+            ok, tail = _fetch_node_pack(pack, pack_dir)
+            if ok and os.path.isdir(pack_dir):
+                newly_installed += 1
+                for mod, spec in pip_map.items():
+                    if _module_missing(mod):
+                        if unique_id is not None:
+                            _vstone_ui_status(unique_id, f"[{idx}/{total}] Đang cài thư viện {spec} cho {pack['dir']}...")
+                        _run_install_cmd([sys.executable, "-m", "pip", "install", "--prefer-binary", spec], 300)
+                for failure in _pip_install_requirements(pack_dir):
+                    details.append(f"  ⚠️ pip ({pack['dir']}): {failure}")
+                hot_ok = _hot_load_custom_node_pack(pack_dir)
+                still_missing = _missing_node_ids(node_ids) if node_ids else []
+                if not still_missing:
+                    details.append(f"[{idx}/{total}] ✅ {pack['dir']}: đã cập nhật & nạp nóng thành công.")
+                else:
+                    details.append(f"[{idx}/{total}] 🔄 {pack['dir']}: đã tải về ({'hot-load một phần' if hot_ok else 'cần restart'}, còn thiếu: {', '.join(still_missing[:5])}).")
+            else:
+                details.append(f"[{idx}/{total}] ❌ {pack['dir']}: lỗi tải ({tail})")
+
+        # Áp dụng bản vá Netflix VOID (patches/nodes_void.py -> ComfyUI/comfy_extras/nodes_void.py) & nạp nóng
+        try:
+            commit_ref = _get_latest_commit_sha()
+            raw_ref_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{commit_ref}"
+            void_bytes = _http_get_bytes(f"{raw_ref_base}/patches/nodes_void.py?_t={int(time.time())}", timeout=15)
+            if void_bytes and len(void_bytes) > 500:
+                void_dst = os.path.join(root, "comfy_extras", "nodes_void.py")
+                wrote = _atomic_write_bytes(void_dst, void_bytes, min_bytes=500)
+                if wrote or _missing_node_ids(["VOIDInpaintConditioning", "VOIDSampler"]):
+                    _hot_load_custom_node_pack(void_dst, module_parent="comfy_extras")
+                details.append("Patch Netflix VOID (comfy_extras/nodes_void.py): đã cập nhật & nạp nóng.")
+        except Exception as e:
+            details.append(f"Patch Netflix VOID: {e}")
+
+        all_expected = [nid for p in PORTABLE_PACK_CUSTOM_NODES for nid in p.get("node_ids", [])]
+        total_still_missing = _missing_node_ids(all_expected)
+        if allow_restart and newly_installed > 0 and total_still_missing:
+            tried = set(filter(None, os.environ.get(PORTABLE_PACK_RESTARTED_ENV, "").split(",")))
+            if not (set(total_still_missing) <= tried):
+                os.environ[PORTABLE_PACK_RESTARTED_ENV] = ",".join(sorted(tried | set(total_still_missing)))
+                _restart_comfyui_after(5.0)
+                return "\n".join([
+                    f"🔄 Đã cài/cập nhật {newly_installed}/{total} custom node packs. ComfyUI đang khởi động lại để nạp phần còn lại — chờ 1-2 phút rồi nhấn F5!",
+                    *details,
+                ])
         return "\n".join([
-            f"🔄 Đã cài mới {newly_installed}/{total} custom node packs cho Portable Workflow Pack (46 workflows). ComfyUI đang khởi động lại — chờ 1-2 phút rồi nhấn F5!",
+            f"✅ Đã cài đặt & nạp nóng {total} custom node packs + bản vá Netflix VOID cho toàn bộ Workflows (01_MiniMax_H3_VFX_Edit .. 05_MiniMax_H3_Loop_And_Native)."
+            + (f" (Đã cập nhật mới {newly_installed} pack — nhấn phím R hoặc F5 trên trình duyệt để làm mới danh sách node!)" if newly_installed > 0 else ""),
             *details,
         ])
-    return "\n".join([
-        f"✅ Đã kiểm tra/cài đặt đủ {total} custom node packs & bản vá Netflix VOID cho 46 workflows (01_MiniMax_H3_VFX_Edit .. 05_MiniMax_H3_Loop_And_Native).",
-        *details,
-    ])
+    finally:
+        try:
+            _PORTABLE_PACK_LOCK.release()
+        except Exception:
+            pass
 
 
 # ------------------------------------------------------------------------------
