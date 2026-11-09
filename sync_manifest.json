@@ -575,6 +575,8 @@
     "workflows/05_MiniMax_H3_Loop_And_Native/H3_Keyframes.json",
     "workflows/05_MiniMax_H3_Loop_And_Native/H3_Seamless_Chain_CORE.json",
     "workflows/05_MiniMax_H3_Loop_And_Native/H3_Seamless_Chain_v2.json",
-    "workflows/05_MiniMax_H3_Loop_And_Native/MiniMax_H3_360_Orbit_BulletTime_Seamless_Loop.json"
+    "workflows/05_MiniMax_H3_Loop_And_Native/MiniMax_H3_360_Orbit_BulletTime_Seamless_Loop.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/05_H3_First_Last_Frame_Transition_Native.json",
+    "workflows/minimax_h3/video_minimax_h3_first_last_frame_transition.json"
   ]
 }
