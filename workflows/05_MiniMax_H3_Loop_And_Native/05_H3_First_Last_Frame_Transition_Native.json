@@ -222,7 +222,7 @@
     {
       "id": 7,
       "type": "ResolutionSelector",
-      "title": "7. Resolution Selector (0.98 MP = 1344x768)",
+      "title": "7. Resolution Selector (BẮT BUỘC multiple = 32)",
       "pos": [
         -1180,
         850
@@ -258,8 +258,15 @@
       "widgets_values": [
         "16:9 (Widescreen)",
         0.98,
+        null,
         32
-      ]
+      ],
+      "showAdvanced": true,
+      "widgets_values_named": {
+        "aspect_ratio": "16:9 (Widescreen)",
+        "megapixels": 0.98,
+        "multiple": 32
+      }
     },
     {
       "id": 8,
