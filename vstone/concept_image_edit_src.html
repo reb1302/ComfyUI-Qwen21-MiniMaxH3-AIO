@@ -65,6 +65,7 @@ svg{display:block}
 .selwrap,.selwrap > *{pointer-events:none}
 .selwrap input,.selwrap button,.selwrap label{pointer-events:auto}
 .selname{width:200px;padding:3px 8px;font-size:12px;font-weight:400;color:var(--paper-ink);background:#fff;border:1px solid var(--paper-ink);border-radius:4px}
+.selsoft input.lightcolor{width:30px;height:22px;padding:0;border:1px solid var(--line);border-radius:4px;background:transparent;cursor:pointer}
 .selsoft{display:flex;align-items:center;gap:6px;padding:0 4px;font-size:12px;color:var(--ink-2)}
 .selsoft input{width:110px;accent-color:var(--paper)}
 .floatbar > span{padding:0 4px;font-size:12px;color:var(--ink-2)}
@@ -321,6 +322,7 @@ a.btn{color:inherit;text-decoration:none}
       <button class="env" id="envBtn" type="button" title="Môi trường: ảnh cho model hiểu cảnh khi kéo rộng" aria-label="Môi trường" aria-expanded="false" aria-controls="envPop"><span data-icon="mountain"></span><img id="envThumb" alt="" hidden><span class="envcount" id="envCount" hidden></span></button>
       <hr>
       <button class="ibtn" id="selectTool" type="button" title="Chọn vật bằng SAM 3.1: kéo khung hoặc bấm lên vật" aria-label="Chọn vật" aria-pressed="false" data-icon="select"></button>
+      <button class="ibtn" id="lightTool" type="button" title="Ánh sáng: đặt đèn, trình duyệt tính sáng, Qwen 2.1 vẽ lại" aria-label="Ánh sáng" aria-pressed="false" data-icon="sun"></button>
       <div class="tiles" id="layerTiles"></div>
       <label class="ibtn" title="Thêm layer từ ảnh khác"><span data-icon="layerAdd"></span><input class="sr" id="layerFile" type="file" accept="image/*" aria-label="Thêm layer từ ảnh khác"></label>
       <hr>
@@ -477,9 +479,31 @@ a.btn{color:inherit;text-decoration:none}
         <button class="viewchip" type="button" id="selRemove" title="Biến vùng chọn thành vùng tô của một cọ Xoá">Xoá vật</button>
         <button class="viewchip" type="button" id="selLayer" title="Cắt vật ra thành layer, chỗ cũ thành xám để lượt Ghép lấp lại">Tách thành layer</button>
         <button class="viewchip" type="button" id="selCopy" title="Chép vật thành layer, vật vẫn ở chỗ cũ">Chép thành layer</button>
+        <button class="viewchip" type="button" id="selRelight" title="Đổi ánh sáng chỉ trong vùng này">Đổi sáng vùng này</button>
         <button class="viewchip" type="button" id="selClear">Bỏ chọn</button>
         <label class="selsoft" title="Nới vùng chọn rộng ra, tính bằng điểm ảnh">Nới rộng<input id="selGrow" type="range" min="0" max="40" step="1" value="8" aria-label="Nới rộng vùng chọn"></label>
         <label class="selsoft" title="Độ mềm của viền vùng chọn, tính bằng điểm ảnh">Mềm viền<input id="selFeather" type="range" min="0" max="30" step="1" value="3" aria-label="Mềm viền vùng chọn"></label>
+      </div>
+      </div>
+      <div class="selwrap" id="lightWrap" hidden>
+      <div class="floatbar" id="lightBar">
+        <div class="viewchips" id="lightMode" role="group" aria-label="Cách Qwen vẽ lại">
+          <button class="viewchip" type="button" data-mode="post" aria-pressed="true" title="Ảnh đã tính sáng là ảnh chính, ảnh gốc làm mẫu để giữ chi tiết">Hậu kỳ</button>
+          <button class="viewchip" type="button" data-mode="ref" aria-pressed="false" title="Ảnh gốc là ảnh chính, ảnh đã tính sáng làm mẫu ánh sáng">Ảnh mẫu</button>
+          <button class="viewchip" type="button" data-mode="prompt" aria-pressed="false" title="Chỉ tả đèn bằng chữ, không gửi ảnh tính sáng">Chỉ prompt</button>
+        </div>
+        <label class="selsoft" title="Ánh sáng nền: phần không có đèn sáng hay tối">Nền<input id="lightAmbient" type="range" min="0" max="100" step="1" value="35" aria-label="Ánh sáng nền"></label>
+        <label class="selsoft" title="Tông ánh sáng nền: kéo trái lạnh, kéo phải ấm">Lạnh / Ấm<input id="lightWarm" type="range" min="-100" max="100" step="1" value="0" aria-label="Tông ánh sáng nền"></label>
+        <button class="viewchip" type="button" id="lightScope" title="Bỏ vùng, đổi sáng cả ảnh" hidden>Chỉ vùng đã chọn ×</button>
+        <span id="lightInfo">Bấm lên ảnh để đặt đèn, tối đa 3</span>
+      </div>
+      <div class="floatbar" id="lightEdit" hidden>
+        <label class="selsoft" title="Màu đèn">Màu<input class="lightcolor" id="lightColor" type="color" value="#FFB46B" aria-label="Màu đèn"></label>
+        <label class="selsoft" title="Độ mạnh của đèn">Cường độ<input id="lightPower" type="range" min="0" max="3" step="0.05" value="1.2" aria-label="Cường độ đèn"></label>
+        <label class="selsoft" title="Độ tán: thấp là đèn gắt, cao là đèn mềm">Độ tán<input id="lightSoft" type="range" min="0" max="1" step="0.05" value="0.4" aria-label="Độ tán của đèn"></label>
+        <label class="selsoft" title="Đèn cao hay thấp so với mặt ảnh: thấp là chiếu xiên, cao là chiếu thẳng từ phía trước">Độ cao<input id="lightHeight" type="range" min="0" max="1.5" step="0.05" value="0.5" aria-label="Độ cao của đèn"></label>
+        <label class="selsoft" title="Đèn chiếu xa bao nhiêu trước khi tắt dần">Tầm chiếu<input id="lightRange" type="range" min="0.2" max="3" step="0.05" value="1.2" aria-label="Tầm chiếu của đèn"></label>
+        <button class="viewchip" type="button" id="lightDel">Xoá đèn</button>
       </div>
       </div>
       <div class="floatbar" id="layerBar" hidden>
@@ -621,6 +645,7 @@ const ICONS = {
   check: 'M4 10l4 4 8-9',
   select: 'M3 6V3h3M9 3h2M14 3h3v3M3 9v2M3 14v3h3M10 10l7 3-3 1.2-1.2 3z',
   layerAdd: 'M3 8l6.5-3.5L16 8l-6.5 3.5zM3 12l6.5 3.5 2.5-1.300M15.5 12.500v5M13 15h5',
+  sun: 'M10 6.5a3.5 3.5 0 110 7 3.5 3.5 0 010-7zM10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4',
 };
 const icon = name => `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); });
@@ -725,7 +750,7 @@ function buildEditPass(marks, problems) {
   return { kind: 'edit', name: 'Sửa', lines, slots, brushes };
 }
 
-function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, blendLora }) {
+function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, blendLora, light }) {
   const problems = [];
   const passes = [];
   if (expanded) {
@@ -742,6 +767,7 @@ function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, ble
   if (layers && layers.length) passes.push(buildMergePass(layers, blendLora));
   const edit = buildEditPass(marks.filter(m => m.cover), problems);
   if (edit) passes.push(edit);
+  if (light && light.lights.length) passes.push(buildRelightPass(light, problems));
   return { passes, problems };
 }
 
@@ -773,13 +799,14 @@ const V = { scale: 1, x: 0, y: 0 };
 // Vùng chọn của SAM 3.1 và các layer, toạ độ theo ảnh gốc (không tính vùng nới).
 const Sel = { box: null, points: [], hits: [], mask: null, tint: null, ring: null, raw: null, clean: null, smooth: 1, grow: 8, feather: 3, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
 const Layers = { list: [], active: null, mode: 'transform', nextId: 1, busy: false };
+const Light = { lights: [], active: null, nextId: 1, mode: 'post', ambient: 0.35, warm: 0, region: null, regionRing: null, geo: null, geoBusy: false, geoError: '', preview: null, base: null, frame: 0 };
 const W = () => S.w + S.pads.left + S.pads.right;
 const H = () => S.h + S.pads.top + S.pads.bottom;
 const isExpanded = () => S.pads.left + S.pads.right + S.pads.top + S.pads.bottom > 0;
 const needsOutpaint = () => isExpanded() && !S.padsPainted;
 const brushOf = id => S.brushes.find(b => b.id === id);
 const canPaint = () => !!S.base && !S.tool && (S.erase || !!brushOf(S.active));
-const viewCursor = () => (S.capture !== null || S.tool === 'select' ? 'crosshair' : S.tool === 'layer' ? 'move' : canPaint() ? 'none' : 'default');
+const viewCursor = () => (S.capture !== null || S.tool === 'select' || S.tool === 'light' ? 'crosshair' : S.tool === 'layer' ? 'move' : canPaint() ? 'none' : 'default');
 
 function drawStroke(g, s) {
   const b = brushOf(s.brush);
@@ -1190,7 +1217,7 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.tab === 'upscale' ? buildUpscalePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora, layers: Layers.list, blendLora: S.blendLora }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.tab === 'upscale' ? buildUpscalePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora, layers: Layers.list, blendLora: S.blendLora, light: Light }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
@@ -1251,6 +1278,12 @@ function renderPanel() {
       let n = 2;
       if (pass.kind === 'swap_selective') slots.append(slotFigure(`image_${n++}`, 'Ảnh cảnh, người cần thay phủ hồng', cv => paintRefThumb(cv, swapMarked())));
       if (ref.ref) slots.append(slotFigure(`image_${n}`, SWAP_REF_LABEL[Swap.mode], cv => paintRefThumb(cv, ref.ref)));
+    } else if (pass.kind === 'relight') {
+      const lit = cv => paintRefThumb(cv, Light.preview || S.base);
+      const shot = cv => paintRefThumb(cv, S.base);
+      if (Light.mode === 'post') slots.append(slotFigure('image_1', 'Ảnh đã tính sáng trong trình duyệt', lit), slotFigure('image_2', 'Ảnh gốc, để giữ chi tiết', shot));
+      else if (Light.mode === 'ref') slots.append(slotFigure('image_1', 'Ảnh gốc', shot), slotFigure('image_2', 'Ảnh đã tính sáng, làm mẫu ánh sáng', lit));
+      else slots.append(slotFigure('image_1', 'Ảnh gốc', shot));
     } else if (pass.kind === 'merge') {
       slots.append(slotFigure('image_1', 'Cả shot với layer đã đặt: vùng lấp viền đỏ, vùng ghép viền xanh', cv => paintMergeThumb(cv)));
     } else if (pass.kind === 'upscale') {
@@ -1759,10 +1792,11 @@ function drawMaskStroke(g, s, b) {
 let toolDrag = null;
 function drawOverlays(g) {
   const selecting = S.tool === 'select';
-  if (!Layers.list.length && !selecting) return;
+  if (!Layers.list.length && !selecting && !Light.preview && S.tool !== 'light') return;
   const px = 1 / V.scale;
   g.save();
   g.translate(S.pads.left, S.pads.top);
+  drawLightOverlay(g, px);
   for (const L of Layers.list) if (L.hole && !L.keep) g.drawImage(holeGray(L), 0, 0);
   for (const L of Layers.list) drawLayer(g, L, 12, px);
   if (selecting) {
@@ -1874,6 +1908,10 @@ function applyLayerDrag(d, p, shift) {
 function toolDown(e) {
   const p = toImage(e);
   view.setPointerCapture(e.pointerId);
+  if (S.tool === 'light') {
+    lightDown(p);
+    return;
+  }
   if (S.tool === 'select') {
     if (!Sel.busy) toolDrag = { kind: 'select', start: p, at: p, moved: false, shift: e.shiftKey };
     return;
@@ -1897,6 +1935,10 @@ function toolDown(e) {
 function toolMove(e) {
   if (!toolDrag) return;
   const p = toImage(e);
+  if (toolDrag.kind === 'light') {
+    lightMove(p);
+    return;
+  }
   if (toolDrag.kind === 'select') {
     toolDrag.at = p;
     toolDrag.moved = toolDrag.moved || Math.hypot(p.x - toolDrag.start.x, p.y - toolDrag.start.y) * V.scale > 4;
@@ -1909,6 +1951,10 @@ function toolUp(e) {
   const d = toolDrag;
   toolDrag = null;
   if (!d) return;
+  if (d.kind === 'light') {
+    renderPanel();
+    return;
+  }
   if (d.kind === 'select') {
     const p = toImage(e);
     if (d.moved) {
@@ -2418,11 +2464,12 @@ function syncSelUi() {
   $('selBar').hidden = !on || (!Sel.mask && !Sel.busy);
   $('selFind').disabled = Sel.busy;
   $('selText').textContent = Sel.busy ? 'Đang tìm vật bằng SAM 3.1...' : 'Đã chọn vật';
-  ['selRemove', 'selLayer', 'selCopy'].forEach(id => { $(id).disabled = Sel.busy || !Sel.mask; });
+  ['selRemove', 'selLayer', 'selCopy', 'selRelight'].forEach(id => { $(id).disabled = Sel.busy || !Sel.mask; });
   $('selFeather').disabled = $('selGrow').disabled = Sel.busy || !Sel.raw;
 }
 function syncToolUi() {
   $('selectTool').setAttribute('aria-pressed', String(S.tool === 'select'));
+  syncLightUi();
   const L = S.tool === 'layer' && activeLayer();
   $('layerBar').hidden = !L;
   $('layerKeep').hidden = !(L && L.hole);
@@ -2490,6 +2537,7 @@ function sendLayer(tab) {
   setStatus(tab === 'swap' ? `Đã đưa layer vào ô ${SWAP_REF_LABEL[Swap.mode].toLowerCase()}, nền trắng trơn.` : 'Đã đưa layer vào ô ảnh cần upscale, nền trắng trơn.');
 }
 function bindLayerTools() {
+  bindLightTools();
   $('selectTool').addEventListener('click', () => {
     if (!S.base) {
       setStatus('Thêm ảnh gốc trước khi chọn vật.');
@@ -2604,6 +2652,447 @@ async function requireBlendLora() {
     throw new Error(`ComfyUI chưa có LoRA ánh sáng ${BLEND_LORA}. Cloud Sync tải trong nền, chờ tải xong rồi Gen lại, hoặc tắt LoRA ánh sáng.`);
   }
 }
+
+// ---------- Đổi ánh sáng: MoGe-3 cho normal map và độ sâu, trình duyệt tính ánh sáng, Qwen 2.1 vẽ lại ----------
+// Normal map theo template utility_moge3_geometry_estimation của ComfyUI. Qwen chạy kèm LoRA Consistency của ausboss
+// với cài đặt tác giả khuyên: strength 1, 25 bước, CFG 1, euler simple, latent của encoder.
+const MOGE_MODEL = 'moge_3_vitl_fp16.safetensors';
+const CONSISTENCY_LORA = 'qwen-image-2.1-consistency.safetensors';
+const LIGHT_MAX = 3;
+const LIGHT_PREVIEW_PX = 1600;
+const LIGHT_DEFAULT = { color: '#FFB46B', power: 1.2, soft: 0.4, height: 0.5, range: 1.2 };
+const LIGHT_MODES = { post: 'Hậu kỳ', ref: 'Ảnh mẫu', prompt: 'Chỉ prompt' };
+const RELIGHT = {
+  post: { en: '<image1> is a rough lighting preview of <image2>. Re-render it as a finished picture that keeps the new lighting of <image1>: the same light directions, light colors, bright areas and dark areas.', vi: '<image1> là bản xem nhanh ánh sáng của <image2>. Vẽ lại thành ảnh hoàn chỉnh, giữ ánh sáng mới của <image1>: cùng hướng đèn, màu đèn, vùng sáng và vùng tối.' },
+  postReal: { en: 'Make the light look real: natural shading, cast and contact shadows, specular highlights, rim light and bounce light. Restore the details, textures and true material colors from <image2>, and remove any flat or patchy shading left by the preview.', vi: 'Làm ánh sáng thật: đổ khối tự nhiên, bóng đổ và bóng tiếp xúc, điểm bắt sáng, rim light, ánh hắt. Lấy lại chi tiết, chất liệu và màu thật từ <image2>, bỏ các mảng sáng tối phẳng hoặc loang của bản xem nhanh.' },
+  postKeep: { en: 'Keep the composition, people, poses and every object exactly as in <image2>.', vi: 'Giữ bố cục, người, tư thế và mọi đồ vật đúng như <image2>.' },
+  ref: { en: 'Relight <image1> to match the lighting of <image2>: the same light directions, light colors, brightness distribution, shadows, highlights and rim light.', vi: 'Đổi ánh sáng <image1> theo ánh sáng của <image2>: cùng hướng đèn, màu đèn, phân bố sáng tối, bóng đổ, điểm bắt sáng và rim light.' },
+  prompt: { en: 'Relight <image1>.', vi: 'Đổi ánh sáng <image1>.' },
+  real: { en: 'Render natural shading, cast shadows, highlights, rim light and bounce light for this lighting.', vi: 'Vẽ đổ khối, bóng đổ, điểm bắt sáng, rim light và ánh hắt tự nhiên theo ánh sáng này.' },
+  keep: { en: 'Change only the lighting, shading and colors of light; keep the composition, people, poses, objects, materials and details unchanged.', vi: 'Chỉ đổi ánh sáng, đổ khối và màu ánh sáng; giữ nguyên bố cục, người, tư thế, đồ vật, chất liệu và chi tiết.' },
+  region: { en: 'Relight only the selected subject; keep the rest of the picture as it is.', vi: 'Chỉ đổi sáng phần đã chọn, phần còn lại giữ nguyên.' },
+};
+const LIGHT_HUES = [[15, 'red', 'đỏ'], [45, 'warm orange', 'cam ấm'], [70, 'golden yellow', 'vàng'], [160, 'green', 'xanh lá'], [200, 'cyan', 'xanh ngọc'], [255, 'cool blue', 'xanh lam lạnh'], [290, 'purple', 'tím'], [340, 'magenta pink', 'hồng'], [361, 'red', 'đỏ']];
+const activeLight = () => Light.lights.find(L => L.id === Light.active) || null;
+const hexRgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+
+function lightWords(L) {
+  const [r, g, b] = hexRgb(L.color);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), sat = max ? (max - min) / max : 0;
+  let hue = 0;
+  if (max > min) {
+    hue = max === r ? 60 * (((g - b) / (max - min)) % 6) : max === g ? 60 * ((b - r) / (max - min) + 2) : 60 * ((r - g) / (max - min) + 4);
+    if (hue < 0) hue += 360;
+  }
+  const named = LIGHT_HUES.find(([top]) => hue < top);
+  const color = sat < 0.18 ? ['white', 'trắng'] : [named[1], named[2]];
+  const power = L.power >= 1.8 ? ['strong bright', 'mạnh'] : L.power <= 0.6 ? ['dim', 'yếu'] : ['', ''];
+  const soft = L.soft >= 0.6 ? ['soft diffused', 'mềm, tán rộng'] : L.soft <= 0.2 ? ['hard', 'gắt'] : ['', ''];
+  const h = L.u < 0.35 ? ['left', 'bên trái'] : L.u > 0.65 ? ['right', 'bên phải'] : null;
+  const v = L.v < 0.35 ? ['upper', 'phía trên'] : L.v > 0.65 ? ['lower', 'phía dưới'] : null;
+  let dir;
+  if (L.height >= 0.9 || (!h && !v)) dir = ['from the front', 'từ phía trước'];
+  else if (h && v) dir = [`from the ${v[0]} ${h[0]}`, `từ ${v[1]} ${h[1]}`];
+  else if (h) dir = [`from the ${h[0]}`, `từ ${h[1]}`];
+  else dir = [v[0] === 'upper' ? 'from above' : 'from below', `từ ${v[1]}`];
+  const grazing = L.height <= 0.2 ? [', grazing the surfaces', ', chiếu xiên sát bề mặt'] : ['', ''];
+  return {
+    en: `a ${[power[0], soft[0], color[0]].filter(Boolean).join(' ')} light ${dir[0]}${grazing[0]}`,
+    vi: `đèn ${[color[1], power[1], soft[1]].filter(Boolean).join(', ')} ${dir[1]}${grazing[1]}`,
+  };
+}
+function ambientWords(light) {
+  const level = light.ambient < 0.25 ? ['The rest of the scene is dark, with low ambient light', 'Phần còn lại tối, ánh sáng nền yếu'] : light.ambient > 0.6 ? ['Bright ambient light fills the scene', 'Ánh sáng nền sáng'] : ['Moderate ambient light', 'Ánh sáng nền vừa'];
+  const tone = light.warm > 0.3 ? [' with a warm tone', ', tông ấm'] : light.warm < -0.3 ? [' with a cool blue tone', ', tông lạnh'] : ['', ''];
+  return { en: `${level[0]}${tone[0]}.`, vi: `${level[1]}${tone[1]}.` };
+}
+function buildRelightPass(light, problems) {
+  if (isExpanded()) problems.push({ brush: null, text: 'Đổi ánh sáng: Gen kéo rộng trước, rồi mới đổi sáng' });
+  if (light.mode !== 'prompt' && (!light.geo || light.geo.for !== S.base)) {
+    problems.push({ brush: null, text: light.geoBusy ? 'Đổi ánh sáng: đang tính normal map' : 'Đổi ánh sáng: chưa có normal map, bấm nút Ánh sáng để tính lại' });
+  }
+  const words = light.lights.map(lightWords);
+  const lights = { en: `Lights: ${words.map(w => w.en).join('; ')}.`, vi: `Đèn: ${words.map(w => w.vi).join('; ')}.` };
+  const amb = ambientWords(light);
+  const region = light.region ? [RELIGHT.region] : [];
+  const lines = light.mode === 'post' ? [RELIGHT.post, lights, amb, RELIGHT.postReal, ...region, RELIGHT.postKeep]
+    : light.mode === 'ref' ? [RELIGHT.ref, lights, amb, ...region, RELIGHT.keep]
+      : [RELIGHT.prompt, lights, amb, RELIGHT.real, ...region, RELIGHT.keep];
+  return { kind: 'relight', name: `Đổi ánh sáng (${LIGHT_MODES[light.mode]})`, lines, slots: [] };
+}
+
+// Ảnh gốc thu nhỏ cho bản xem nhanh, giữ theo từng ảnh gốc.
+function lightPreviewBase() {
+  if (!Light.base || Light.base.for !== S.base) {
+    const k = Math.min(1, LIGHT_PREVIEW_PX / Math.max(S.w, S.h));
+    const c = newCanvas(Math.max(1, Math.round(S.w * k)), Math.max(1, Math.round(S.h * k)));
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(S.base, 0, 0, c.width, c.height);
+    Light.base = { for: S.base, canvas: c };
+  }
+  return Light.base.canvas;
+}
+// Bản xem trước không có ComfyUI: normal map giả từ độ sáng của ảnh.
+function fakeGeometry() {
+  const src = lightPreviewBase();
+  const k = Math.min(1, 512 / Math.max(src.width, src.height));
+  const w = Math.max(3, Math.round(src.width * k)), h = Math.max(3, Math.round(src.height * k));
+  const c = newCanvas(w, h), g = c.getContext('2d', { willReadFrequently: true });
+  g.filter = 'blur(3px)';
+  g.drawImage(src, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h).data;
+  const lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) lum[i] = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) / 255;
+  const normal = newCanvas(w, h), depth = newCanvas(w, h);
+  const np = normal.getContext('2d').createImageData(w, h), dp = depth.getContext('2d').createImageData(w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const at = (xx, yy) => lum[Math.min(h - 1, Math.max(0, yy)) * w + Math.min(w - 1, Math.max(0, xx))];
+    const gx = at(x + 1, y) - at(x - 1, y), gy = at(x, y + 1) - at(x, y - 1);
+    let nx = -gx * 4, ny = gy * 4, nz = 1;
+    const l = Math.hypot(nx, ny, nz);
+    nx /= l; ny /= l; nz /= l;
+    const i = (y * w + x) * 4;
+    np.data[i] = (nx * 0.5 + 0.5) * 255;
+    np.data[i + 1] = (ny * 0.5 + 0.5) * 255;
+    np.data[i + 2] = (nz * 0.5 + 0.5) * 255;
+    np.data[i + 3] = 255;
+    dp.data[i] = dp.data[i + 1] = dp.data[i + 2] = lum[y * w + x] * 255;
+    dp.data[i + 3] = 255;
+  }
+  normal.getContext('2d').putImageData(np, 0, 0);
+  depth.getContext('2d').putImageData(dp, 0, 0);
+  return { normal, depth };
+}
+function buildMogeGraph(image) {
+  return {
+    1: { class_type: 'LoadMoGeModel', inputs: { model_name: MOGE_MODEL } },
+    4: { class_type: 'LoadImage', inputs: { image } },
+    2: { class_type: 'MoGeInference', inputs: { moge_model: ['1', 0], image: ['4', 0], resolution_level: 9, fov_x_degrees: 0, batch_size: 4, force_projection: true, apply_mask: false, refine_steps: 3 } },
+    3: { class_type: 'MoGeRender', inputs: { moge_geometry: ['2', 0], output: 'normal_opengl' } },
+    5: { class_type: 'MoGeRender', inputs: { moge_geometry: ['2', 0], output: 'depth' } },
+    6: { class_type: 'PreviewImage', inputs: { images: ['3', 0] } },
+    7: { class_type: 'PreviewImage', inputs: { images: ['5', 0] } },
+  };
+}
+async function waitHelperNodes(promptId, nodeIds) {
+  for (let i = 0; i < 600; i++) {
+    const res = await fetch(`/api/history/${promptId}`);
+    const entry = res.ok ? (await res.json())[promptId] : null;
+    if (entry) {
+      const status = entry.status || {};
+      if (status.status_str === 'error') {
+        const failed = (status.messages || []).find(m => m[0] === 'execution_error');
+        throw new Error(failed ? `${failed[1].node_type}: ${failed[1].exception_message}` : 'ComfyUI chạy lỗi.');
+      }
+      const found = nodeIds.map(id => (((entry.outputs || {})[id] || {}).images || [])[0]);
+      if (found.every(Boolean)) return found;
+      if (status.completed) throw new Error('ComfyUI chạy xong nhưng không trả về normal map.');
+    }
+    await new Promise(resolve => setTimeout(resolve, 600));
+  }
+  throw new Error('Chờ ComfyUI quá lâu, hàng đợi đang dài.');
+}
+async function requireLoras(names, what) {
+  const info = await fetch('/api/object_info/LoraLoaderModelOnly').then(r => (r.ok ? r.json() : {}), () => ({}));
+  if (!info.LoraLoaderModelOnly) return;
+  const have = info.LoraLoaderModelOnly.input.required.lora_name[0];
+  const missing = names.filter(n => !have.includes(n));
+  if (missing.length) throw new Error(`ComfyUI chưa có ${what} ${missing.join(', ')}. Cloud Sync tải trong nền, chờ tải xong rồi Gen lại.`);
+}
+async function mogeGeometry() {
+  const info = await fetch('/api/object_info/LoadMoGeModel').then(r => (r.ok ? r.json() : {}), () => ({}));
+  if (!info.LoadMoGeModel) throw new Error('ComfyUI này chưa có node MoGe (cần ComfyUI 0.43).');
+  if (!info.LoadMoGeModel.input.required.model_name[0].includes(MOGE_MODEL)) throw new Error(`ComfyUI chưa có model ${MOGE_MODEL}. Cloud Sync tải trong nền, chờ tải xong rồi bấm lại nút Ánh sáng.`);
+  const name = await uploadCanvas(fitReference(S.base, 2), `${Date.now().toString(36)}_moge.png`);
+  const id = await queueGraph(buildMogeGraph(name));
+  const outs = await waitHelperNodes(id, ['6', '7']);
+  const [n, d] = await Promise.all(outs.map(info => loadOutput(info).then(r => r.img)));
+  return { normal: imageToCanvas(n), depth: imageToCanvas(d) };
+}
+async function ensureGeometry() {
+  if (!S.base || Light.geoBusy || (Light.geo && Light.geo.for === S.base)) return;
+  const base = S.base;
+  Light.geoBusy = true;
+  Light.geoError = '';
+  syncLightUi();
+  renderPanel();
+  try {
+    const geo = ON_COMFY ? await mogeGeometry() : fakeGeometry();
+    if (S.base !== base) return;
+    Light.geo = { for: base, normal: geo.normal, depth: geo.depth };
+    setStatus(ON_COMFY ? 'Đã có normal map. Bấm lên ảnh để đặt đèn.' : 'Bản xem trước: normal map giả từ độ sáng ảnh, trên ComfyUI dùng MoGe-3.');
+  } catch (e) {
+    Light.geoError = e.message || String(e);
+    setStatus(Light.geoError);
+  } finally {
+    Light.geoBusy = false;
+    syncLightUi();
+    renderPanel();
+    schedulePreview();
+  }
+}
+
+// Tính ánh sáng bằng WebGL: mỗi điểm ảnh có hướng bề mặt (normal) và độ gần (độ sâu); đèn là điểm sáng phía trước ảnh.
+// Sáng = nền + tổng các đèn × max(0, N·L) có độ tán × suy giảm theo khoảng cách. Kết quả nhân lên ảnh gốc.
+const RelightGL = { canvas: null, gl: null, prog: null, buf: null, tex: [], keys: [], failed: false };
+function relightGL() {
+  if (RelightGL.gl || RelightGL.failed) return RelightGL.gl;
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: false, preserveDrawingBuffer: true });
+  const shader = (type, source) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null;
+  };
+  const vs = gl && shader(gl.VERTEX_SHADER, 'attribute vec2 p;varying vec2 uv;void main(){uv=vec2(p.x*0.5+0.5,0.5-p.y*0.5);gl_Position=vec4(p,0.0,1.0);}');
+  const fs = gl && shader(gl.FRAGMENT_SHADER, [
+    'precision highp float;varying vec2 uv;uniform sampler2D base;uniform sampler2D nrm;uniform sampler2D dep;',
+    'uniform float aspect;uniform float depthScale;uniform vec3 ambient;uniform int count;uniform vec4 lpos[3];uniform vec4 lcol[3];',
+    'void main(){vec3 c=texture2D(base,uv).rgb;vec3 n=texture2D(nrm,uv).rgb*2.0-1.0;n=normalize(vec3(n.x,-n.y,n.z)+vec3(0.0,0.0,1e-4));',
+    'float d=texture2D(dep,uv).r;vec3 P=vec3(uv.x*aspect,uv.y,d*depthScale);vec3 light=ambient;',
+    'for(int i=0;i<3;i++){if(i>=count)break;vec3 L=vec3(lpos[i].x*aspect,lpos[i].y,lpos[i].z);vec3 D=L-P;float dist=max(length(D),1e-4);',
+    'float soft=lcol[i].w;float s=clamp((dot(n,D/dist)+soft)/(1.0+soft),0.0,1.0);float r=lpos[i].w;light+=lcol[i].rgb*s/(1.0+dist*dist/(r*r));}',
+    'gl_FragColor=vec4(c*light,1.0);}',
+  ].join(''));
+  const prog = vs && fs && gl.createProgram();
+  if (prog) {
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+  }
+  if (!prog || !gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    RelightGL.failed = true;
+    return null;
+  }
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+  Object.assign(RelightGL, { canvas, gl, prog, buf });
+  return gl;
+}
+function relightTexture(gl, unit, source) {
+  const tex = RelightGL.tex[unit] || (RelightGL.tex[unit] = gl.createTexture());
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  if (RelightGL.keys[unit] === source) return;
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  RelightGL.keys[unit] = source;
+}
+function ambientColor(state) {
+  const t = Math.abs(state.warm), tint = state.warm >= 0 ? [1, 0.85, 0.7] : [0.75, 0.85, 1];
+  return tint.map(c => state.ambient * (1 + (c - 1) * t));
+}
+function renderRelight(baseCanvas, w, h, state) {
+  const gl = relightGL();
+  if (!gl || !state.geo) return null;
+  RelightGL.canvas.width = w;
+  RelightGL.canvas.height = h;
+  gl.viewport(0, 0, w, h);
+  gl.useProgram(RelightGL.prog);
+  relightTexture(gl, 0, baseCanvas);
+  relightTexture(gl, 1, state.geo.normal);
+  relightTexture(gl, 2, state.geo.depth);
+  const u = name => gl.getUniformLocation(RelightGL.prog, name);
+  gl.uniform1i(u('base'), 0);
+  gl.uniform1i(u('nrm'), 1);
+  gl.uniform1i(u('dep'), 2);
+  gl.uniform1f(u('aspect'), w / h);
+  gl.uniform1f(u('depthScale'), 0.3);
+  gl.uniform3fv(u('ambient'), ambientColor(state));
+  const lights = state.lights.slice(0, LIGHT_MAX);
+  const pos = new Float32Array(12), col = new Float32Array(12);
+  lights.forEach((L, i) => {
+    pos.set([L.u, L.v, L.height, L.range], i * 4);
+    col.set([...hexRgb(L.color).map(c => c * L.power), L.soft], i * 4);
+  });
+  gl.uniform1i(u('count'), lights.length);
+  gl.uniform4fv(u('lpos'), pos);
+  gl.uniform4fv(u('lcol'), col);
+  gl.bindBuffer(gl.ARRAY_BUFFER, RelightGL.buf);
+  const loc = gl.getAttribLocation(RelightGL.prog, 'p');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  const out = newCanvas(w, h);
+  out.getContext('2d').drawImage(RelightGL.canvas, 0, 0);
+  return out;
+}
+// Vùng chọn: ánh sáng mới chỉ nằm trong vùng, phần còn lại là ảnh gốc.
+function relitInRegion(shot, lit, region) {
+  if (!region) return lit;
+  const masked = newCanvas(lit.width, lit.height), mg = masked.getContext('2d');
+  mg.drawImage(lit, 0, 0);
+  mg.globalCompositeOperation = 'destination-in';
+  mg.drawImage(region, 0, 0, lit.width, lit.height);
+  const out = newCanvas(lit.width, lit.height), og = out.getContext('2d');
+  og.drawImage(shot, 0, 0, lit.width, lit.height);
+  og.drawImage(masked, 0, 0);
+  return out;
+}
+const lightState = () => ({ lights: Light.lights, ambient: Light.ambient, warm: Light.warm, geo: Light.geo });
+function schedulePreview() {
+  if (Light.frame) return;
+  Light.frame = requestAnimationFrame(() => {
+    Light.frame = 0;
+    Light.preview = null;
+    if (Light.lights.length && Light.geo && Light.geo.for === S.base) {
+      const base = lightPreviewBase();
+      const lit = renderRelight(base, base.width, base.height, lightState());
+      Light.preview = lit && relitInRegion(base, lit, Light.region);
+    }
+    schedule();
+  });
+}
+function drawLightOverlay(g, px) {
+  if (Light.preview) g.drawImage(Light.preview, 0, 0, S.w, S.h);
+  if (S.tool !== 'light') return;
+  if (Light.region) {
+    if (!Light.regionRing || Light.regionRing.for !== Light.region) Light.regionRing = { for: Light.region, ring: selectionOutline(Light.region) };
+    g.drawImage(Light.regionRing.ring, 0, 0);
+  }
+  Light.lights.forEach((L, i) => {
+    const x = L.u * S.w, y = L.v * S.h, on = L.id === Light.active;
+    g.beginPath();
+    g.arc(x, y, (on ? 11 : 9) * px, 0, Math.PI * 2);
+    g.fillStyle = L.color;
+    g.fill();
+    g.lineWidth = (on ? 3 : 1.5) * px;
+    g.strokeStyle = on ? '#fff' : 'rgba(0,0,0,.7)';
+    g.stroke();
+    g.fillStyle = '#111';
+    g.font = `600 ${11 * px}px ${getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim()}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(String(i + 1), x, y + 0.5 * px);
+  });
+}
+function lightAt(p) {
+  const r = 13 / V.scale;
+  for (let i = Light.lights.length - 1; i >= 0; i--) {
+    const L = Light.lights[i];
+    if (Math.hypot(L.u * S.w - p.x, L.v * S.h - p.y) <= r) return L;
+  }
+  return null;
+}
+function lightDown(p) {
+  ensureGeometry();
+  let L = lightAt(p);
+  if (!L) {
+    if (Light.lights.length >= LIGHT_MAX) {
+      setStatus(`Tối đa ${LIGHT_MAX} đèn. Bấm vào một đèn để chỉnh, hoặc xoá bớt.`);
+      return;
+    }
+    L = { id: Light.nextId++, u: Math.min(1, Math.max(0, p.x / S.w)), v: Math.min(1, Math.max(0, p.y / S.h)), ...LIGHT_DEFAULT };
+    Light.lights.push(L);
+  }
+  Light.active = L.id;
+  toolDrag = { kind: 'light', id: L.id };
+  syncLightUi();
+  schedulePreview();
+  renderPanel();
+}
+// Đèn kéo ra ngoài khung một chút được, để chiếu từ ngoài cảnh vào.
+function lightMove(p) {
+  const L = activeLight();
+  if (!L) return;
+  L.u = Math.min(1.25, Math.max(-0.25, p.x / S.w));
+  L.v = Math.min(1.25, Math.max(-0.25, p.y / S.h));
+  schedulePreview();
+}
+function resetLight() {
+  Object.assign(Light, { lights: [], active: null, region: null, preview: null, regionRing: null });
+  if (Light.geo && Light.geo.for !== S.base) Light.geo = null;
+  syncLightUi();
+}
+function syncLightUi() {
+  const on = S.tool === 'light', L = activeLight();
+  $('lightTool').setAttribute('aria-pressed', String(on));
+  $('lightWrap').hidden = !on;
+  $('lightEdit').hidden = !on || !L;
+  $('lightMode').querySelectorAll('.viewchip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.mode === Light.mode)));
+  $('lightScope').hidden = !Light.region;
+  $('lightInfo').textContent = Light.geoBusy ? 'Đang tính normal map bằng MoGe-3...' : Light.geoError ? 'Chưa có normal map' : `Bấm lên ảnh để đặt đèn, tối đa ${LIGHT_MAX}`;
+  if (L) {
+    $('lightColor').value = L.color;
+    $('lightPower').value = L.power;
+    $('lightSoft').value = L.soft;
+    $('lightHeight').value = L.height;
+    $('lightRange').value = L.range;
+  }
+}
+function bindLightTools() {
+  $('lightTool').addEventListener('click', () => {
+    if (!S.base) {
+      setStatus('Thêm ảnh gốc trước khi đổi sáng.');
+      return;
+    }
+    S.tool = S.tool === 'light' ? null : 'light';
+    clearSelection();
+    Layers.active = null;
+    closePop();
+    renderLayerTiles();
+    syncToolUi();
+    if (S.tool === 'light') ensureGeometry();
+    schedulePreview();
+  });
+  $('lightMode').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (!chip) return;
+    Light.mode = chip.dataset.mode;
+    syncLightUi();
+    renderPanel();
+  });
+  $('lightAmbient').addEventListener('input', e => { Light.ambient = Number(e.target.value) / 100; schedulePreview(); });
+  $('lightWarm').addEventListener('input', e => { Light.warm = Number(e.target.value) / 100; schedulePreview(); });
+  ['lightAmbient', 'lightWarm'].forEach(id => $(id).addEventListener('change', () => renderPanel()));
+  const edit = (id, key, parse) => {
+    $(id).addEventListener('input', e => {
+      const L = activeLight();
+      if (!L) return;
+      L[key] = parse(e.target.value);
+      schedulePreview();
+    });
+    $(id).addEventListener('change', () => renderPanel());
+  };
+  edit('lightColor', 'color', v => v.toUpperCase());
+  edit('lightPower', 'power', Number);
+  edit('lightSoft', 'soft', Number);
+  edit('lightHeight', 'height', Number);
+  edit('lightRange', 'range', Number);
+  $('lightDel').addEventListener('click', () => {
+    Light.lights = Light.lights.filter(L => L.id !== Light.active);
+    Light.active = Light.lights.length ? Light.lights[Light.lights.length - 1].id : null;
+    syncLightUi();
+    schedulePreview();
+    renderPanel();
+  });
+  $('lightScope').addEventListener('click', () => {
+    Light.region = null;
+    syncLightUi();
+    schedulePreview();
+    renderPanel();
+  });
+  $('selRelight').addEventListener('click', () => {
+    if (!Sel.mask) return;
+    Light.region = Sel.mask;
+    clearSelection();
+    S.tool = 'light';
+    syncToolUi();
+    ensureGeometry();
+    schedulePreview();
+    renderPanel();
+  });
+}
+function lightSnapshot(pass) {
+  return { mode: Light.mode, text: promptFor(pass), lights: Light.lights.map(L => ({ ...L })), ambient: Light.ambient, warm: Light.warm, region: Light.region, geo: Light.geo };
+}
 function loadFile(file, done) {
   const url = URL.createObjectURL(file);
   const img = new Image();
@@ -2623,6 +3112,7 @@ function setBase(img, sample, fromResult) {
   S.future = [];
   S.overrides = { ...S.overrides, expand: null, edit: null };
   resetLayers();
+  resetLight();
   syncStage();
   afterChange();
   fit();
@@ -2680,6 +3170,7 @@ function clearBase() {
   S.overrides = { ...S.overrides, expand: null, edit: null };
   S.isSample = false;
   resetLayers();
+  resetLight();
   $('scene').value = '';
   S.env.forEach(slot => { slot.ref = null; slot.refUrl = ''; });
   syncEnv();
@@ -5096,8 +5587,10 @@ async function generate() {
   const step = edit && editStep(edit);
   const merge = S.passes.find(p => p.kind === 'merge');
   const mergeJob = merge && mergeSnapshot(merge);
+  const relight = S.passes.find(p => p.kind === 'relight');
+  const relightJob = relight && lightSnapshot(relight);
   const megapixels = Number($('resolution').value);
-  const total = (expand ? 1 : 0) + (merge ? 1 : 0) + (edit ? 1 : 0);
+  const total = (expand ? 1 : 0) + (merge ? 1 : 0) + (edit ? 1 : 0) + (relight ? 1 : 0);
   const passLabel = (index, name) => (total > 1 ? `Lượt ${index}/${total}: ${name}` : name);
   const stamp = Date.now().toString(36);
   const strokesAtStart = S.strokes;
@@ -5142,7 +5635,7 @@ async function generate() {
     if (step) {
       if (run.cancelled) throw new Error('Đã dừng.');
       run.promptId = null;
-      startPass(passLabel(total, step.name));
+      startPass(passLabel(total - (relight ? 1 : 0), step.name));
       const plan = planShot(snap.w, snap.h, megapixels);
       const clean = cropCanvas(current, plan);
       const shot = await uploadCanvas(clean, `${stamp}_shot.png`);
@@ -5154,6 +5647,38 @@ async function generate() {
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
       current = pasteCrop(current, img, plan, step.area);
+    }
+    if (relightJob) {
+      if (run.cancelled) throw new Error('Đã dừng.');
+      run.promptId = null;
+      startPass(passLabel(total, relight.name));
+      await requireLoras([CONSISTENCY_LORA], 'LoRA');
+      const plan = planShot(snap.w, snap.h, megapixels);
+      const shot = cropCanvas(current, plan);
+      let lit = null;
+      if (relightJob.mode !== 'prompt') {
+        const raw = renderRelight(shot, plan.outW, plan.outH, relightJob);
+        if (!raw) throw new Error('Máy này không chạy được WebGL nên không tính được ánh sáng. Chọn kiểu Chỉ prompt.');
+        lit = relitInRegion(shot, raw, relightJob.region);
+      }
+      const main = relightJob.mode === 'post' ? lit : shot;
+      const refs = relightJob.mode === 'post' ? [fitReference(current, 2)] : relightJob.mode === 'ref' ? [fitReference(lit, 2)] : [];
+      const image1 = await uploadCanvas(main, `${stamp}_relight.png`);
+      const refNames = await uploadAll(refs, `${stamp}_relight_ref`);
+      run.promptId = await queueGraph(buildApiPrompt({ image1, refs: refNames, text: relightJob.text, resolution: 0, seed: randomSeed(), lora: CONSISTENCY_LORA }));
+      advanceJob('queue');
+      renderJob();
+      const { img } = await loadOutput(await waitForImage(run.promptId));
+      if (relightJob.region) {
+        const area = newCanvas(snap.w, snap.h);
+        area.getContext('2d').drawImage(relightJob.region, snap.pads.left, snap.pads.top, snap.baseW, snap.baseH);
+        current = pasteCrop(current, img, plan, area);
+      } else {
+        const whole = newCanvas(snap.w, snap.h), wg = whole.getContext('2d');
+        wg.imageSmoothingQuality = 'high';
+        wg.drawImage(img, 0, 0, snap.w, snap.h);
+        current = whole;
+      }
     }
     const finished = await canvasToResult(current);
     const continued = await continueFrom(finished, snap, strokesAtStart);
