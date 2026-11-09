@@ -3987,6 +3987,8 @@ svg{display:block}
 .floatbar{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:calc(100% - 20px);padding:6px 8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px #00000080}
 .floatbar .viewchip{padding:3px 10px;font-size:12px}
 .floatbar .viewchip:disabled{opacity:.45;cursor:default}
+.selsoft{display:flex;align-items:center;gap:6px;padding:0 4px;font-size:12px;color:var(--ink-2)}
+.selsoft input{width:110px;accent-color:var(--paper)}
 .floatbar > span{padding:0 4px;font-size:12px;color:var(--ink-2)}
 .qstate{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .qdot{width:8px;height:8px;flex:none;border:1.5px solid var(--ink-2);border-radius:50%}
@@ -4392,8 +4394,10 @@ a.btn{color:inherit;text-decoration:none}
       <div class="floatbar" id="selBar" hidden>
         <span id="selText">Đã chọn vật</span>
         <button class="viewchip" type="button" id="selRemove" title="Biến vùng chọn thành vùng tô của một cọ Xoá">Xoá vật</button>
-        <button class="viewchip" type="button" id="selLayer" title="Cắt vật ra thành layer để dời, biến dạng, uốn">Tách thành layer</button>
+        <button class="viewchip" type="button" id="selLayer" title="Cắt vật ra thành layer, chỗ cũ thành xám để lượt Ghép lấp lại">Tách thành layer</button>
+        <button class="viewchip" type="button" id="selCopy" title="Chép vật thành layer, vật vẫn ở chỗ cũ">Chép thành layer</button>
         <button class="viewchip" type="button" id="selClear">Bỏ chọn</button>
+        <label class="selsoft" title="Độ mềm của viền vùng chọn, tính bằng điểm ảnh">Mềm viền<input id="selFeather" type="range" min="0" max="30" step="1" value="6" aria-label="Mềm viền vùng chọn"></label>
       </div>
       <div class="floatbar" id="layerBar" hidden>
         <div class="viewchips" id="layerMode" role="group" aria-label="Cách chỉnh layer">
@@ -4402,7 +4406,11 @@ a.btn{color:inherit;text-decoration:none}
         </div>
         <button class="viewchip" type="button" id="layerFlip">Lật ngang</button>
         <button class="viewchip" type="button" id="layerCut" title="Tách nền layer bằng BiRefNet">Tách nền</button>
+        <button class="viewchip" type="button" id="layerKeep" aria-pressed="false" title="Bật: vật vẫn ở chỗ cũ. Tắt: chỗ cũ thành xám, lượt Ghép lấp lại">Giữ chỗ cũ</button>
         <button class="viewchip" type="button" id="blendLora" aria-pressed="false" title="LoRA Qwen-image-2.1 光影溶图 của RunningHub, thử nghiệm">LoRA ánh sáng</button>
+        <button class="viewchip" type="button" id="layerSave" title="Tải layer như đang thấy, PNG nền trong suốt">Tải PNG</button>
+        <button class="viewchip" type="button" id="layerToSwap" title="Dùng layer làm ảnh mặt hoặc ảnh nhân vật ở tab Đổi người">Sang Đổi người</button>
+        <button class="viewchip" type="button" id="layerToUp" title="Dùng layer làm ảnh cần phóng ở tab Upscale">Sang Upscale</button>
         <span>Bấm Gen để ghép vào ảnh</span>
       </div>
       <div class="capture-hint" id="captureHint" hidden>
@@ -4674,13 +4682,13 @@ const S = {
   scene: '',
   expandLora: 1,
   tool: null,
-  blendLora: false,
+  blendLora: true,
   env: [0, 1, 2, 3].map(() => ({ ref: null, refUrl: '' })),
   overrides: { expand: null, edit: null },
 };
 const V = { scale: 1, x: 0, y: 0 };
 // Vùng chọn của SAM 3.1 và các layer, toạ độ theo ảnh gốc (không tính vùng nới).
-const Sel = { box: null, points: [], mask: null, tint: null, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
+const Sel = { box: null, points: [], mask: null, tint: null, raw: null, smooth: 1, feather: 6, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
 const Layers = { list: [], active: null, mode: 'transform', nextId: 1, busy: false };
 const W = () => S.w + S.pads.left + S.pads.right;
 const H = () => S.h + S.pads.top + S.pads.bottom;
@@ -5399,19 +5407,22 @@ const SAM_UPLOAD_MP = 2;
 const SEL_COLOR = '#34D3FF';
 // LoRA Qwen-image-2.1 光影溶图 của RunningHub (tác giả 浩的AI日常), thử nghiệm: trang của LoRA không ghi cách đưa ảnh vào.
 const BLEND_LORA = 'Qwenimag21_c2-st2000.safetensors';
+// Câu đầu của LoRA là prompt mẫu của tác giả, giữ nguyên. Các câu sau bảo Qwen đổi ánh sáng của vật theo cảnh,
+// vì nếu chỉ bảo giữ dáng và chi tiết thì Qwen giữ luôn ánh sáng cũ của vật.
 const MERGE_PROMPTS = {
   hole: { en: 'Fill the gray area inside the red outline in <image1> with the surrounding background, as if nothing was ever there.', vi: 'Lấp vùng xám trong viền đỏ trên <image1> bằng nền xung quanh, như chưa từng có gì ở đó.' },
-  blend: { en: 'Blend what is inside the blue outline into <image1>: match the lighting, colors, shadows and perspective of the scene and add a natural contact shadow, keeping its shape and details.', vi: 'Hoà thứ trong viền xanh vào <image1>: khớp ánh sáng, màu, bóng đổ và phối cảnh của cảnh, thêm bóng tiếp xúc tự nhiên, giữ dáng và chi tiết của nó.' },
   lora: { en: 'pengyu, Apply consistent lighting to the product or object, enhance specular highlights, front-back spatial relationship, add natural contact shadow, and blend it seamlessly into the background.', vi: 'pengyu (từ khoá của LoRA), prompt mẫu của tác giả: ánh sáng đồng bộ cho vật, tăng ánh phản chiếu, đúng quan hệ trước sau, thêm bóng tiếp xúc, hoà liền vào nền.' },
-  where: { en: 'The object is inside the blue outline in <image1>.', vi: 'Vật nằm trong viền xanh trên <image1>.' },
+  relight: { en: 'The object inside the blue outline in <image1> was pasted in and still has the lighting of another photo. Relight it to belong to this scene: match the light direction, color temperature, brightness, contrast and color grading of its surroundings in <image1>.', vi: 'Vật trong viền xanh trên <image1> được dán vào nên còn ánh sáng của ảnh khác. Chiếu sáng lại cho hợp cảnh: khớp hướng sáng, nhiệt độ màu, độ sáng, độ tương phản và tông màu của xung quanh trên <image1>.' },
+  shadow: { en: 'Shade it from the same light sources as the scene, add the shadow it casts on the ground and nearby surfaces in that light direction, and the reflected light and color it picks up from the scene.', vi: 'Đổ khối theo đúng nguồn sáng của cảnh, thêm bóng nó đổ xuống nền và các mặt gần đó theo hướng sáng ấy, và ánh phản xạ, màu hắt từ cảnh lên nó.' },
+  keepShape: { en: 'Keep its shape, pose, proportions and identity; change only its lighting, shading and color.', vi: 'Giữ dáng, tư thế, tỉ lệ và nhận diện của vật; chỉ đổi ánh sáng, đổ khối và màu.' },
+  edges: { en: 'Blend its edges into the background with no halo, seam or cut-out outline.', vi: 'Hoà mép vật vào nền, không quầng sáng, không đường nối, không viền cắt dán.' },
   finish: { en: 'Remove the outlines.', vi: 'Xoá các viền đi.' },
 };
 function buildMergePass(layers, blendLora) {
   const lines = [];
-  if (layers.some(L => L.hole)) lines.push(MERGE_PROMPTS.hole);
-  if (blendLora) lines.push(MERGE_PROMPTS.lora, MERGE_PROMPTS.where);
-  else lines.push(MERGE_PROMPTS.blend);
-  lines.push(MERGE_PROMPTS.finish, PROMPTS.keep);
+  if (layers.some(L => L.hole && !L.keep)) lines.push(MERGE_PROMPTS.hole);
+  if (blendLora) lines.push(MERGE_PROMPTS.lora);
+  lines.push(MERGE_PROMPTS.relight, MERGE_PROMPTS.shadow, MERGE_PROMPTS.keepShape, MERGE_PROMPTS.edges, MERGE_PROMPTS.finish, PROMPTS.keep);
   return { kind: 'merge', name: blendLora ? 'Ghép layer (LoRA ánh sáng)' : 'Ghép layer', lines, slots: [] };
 }
 
@@ -5570,7 +5581,7 @@ function drawOverlays(g) {
   const px = 1 / V.scale;
   g.save();
   g.translate(S.pads.left, S.pads.top);
-  for (const L of Layers.list) if (L.hole) g.drawImage(holeGray(L), 0, 0);
+  for (const L of Layers.list) if (L.hole && !L.keep) g.drawImage(holeGray(L), 0, 0);
   for (const L of Layers.list) drawLayer(g, L, 12, px);
   if (selecting) {
     if (Sel.tint) {
@@ -5785,24 +5796,55 @@ async function requireSam() {
   if (!names.includes(SAM_CKPT)) throw new Error(`ComfyUI chưa có model ${SAM_CKPT}. Cloud Sync tải model trong nền, chờ tải xong rồi chọn lại.`);
   Sel.ready = true;
 }
-function maskFromImage(img, w, h) {
+// Mask của SAM là trắng đen ở cỡ ảnh đã thu nhỏ. Phóng về cỡ ảnh gốc có nội suy và làm mờ nhẹ cho viền hết răng cưa,
+// dựng lại đường viền trơn quanh mức 0,5, rồi làm mềm viền theo thanh Mềm viền.
+function samSoftMask(raw, w, h, smooth, feather) {
+  const a = newCanvas(w, h), g = a.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingQuality = 'high';
+  g.filter = `blur(${Math.max(0.6, smooth * 0.75).toFixed(2)}px)`;
+  g.drawImage(raw, 0, 0, w, h);
+  g.filter = 'none';
+  const px = g.getImageData(0, 0, w, h), d = px.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = (d[i] / 255) * (d[i + 3] / 255);
+    const t = Math.min(1, Math.max(0, (v - 0.3) / 0.4));
+    d[i] = d[i + 1] = d[i + 2] = 255;
+    d[i + 3] = Math.round(t * t * (3 - 2 * t) * 255);
+  }
+  g.putImageData(px, 0, 0);
+  if (feather <= 0) return a;
+  const b = newCanvas(w, h), bg = b.getContext('2d');
+  bg.filter = `blur(${feather}px)`;
+  bg.drawImage(a, 0, 0);
+  return b;
+}
+// Mask của BiRefNet đã có viền mềm, giữ nguyên độ mềm đó làm kênh trong suốt.
+function alphaFromImage(img, w, h) {
   const c = newCanvas(w, h), g = c.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingQuality = 'high';
   g.drawImage(img, 0, 0, w, h);
-  const px = g.getImageData(0, 0, w, h);
-  for (let i = 0; i < px.data.length; i += 4) {
-    const on = px.data[i] > 127;
-    px.data[i] = px.data[i + 1] = px.data[i + 2] = 255;
-    px.data[i + 3] = on ? 255 : 0;
+  const px = g.getImageData(0, 0, w, h), d = px.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i];
+    d[i] = d[i + 1] = d[i + 2] = 255;
+    d[i + 3] = v;
   }
   g.putImageData(px, 0, 0);
   return c;
+}
+function applySelSoftness() {
+  const mask = samSoftMask(Sel.raw, S.w, S.h, Sel.smooth, Sel.feather);
+  const bounds = maskBounds(mask);
+  Sel.mask = bounds ? mask : null;
+  Sel.tint = bounds ? tintMask(mask, SEL_COLOR) : null;
+  return bounds;
 }
 function maskBounds(mask) {
   const w = mask.width, h = mask.height;
   const data = mask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (data[(y * w + x) * 4 + 3] > 127) {
+    if (data[(y * w + x) * 4 + 3] > 8) {
       if (x < x0) x0 = x;
       if (x > x1) x1 = x;
       if (y < y0) y0 = y;
@@ -5841,7 +5883,7 @@ async function samMask() {
   const points = Sel.points.map(p => ({ x: Math.round(p.x * k), y: Math.round(p.y * k), neg: p.neg }));
   const id = await queueGraph(buildSamGraph({ image: Sel.upload.name, box, points }));
   const { img } = await loadOutput(await waitHelper(id));
-  return maskFromImage(img, S.w, S.h);
+  return { raw: img, smooth: Math.max(1, 1 / k) };
 }
 async function requestSelection() {
   if (!S.base || (!Sel.box && !Sel.points.length)) return;
@@ -5850,11 +5892,10 @@ async function requestSelection() {
   syncSelUi();
   schedule();
   try {
-    const mask = ON_COMFY ? await samMask() : fakeSamMask();
+    const hit = ON_COMFY ? await samMask() : { raw: fakeSamMask(), smooth: 1 };
     if (ticket !== Sel.ticket) return;
-    const bounds = maskBounds(mask);
-    Sel.mask = bounds ? mask : null;
-    Sel.tint = bounds ? tintMask(mask, SEL_COLOR) : null;
+    Object.assign(Sel, { raw: hit.raw, smooth: hit.smooth });
+    const bounds = applySelSoftness();
     setStatus(bounds ? (ON_COMFY ? '' : 'Bản xem trước: vùng chọn là giả lập, trên ComfyUI là SAM 3.1 thật.') : 'Không tìm thấy vật, thử kéo khung khác hoặc bấm lên vật.');
   } catch (e) {
     if (ticket === Sel.ticket) setStatus(e.message || String(e));
@@ -5868,7 +5909,7 @@ async function requestSelection() {
 }
 function clearSelection() {
   Sel.ticket++;
-  Object.assign(Sel, { box: null, points: [], mask: null, tint: null, busy: false });
+  Object.assign(Sel, { box: null, points: [], mask: null, tint: null, raw: null, busy: false });
 }
 // Xoá vật: vùng chọn thành vùng tô của một cọ Xoá mới, Gen chạy như cọ Xoá tô tay.
 function selectionToRemoveBrush() {
@@ -5891,7 +5932,7 @@ function selectionToRemoveBrush() {
   setStatus('Đã tô vùng xoá bằng cọ mới. Bấm Gen để xoá.');
 }
 // Tách thành layer: cắt điểm ảnh trong vùng chọn, chỗ cũ thành vùng xám để lượt Ghép lấp lại.
-function selectionToLayer() {
+function selectionToLayer(keep) {
   if (!Sel.mask) return;
   const r = maskBounds(Sel.mask);
   if (!r) return;
@@ -5900,12 +5941,12 @@ function selectionToLayer() {
   g.globalCompositeOperation = 'destination-in';
   g.drawImage(Sel.mask, -r.x, -r.y);
   const corners = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
-  addLayer({ src, hole: Sel.mask, corners });
+  addLayer({ src, hole: Sel.mask, corners, keep });
   clearSelection();
-  setStatus('Kéo layer tới chỗ mới. Kéo góc để bẻ phối cảnh, Shift + kéo góc để đổi cỡ, kéo nút tròn để xoay.');
+  setStatus((keep ? 'Đã chép, vật vẫn ở chỗ cũ. ' : '') + 'Kéo layer tới chỗ mới. Kéo góc để bẻ phối cảnh, Shift + kéo góc để đổi cỡ, kéo nút tròn để xoay.');
 }
-function addLayer({ src, hole, corners }) {
-  const L = { id: Layers.nextId++, src, hole, corners, grid: null, _gray: null };
+function addLayer({ src, hole, corners, keep }) {
+  const L = { id: Layers.nextId++, src, hole, keep: !!keep, corners, grid: null, _gray: null };
   Layers.list.push(L);
   Layers.active = L.id;
   S.tool = 'layer';
@@ -5988,7 +6029,7 @@ async function cutoutLayer() {
       6: { class_type: 'PreviewImage', inputs: { images: ['5', 0] } },
     });
     const { img } = await loadOutput(await waitHelper(id));
-    const mask = maskFromImage(img, L.src.width, L.src.height);
+    const mask = alphaFromImage(img, L.src.width, L.src.height);
     const g = L.src.getContext('2d');
     g.globalCompositeOperation = 'destination-in';
     g.drawImage(mask, 0, 0);
@@ -6044,12 +6085,15 @@ function syncSelUi() {
   $('selHint').hidden = !on || !!Sel.mask || Sel.busy;
   $('selBar').hidden = !on || (!Sel.mask && !Sel.busy);
   $('selText').textContent = Sel.busy ? 'Đang tìm vật bằng SAM 3.1...' : 'Đã chọn vật';
-  ['selRemove', 'selLayer'].forEach(id => { $(id).disabled = Sel.busy || !Sel.mask; });
+  ['selRemove', 'selLayer', 'selCopy'].forEach(id => { $(id).disabled = Sel.busy || !Sel.mask; });
+  $('selFeather').disabled = Sel.busy || !Sel.raw;
 }
 function syncToolUi() {
   $('selectTool').setAttribute('aria-pressed', String(S.tool === 'select'));
   const L = S.tool === 'layer' && activeLayer();
   $('layerBar').hidden = !L;
+  $('layerKeep').hidden = !(L && L.hole);
+  $('layerKeep').setAttribute('aria-pressed', String(!!(L && L.keep)));
   $('layerMode').querySelectorAll('.viewchip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.mode === Layers.mode)));
   $('blendLora').setAttribute('aria-pressed', String(S.blendLora));
   $('layerCut').disabled = Layers.busy;
@@ -6059,6 +6103,58 @@ function syncToolUi() {
   view.style.cursor = viewCursor();
   if (S.tool) brushcur.hidden = true;
   schedule();
+}
+// Ảnh của layer đúng như đang thấy (đã biến dạng, uốn, lật), nền trong suốt.
+function renderLayerImage(L) {
+  const pts = layerOutline(L);
+  const x0 = Math.floor(Math.min(...pts.map(p => p.x))), y0 = Math.floor(Math.min(...pts.map(p => p.y)));
+  const x1 = Math.ceil(Math.max(...pts.map(p => p.x))), y1 = Math.ceil(Math.max(...pts.map(p => p.y)));
+  const c = newCanvas(Math.max(1, x1 - x0), Math.max(1, y1 - y0)), g = c.getContext('2d');
+  g.translate(-x0, -y0);
+  drawLayer(g, L, 24, 0.6);
+  return c;
+}
+// Đổi người và Upscale đọc ảnh không có kênh trong suốt, nên phần trong suốt thành nền trắng trơn.
+function flattenWhite(canvas) {
+  const c = newCanvas(canvas.width, canvas.height), g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(canvas, 0, 0);
+  return c;
+}
+function saveLayer() {
+  const L = activeLayer();
+  if (!L) return;
+  if (!ON_COMFY) {
+    setStatus('Bản xem trước không tải file được. Trên trang ComfyUI nút này tải layer về thành PNG nền trong suốt.');
+    return;
+  }
+  renderLayerImage(L).toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `layer_${L.id}_${Date.now().toString(36)}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, 'image/png');
+}
+function sendLayer(tab) {
+  const L = activeLayer();
+  if (!L) return;
+  const img = flattenWhite(renderLayerImage(L));
+  const url = img.toDataURL('image/png');
+  if (tab === 'swap') {
+    Swap.slots[1].ref = img;
+    Swap.slots[1].refUrl = url;
+  } else {
+    Up.slots[0].ref = img;
+    Up.slots[0].refUrl = url;
+    Up.fromBase = null;
+  }
+  switchTab(tab);
+  if (tab === 'swap') syncSwap();
+  else syncUpscale();
+  renderPanel();
+  setStatus(tab === 'swap' ? `Đã đưa layer vào ô ${SWAP_REF_LABEL[Swap.mode].toLowerCase()}, nền trắng trơn.` : 'Đã đưa layer vào ô ảnh cần upscale, nền trắng trơn.');
 }
 function bindLayerTools() {
   $('selectTool').addEventListener('click', () => {
@@ -6075,8 +6171,29 @@ function bindLayerTools() {
   });
   $('selExit').addEventListener('click', () => { S.tool = null; clearSelection(); syncToolUi(); });
   $('selRemove').addEventListener('click', selectionToRemoveBrush);
-  $('selLayer').addEventListener('click', selectionToLayer);
+  $('selLayer').addEventListener('click', () => selectionToLayer(false));
+  $('selCopy').addEventListener('click', () => selectionToLayer(true));
+  $('layerKeep').addEventListener('click', () => {
+    const L = activeLayer();
+    if (!L || !L.hole) return;
+    L.keep = !L.keep;
+    syncToolUi();
+    renderPanel();
+  });
+  $('layerSave').addEventListener('click', saveLayer);
+  $('layerToSwap').addEventListener('click', () => sendLayer('swap'));
+  $('layerToUp').addEventListener('click', () => sendLayer('upscale'));
   $('selClear').addEventListener('click', () => { clearSelection(); syncSelUi(); schedule(); });
+  let softFrame = 0;
+  $('selFeather').addEventListener('input', e => {
+    Sel.feather = Number(e.target.value);
+    if (!Sel.raw || softFrame) return;
+    softFrame = requestAnimationFrame(() => {
+      softFrame = 0;
+      applySelSoftness();
+      schedule();
+    });
+  });
   $('layerFile').addEventListener('change', e => {
     const file = e.target.files[0];
     e.target.value = '';
@@ -6103,14 +6220,14 @@ function mergeSnapshot(pass) {
   return {
     text: promptFor(pass),
     lora: S.blendLora,
-    layers: Layers.list.map(L => ({ src: L.src, hole: L.hole, _gray: L._gray, corners: L.corners.map(q => ({ ...q })), grid: L.grid && L.grid.map(q => ({ ...q })) })),
+    layers: Layers.list.map(L => ({ src: L.src, hole: L.hole, keep: L.keep, _gray: L._gray, corners: L.corners.map(q => ({ ...q })), grid: L.grid && L.grid.map(q => ({ ...q })) })),
   };
 }
 function composeMerge(current, job, pads) {
   const out = newCanvas(current.width, current.height), g = out.getContext('2d');
   g.drawImage(current, 0, 0);
   g.translate(pads.left, pads.top);
-  for (const L of job.layers) if (L.hole) g.drawImage(holeGray(L), 0, 0);
+  for (const L of job.layers) if (L.hole && !L.keep) g.drawImage(holeGray(L), 0, 0);
   for (const L of job.layers) drawLayer(g, L, 24, 0.6);
   return out;
 }
@@ -6120,13 +6237,13 @@ function mergeMasks(job, w, h, pads) {
   hg.translate(pads.left, pads.top);
   fg.translate(pads.left, pads.top);
   for (const L of job.layers) {
-    if (L.hole) stampMask(hg, L.hole, 4);
+    if (L.hole && !L.keep) stampMask(hg, L.hole, 4);
     drawLayer(fg, L, 16, 0.6);
   }
   const ag = area.getContext('2d');
   ag.drawImage(hole, 0, 0);
   stampMask(ag, foot, Math.round(Math.max(16, 0.02 * Math.max(w, h))));
-  const marks = job.layers.some(L => L.hole) ? [{ mask: hole, hex: PAINT.red.hex }] : [];
+  const marks = job.layers.some(L => L.hole && !L.keep) ? [{ mask: hole, hex: PAINT.red.hex }] : [];
   marks.push({ mask: foot, hex: PAINT.blue.hex });
   return { area, marks };
 }
@@ -6139,7 +6256,7 @@ function paintMergeThumb(cv) {
   g.fillRect(0, 0, W(), H());
   g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
   g.translate(S.pads.left, S.pads.top);
-  for (const L of Layers.list) if (L.hole) g.drawImage(holeGray(L), 0, 0);
+  for (const L of Layers.list) if (L.hole && !L.keep) g.drawImage(holeGray(L), 0, 0);
   for (const L of Layers.list) drawLayer(g, L, 8, 1);
 }
 async function requireBlendLora() {
