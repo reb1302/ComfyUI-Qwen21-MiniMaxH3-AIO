@@ -1030,20 +1030,26 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             logs.append(f"Hot-reload warning: {e}")
 
         # 4. Tự động tải ngầm các LoRA / Model về ComfyUI/models/ (không khóa luồng Sync)
-        def _bg_download_models(items_to_dl):
+        def _bg_download_models(items_to_dl, page=False):
             for l_item in items_to_dl:
                 folder = l_item.get("folder", "loras")
                 fname = l_item.get("filename", "")
                 url = l_item.get("url", "")
                 if folder and fname and url:
                     try:
-                        download_file_to_comfy_models(folder, fname, url)
+                        download_file_to_comfy_models(folder, fname, url, page=page)
                     except Exception as e:
                         print(f"[VStone Downloader] Skip {fname}: {e}")
 
         if lora_list:
-            threading.Thread(target=_bg_download_models, args=(list(lora_list),), name="_bg_download_models", daemon=True).start()
-            logs.append(f"Started background check/download for {len(lora_list)} models/LoRAs.")
+            # Cùng folder + tên file mà có 1 dòng "page": true thì cả file đó đi hàng của trang.
+            page_keys = {(i.get("folder", "loras"), i.get("filename", "")) for i in lora_list if i.get("page")}
+            page_items = [i for i in lora_list if (i.get("folder", "loras"), i.get("filename", "")) in page_keys]
+            rest_items = [i for i in lora_list if (i.get("folder", "loras"), i.get("filename", "")) not in page_keys]
+            if page_items:
+                threading.Thread(target=_bg_download_models, args=(page_items, True), name="_bg_download_page_models", daemon=True).start()
+            threading.Thread(target=_bg_download_models, args=(rest_items,), name="_bg_download_models", daemon=True).start()
+            logs.append(f"Started background check/download for {len(lora_list)} models/LoRAs ({len(page_items)} for the concept page first).")
 
         _LAST_SYNCED_HASH = new_hash
         setattr(_sys_mod, "_vstone_last_synced_hash", new_hash)
@@ -1091,6 +1097,8 @@ MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
 # Lưu trên sys để mọi lần hot-reload dùng chung 1 lock, không tải 2 lần vào cùng file .part
 _DOWNLOAD_LOCK = sys.__dict__.setdefault("_vstone_download_lock", threading.Lock())
+# Model có "page": true trong sync_manifest (trang concept cần) tải ở hàng riêng, không chờ sau model lớn của hàng chung.
+_PAGE_DOWNLOAD_LOCK = sys.__dict__.setdefault("_vstone_page_download_lock", threading.Lock())
 
 
 def _read_safetensors_header(path: str) -> tuple[dict[str, Any] | None, int, int]:
@@ -2203,7 +2211,7 @@ def _save_hf_token(token: str) -> None:
         pass
 
 
-def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> str:
+def download_file_to_comfy_models(folder_type: str, filename: str, url: str, page: bool = False) -> str:
     """Download model/LoRA safely using a lock, .safetensors integrity verification, HF_TOKEN auth, and Ungated Mirror fallback."""
     comfy_root = _get_comfy_root()
     if not comfy_root:
@@ -2243,7 +2251,7 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
     else:
         candidate_urls = [url]
 
-    with _DOWNLOAD_LOCK:
+    with (_PAGE_DOWNLOAD_LOCK if page else _DOWNLOAD_LOCK):
         if os.path.exists(target_path):
             if _is_valid_safetensors_file(target_path):
                 return f"[VStone Downloader] Exists & verified: {target_path} ({os.path.getsize(target_path) // (1024*1024)} MB)"
@@ -2252,7 +2260,8 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
             except Exception:
                 pass
 
-        tmp_name = f"{filename}.part"
+        # page=True: hàng tải của trang concept, file tạm riêng để không ghi chung 1 file .part với hàng chung.
+        tmp_name = f"{filename}.page.part" if page else f"{filename}.part"
         tmp_path = os.path.join(target_dir, tmp_name)
         aria2_bin = shutil.which("aria2c")
         curl_bin = shutil.which("curl")
@@ -5268,6 +5277,7 @@ svg{display:block}
 .selsoft{display:flex;align-items:center;gap:6px;padding:0 4px;font-size:12px;color:var(--ink-2)}
 .selsoft input{width:110px;accent-color:var(--paper)}
 .floatbar > span{padding:0 4px;font-size:12px;color:var(--ink-2)}
+#lightInfo[data-kind="error"]{max-width:480px;color:var(--warn)}
 .qstate{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .qdot{width:8px;height:8px;flex:none;border:1.5px solid var(--ink-2);border-radius:50%}
 .qstate[data-busy="true"]{color:var(--ink)}
@@ -5699,6 +5709,7 @@ a.btn{color:inherit;text-decoration:none}
         <label class="selsoft" title="Tông ánh sáng nền: kéo trái lạnh, kéo phải ấm">Lạnh / Ấm<input id="lightWarm" type="range" min="-100" max="100" step="1" value="0" aria-label="Tông ánh sáng nền"></label>
         <button class="viewchip" type="button" id="lightScope" title="Bỏ vùng, đổi sáng cả ảnh" hidden>Chỉ vùng đã chọn ×</button>
         <span id="lightInfo">Bấm lên ảnh để đặt đèn, tối đa 3</span>
+        <button class="viewchip" type="button" id="lightRetry" title="Tính lại normal map bằng MoGe-3" hidden>Thử lại</button>
       </div>
       <div class="floatbar" id="lightEdit" hidden>
         <label class="selsoft" title="Màu đèn">Màu<input class="lightcolor" id="lightColor" type="color" value="#FFB46B" aria-label="Màu đèn"></label>
@@ -7914,7 +7925,7 @@ function ambientWords(light) {
 function buildRelightPass(light, problems) {
   if (isExpanded()) problems.push({ brush: null, text: 'Đổi ánh sáng: Gen kéo rộng trước, rồi mới đổi sáng' });
   if (light.mode !== 'prompt' && (!light.geo || light.geo.for !== S.base)) {
-    problems.push({ brush: null, text: light.geoBusy ? 'Đổi ánh sáng: đang tính normal map' : 'Đổi ánh sáng: chưa có normal map, bấm nút Ánh sáng để tính lại' });
+    problems.push({ brush: null, text: light.geoBusy ? 'Đổi ánh sáng: đang tính normal map' : light.geoError ? `Đổi ánh sáng: chưa có normal map. ${light.geoError}` : 'Đổi ánh sáng: chưa có normal map, bấm nút Ánh sáng để tính' });
   }
   const words = light.lights.map(lightWords);
   const lights = { en: `Lights: ${words.map(w => w.en).join('; ')}.`, vi: `Đèn: ${words.map(w => w.vi).join('; ')}.` };
@@ -8006,9 +8017,13 @@ async function requireLoras(names, what) {
   if (missing.length) throw new Error(`ComfyUI chưa có ${what} ${missing.join(', ')}. Cloud Sync tải trong nền, chờ tải xong rồi Gen lại.`);
 }
 async function mogeGeometry() {
-  const info = await fetch('/api/object_info/LoadMoGeModel').then(r => (r.ok ? r.json() : {}), () => ({}));
-  if (!info.LoadMoGeModel) throw new Error('ComfyUI này chưa có node MoGe (cần ComfyUI 0.43).');
-  if (!info.LoadMoGeModel.input.required.model_name[0].includes(MOGE_MODEL)) throw new Error(`ComfyUI chưa có model ${MOGE_MODEL}. Cloud Sync tải trong nền, chờ tải xong rồi bấm lại nút Ánh sáng.`);
+  const res = await fetch('/api/object_info/LoadMoGeModel').catch(() => null);
+  if (!res || !res.ok) throw new Error('Không hỏi được ComfyUI. Xem ComfyUI còn chạy không, rồi bấm Thử lại.');
+  const info = await res.json();
+  if (!info.LoadMoGeModel) throw new Error('ComfyUI trên máy này chưa có node MoGe, cần cập nhật ComfyUI (bản 0.43 đã có).');
+  if (!info.LoadMoGeModel.input.required.model_name[0].includes(MOGE_MODEL)) {
+    throw new Error(`Chưa có model ${MOGE_MODEL} trong models/geometry_estimation. Bấm mục 1 của node stoneV_CloudSyncHub: model của trang này được tải trước, không phải chờ model lớn. Tải xong bấm Thử lại.`);
+  }
   const name = await uploadCanvas(fitReference(S.base, 2), `${Date.now().toString(36)}_moge.png`);
   const id = await queueGraph(buildMogeGraph(name));
   const outs = await waitHelperNodes(id, ['6', '7']);
@@ -8223,7 +8238,10 @@ function syncLightUi() {
   $('lightEdit').hidden = !on || !L;
   $('lightMode').querySelectorAll('.viewchip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.mode === Light.mode)));
   $('lightScope').hidden = !Light.region;
-  $('lightInfo').textContent = Light.geoBusy ? 'Đang tính normal map bằng MoGe-3...' : Light.geoError ? 'Chưa có normal map' : `Bấm lên ảnh để đặt đèn, tối đa ${LIGHT_MAX}`;
+  const failed = Boolean(Light.geoError) && !Light.geoBusy;
+  $('lightInfo').textContent = Light.geoBusy ? 'Đang tính normal map bằng MoGe-3...' : failed ? `Chưa có normal map. ${Light.geoError}` : `Bấm lên ảnh để đặt đèn, tối đa ${LIGHT_MAX}`;
+  $('lightInfo').dataset.kind = failed ? 'error' : '';
+  $('lightRetry').hidden = !failed;
   if (L) {
     $('lightColor').value = L.color;
     $('lightPower').value = L.power;
@@ -8247,6 +8265,7 @@ function bindLightTools() {
     if (S.tool === 'light') ensureGeometry();
     schedulePreview();
   });
+  $('lightRetry').addEventListener('click', () => ensureGeometry());
   $('lightMode').addEventListener('click', e => {
     const chip = e.target.closest('.viewchip');
     if (!chip) return;

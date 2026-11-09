@@ -4,7 +4,8 @@
     {
       "filename": "qwen_image_2.1_int8_convrot.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
-      "folder": "diffusion_models"
+      "folder": "diffusion_models",
+      "page": true
     },
     {
       "filename": "qwen_image_2.1_turbo_int8_convrot.safetensors",
@@ -14,12 +15,14 @@
     {
       "filename": "qwen3vl_8b_int8_convrot.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
-      "folder": "text_encoders"
+      "folder": "text_encoders",
+      "page": true
     },
     {
       "filename": "qwen_image_2.1_vae_bf16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
-      "folder": "vae"
+      "folder": "vae",
+      "page": true
     },
     {
       "filename": "qwen3.5_9b_qwen_image_2.1_pe_i2i.int8_convrot.safetensors",
@@ -34,87 +37,104 @@
     {
       "filename": "qwen-image-2.1-qma-camera-angles.safetensors",
       "url": "https://huggingface.co/gribbliest/qwen-image-2.1-qma-camera-angles/resolve/main/qwen-image-2.1-qma-camera-angles.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "QI2.1_AnyAngle.safetensors",
       "url": "https://huggingface.co/lilylilith/QI_2.1_AnyAngle/resolve/main/QI2.1_AnyAngle.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "bfs_head_v1.1_qwen_2.1.safetensors",
       "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_head_v1.1_qwen_2.1.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "bfs_body_swap_v1.0_qwen_2.1.safetensors",
       "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_body_swap_v1.0_qwen_2.1.safetensors",
-      "folder": "loras/Downloads"
+      "folder": "loras/Downloads",
+      "page": true
     },
     {
       "filename": "bfs_body_swap_selective_magenta_v1.0_qwen_2.1.safetensors",
       "url": "https://huggingface.co/Alissonerdx/BFS-Best-Face-Swap/resolve/main/bfs_body_swap_selective_magenta_v1.0_qwen_2.1.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "p_qwen_image_2.1_8step_v0.1.safetensors",
       "url": "https://huggingface.co/PrunaAI/Pruna-Qwen-Image-2.1/resolve/main/p_q_image_2.1_8_steps_v0.1.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "p_qwen_image_2.1_8step_v0.1.safetensors",
       "url": "https://huggingface.co/PrunaAI/Pruna-Qwen-Image-2.1/resolve/main/p_q_image_2.1_8_steps_v0.1.safetensors",
-      "folder": "loras/Downloads"
+      "folder": "loras/Downloads",
+      "page": true
     },
     {
       "filename": "qwen-image-2.1-restore.safetensors",
       "url": "https://huggingface.co/ausboss/Qwen-Image-2.1-Restore-LoRA/resolve/main/qwen-image-2.1-restore.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "moge_3_vitl_fp16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/MoGe/resolve/main/geometry_estimation/moge_3_vitl_fp16.safetensors",
-      "folder": "geometry_estimation"
+      "folder": "geometry_estimation",
+      "page": true
     },
     {
       "filename": "Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors",
       "url": "https://huggingface.co/Viggle/Qwen-Image-2.1-viggle-turbo/resolve/main/Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "Qwenimag21_c2-st2000.safetensors",
       "url": "https://huggingface.co/RunningHubAI/rh-qwen-image-2.1-lora-2104918997757157378/resolve/main/Qwenimag21_c2-st2000.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "sam3.1_multiplex_fp16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
-      "folder": "checkpoints"
+      "folder": "checkpoints",
+      "page": true
     },
     {
       "filename": "triposplat_fp16.safetensors",
       "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/diffusion_models/triposplat_fp16.safetensors",
-      "folder": "diffusion_models"
+      "folder": "diffusion_models",
+      "page": true
     },
     {
       "filename": "triposplat_vae_decoder_fp16.safetensors",
       "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/triposplat_vae_decoder_fp16.safetensors",
-      "folder": "vae"
+      "folder": "vae",
+      "page": true
     },
     {
       "filename": "flux2-vae.safetensors",
       "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/vae/flux2-vae.safetensors",
-      "folder": "vae"
+      "folder": "vae",
+      "page": true
     },
     {
       "filename": "dino_v3_vit_h.safetensors",
       "url": "https://huggingface.co/VAST-AI/TripoSplat/resolve/main/clip_vision/dino_v3_vit_h.safetensors",
-      "folder": "clip_vision"
+      "folder": "clip_vision",
+      "page": true
     },
     {
       "filename": "birefnet.safetensors",
       "url": "https://huggingface.co/Comfy-Org/BiRefNet/resolve/main/background_removal/birefnet.safetensors",
-      "folder": "background_removal"
+      "folder": "background_removal",
+      "page": true
     },
     {
       "filename": "pixal3d_multiview_int8_convrot.safetensors",
@@ -184,7 +204,8 @@
     {
       "filename": "qwen-image-2.1-outpaint-v2.safetensors",
       "url": "https://github.com/reb1302/ComfyUI-Qwen21-MiniMaxH3-AIO/releases/download/v1.0-loras/qwen-image-2.1-outpaint-v2.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "qwen_image_2_1_360_panorama_outpaint_lora_v0_1.safetensors",
@@ -424,7 +445,8 @@
     {
       "filename": "qwen-image-2.1-consistency.safetensors",
       "url": "https://huggingface.co/ausboss/Qwen-Image-2.1-Consistency-LoRA/resolve/main/qwen-image-2.1-consistency.safetensors",
-      "folder": "loras"
+      "folder": "loras",
+      "page": true
     },
     {
       "filename": "merge_7000_9500_50_r128.safetensors",
