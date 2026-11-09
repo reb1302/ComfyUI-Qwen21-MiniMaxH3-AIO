@@ -738,8 +738,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 9: SAM3_Detect chỉ mượn khung cũ của PointsEditor khi nhận đúng các điểm của PointsEditor đó.
-VSTONE_RUNTIME_PATCH_VER = 9
+# 10: Fix calling unwrapped classmethod define_schema(cls) / execute(cls, ...) on SAM3_Detect & SAM3_VideoTrack
+VSTONE_RUNTIME_PATCH_VER = 10
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -1506,7 +1506,8 @@ def apply_comfy_runtime_fixes() -> str:
                     setattr(sd_cls, "_vstone_orig_define_schema", orig_def_schema)
 
                     def _safe_sam3_define_schema(cls, _orig=orig_def_schema):
-                        schema = _orig.__get__(None, cls)() if hasattr(_orig, "__get__") else _orig(cls)
+                        raw_fn = _orig.__func__ if isinstance(_orig, classmethod) else _orig
+                        schema = raw_fn(cls)
                         try:
                             new_inputs = []
                             for inp in schema.inputs:
@@ -1531,6 +1532,10 @@ def apply_comfy_runtime_fixes() -> str:
                         return schema
 
                     sd_cls.define_schema = classmethod(_safe_sam3_define_schema)
+                    try:
+                        sd_cls.GET_SCHEMA()
+                    except Exception:
+                        pass
 
                 if orig_sd_exec is not None:
                     setattr(sd_cls, "_vstone_orig_execute", orig_sd_exec)
@@ -1760,8 +1765,8 @@ def apply_comfy_runtime_fixes() -> str:
                         if not has_cond and not has_mask:
                             N, H, W = int(images.shape[0]), int(images.shape[1]), int(images.shape[2])
                             return _comfy_io.NodeOutput({"packed_masks": None, "n_frames": N, "orig_size": (H, W), "scores": []})
-                        fn = _orig.__get__(None, cls) if hasattr(_orig, "__get__") else lambda *a, **kw: _orig(cls, *a, **kw)
-                        return fn(images, model, initial_mask=initial_mask, conditioning=conditioning, detection_threshold=detection_threshold, max_objects=max_objects, detect_interval=detect_interval)
+                        raw_fn = _orig.__func__ if isinstance(_orig, classmethod) else _orig
+                        return raw_fn(cls, images, model, initial_mask=initial_mask, conditioning=conditioning, detection_threshold=detection_threshold, max_objects=max_objects, detect_interval=detect_interval)
 
                     vt_cls.execute = classmethod(_safe_sam3_videotrack_execute)
                 setattr(vt_cls, "_vstone_sam3_vt_hook_ver", VSTONE_RUNTIME_PATCH_VER)
