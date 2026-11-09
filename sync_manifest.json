@@ -267,6 +267,7 @@
     "workflows/bfs_swap/BFS_Body_Swap_Qwen_Image_2.1_V1.json",
     "workflows/bfs_swap/BFS_Body_Swap_Selective_Qwen_Image_2.1_V1.0.json",
     "workflows/pixal3d/3d_pixal3d_multi_views.json",
+    "workflows/sam3/utility_image_segment_sam3.json",
     "workflows/anyangle_studio/AnyAngle-Studio-Qwen21.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_xoay_dummy.app.json",
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",
