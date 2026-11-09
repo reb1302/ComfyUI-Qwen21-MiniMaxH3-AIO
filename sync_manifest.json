@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-05T13:01:00+07:00",
+  "updated_at": "2026-11-09T09:15:00+07:00",
   "loras": [
     {
       "filename": "qwen_image_2.1_int8_convrot.safetensors",
@@ -260,6 +260,221 @@
       "filename": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
       "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
       "folder": "diffusion_models"
+    },
+    {
+      "filename": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "void_pass1.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/void-model/resolve/main/diffusion_models/void_pass1.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "void_pass2.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/void-model/resolve/main/diffusion_models/void_pass2.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      "url": "https://huggingface.co/PulpCut/LTX-2.5-INT8-ConvRot-safetensors/resolve/main/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "qwenImage21INT8INT4_int8.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/diffusion_models/qwen_image_2.1_int8_convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "seedvr2_3b_int8_convrot.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "wan2.1_vace_14B_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan-2.1/resolve/main/split_files/diffusion_models/wan2.1_vace_14B_fp16.safetensors",
+      "folder": "diffusion_models/vace"
+    },
+    {
+      "filename": "wan2.2_bernini_r_high_noise_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Bernini-R/resolve/main/diffusion_models/wan2.2_bernini_r_high_noise_fp8_scaled.safetensors",
+      "folder": "diffusion_models/wan"
+    },
+    {
+      "filename": "wan2.2_bernini_r_low_noise_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Bernini-R/resolve/main/diffusion_models/wan2.2_bernini_r_low_noise_fp8_scaled.safetensors",
+      "folder": "diffusion_models/wan"
+    },
+    {
+      "filename": "qwen3vl_32b_minimax_h3_int8_awq.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "qwen3-vl-4b-heretic_int8_dynamic_convrot.safetensors",
+      "url": "https://huggingface.co/ethanfel/Qwen3-VL-4B-Heretic-ComfyUI-ConvRot-INT8/resolve/main/qwen3-vl-4b-heretic_int8_dynamic_convrot.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "qwenImage21INT8INT4_int8_txt.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/text_encoders/qwen3vl_8b_int8_convrot.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+      "url": "https://huggingface.co/PulpCut/LTX-2.5-INT8-ConvRot-safetensors/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "t5xxl_fp16.safetensors",
+      "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "minimax_h3_video_vae_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/vae/minimax_h3_video_vae_fp16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "taeh3.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/vae_approx/taeh3.safetensors",
+      "folder": "vae_approx"
+    },
+    {
+      "filename": "cogvideox_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/void-model/resolve/main/vae/cogvideox_vae.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "ema_vae_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/ema_vae_fp16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "minimax_h3_vfx_edit_v1.0_r128_ffp.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_vfx_edit_v1.0_r128_ffp.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_vfx_edit_v1.0_r128.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_vfx_edit_v1.0_r128.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_head_swap_v1.0_r32.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_head_swap_v1.0_r32.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_character_swap_v1.0_ref2va_r64_gl.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_character_swap_v1.0_ref2va_r64_gl.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_character_swap_v1.1_ref2va_fro.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_character_swap_v1.1_ref2va_fro.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_style_transfer_v1.0_r64.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_style_transfer_v1.0_r64.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_live_wallpaper_v1.0_ref2va_r64.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_live_wallpaper_v1.0_ref2va_r64.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_lms_v1.0_r64.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/loras/minimax_h3_lms_v1.0_r64.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_dmd_ref2va_8step_turbo_pruned.safetensors",
+      "url": "https://huggingface.co/drbaph/MiniMax-H3-Turbo-Lora-ComfyUI/resolve/main/experimental/minimax_h3_dmd_ref2va_8step_turbo_pruned.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_taomate_3step_lora_avg_rank_19_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/loras/minimax_h3_taomate_3step_lora_avg_rank_19_bf16.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "Qwen-Image-2.1-viggle-turbo-4step-lora-r64.safetensors",
+      "url": "https://huggingface.co/Viggle/Qwen-Image-2.1-viggle-turbo/resolve/main/Qwen-Image-2.1-viggle-turbo-4step-lora-r64.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "qwen-image-2.1-consistency.safetensors",
+      "url": "https://huggingface.co/ausboss/Qwen-Image-2.1-Consistency-LoRA/resolve/main/qwen-image-2.1-consistency.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "merge_7000_9500_50_r128.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/EditAnything/resolve/main/edit_anything_v2_ltx2.5.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "edit_anything_reference_v0.1_r128_ref_adaln_proj-role_embedding-ref_attn-ref_visual_proj.standard.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/EditAnything/resolve/main/edit_anything_reference_v0.1_r128_ref_adaln_proj-role_embedding-ref_attn-ref_visual_proj.standard.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/model_patches/minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors",
+      "folder": "model_patches"
+    },
+    {
+      "filename": "h3_upscaler_lms_v0.1.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/Minimax-H3-ComfyUI/resolve/main/latent_upscaler/h3_upscaler_lms_v0.1.safetensors",
+      "folder": "latent_upscale_models"
+    },
+    {
+      "filename": "raft_large_C_T_SKHT_V2-ff5fadd5.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/void-model/resolve/main/optical_flow/raft_large_C_T_SKHT_V2-ff5fadd5.safetensors",
+      "folder": "optical_flow"
+    },
+    {
+      "filename": "rife_v4.26.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/frame_interpolation/resolve/main/frame_interpolation/rife_v4.26.safetensors",
+      "folder": "frame_interpolation"
+    },
+    {
+      "filename": "Wan2_1_VAE_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1_VAE_bf16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
+      "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "edit_anything_reference_v0.1_r128_ref_adaln_proj-role_embedding-ref_attn-ref_visual_proj.module.safetensors",
+      "url": "https://huggingface.co/Alissonerdx/EditAnything/resolve/main/edit_anything_reference_v0.1_r128_ref_adaln_proj-role_embedding-ref_attn-ref_visual_proj.module.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "MiniMax-H3-encoder-Q4_K_M.gguf",
+      "url": "https://huggingface.co/joeygambino/MiniMax-H3-encoder-GGUF/resolve/main/MiniMax-H3-encoder-Q4_K_M.gguf",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "MiniMax-H3-fl2va-curve-Q5_1.gguf",
+      "url": "https://huggingface.co/joeygambino/MiniMax-H3-curve-GGUF/resolve/main/fl2va/MiniMax-H3-fl2va-curve-Q5_1.gguf",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "MiniMax-H3-ref2va-curve-Q5_1.gguf",
+      "url": "https://huggingface.co/joeygambino/MiniMax-H3-curve-GGUF/resolve/main/ref2va/MiniMax-H3-ref2va-curve-Q5_1.gguf",
+      "folder": "diffusion_models"
     }
   ],
   "workflows": [
@@ -302,6 +517,52 @@
     "workflows/qwen_image_2.1/image_qwen_image_2_1_turbo_t2i.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_vstone_extend_right.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_stoneV_outpaint_lora_best.json",
-    "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_outpaint.json"
+    "workflows/qwen_image_2.1/image_qwen_image_2_1_panorama_360_outpaint.json",
+    "workflows/01_MiniMax_H3_VFX_Edit/AutoDetect_Wire_Object_Removal_SAM31_MiniMaxH3_Ref2VA_VFX_Pro.json",
+    "workflows/01_MiniMax_H3_VFX_Edit/Official_MiniMax_H3_VFX_Edit.json",
+    "workflows/01_MiniMax_H3_VFX_Edit/Qwen21_FirstFrame_MiniMaxH3_VFX_Edit_NoMask.json",
+    "workflows/01_MiniMax_H3_VFX_Edit/Simple_VFX_Edit_FFP_FirstFrame.json",
+    "workflows/01_MiniMax_H3_VFX_Edit/Simple_VFX_Edit_PromptOnly.json",
+    "workflows/01_MiniMax_H3_VFX_Edit/minimax_h3_vfxedit_wokflow.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimaxH3T2VI2VREF2VAdvanced_v20.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_character_swap_workflow.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_character_swap_workflow_native_nodes.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_character_swap_workflow_native_nodes_v1.0.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_character_swap_workflow_native_nodes_v1.1.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_character_swap_workflow_v1.0.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_character_swap_workflow_v1.1.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_head_swap_workflow.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_live_wallpaper_workflow.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_lms_workflow.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/minimax_h3_style_transfer_workflow.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/video_minimax_h3_i2v.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/video_minimax_h3_i2v_continuation.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/video_minimax_h3_multiframe_reference.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/video_minimax_h3_r2v.json",
+    "workflows/02_MiniMax_H3_HeadSwap_CharSwap_Style_Live/video_minimax_h3_t2v.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/1A_MiniMaxH3_Fun_ControlNet_Inpaint_SAM31_MaskOnly.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/1B_MiniMaxH3_Fun_ControlNet_Inpaint_SAM31_Qwen21_FirstFrame.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/2_Netflix_VOID_Object_Shadow_Removal_SAM31.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/3_ByteDance_Bernini_R_Video_Editing.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/4_Wan21_VACE_14B_Video_Inpainting_SAM31.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/5_SAM31_Multiplex_Video_Roto.json",
+    "workflows/03_Netflix_VOID_And_VFX_Roto_Inpaint/AutoDetect_Wire_Object_Removal_SAM31_LaMa_H3_VFX.json",
+    "workflows/04_LTX25_EditAnything_Qwen21_Upscale/AutoDetect_Wire_Object_Removal_SAM31_LTX25_BFS_AutoCrop.json",
+    "workflows/04_LTX25_EditAnything_Qwen21_Upscale/Biosal Clip Upscale VOSR2 SeedVR2.json",
+    "workflows/04_LTX25_EditAnything_Qwen21_Upscale/EditAnything_LTX25_With_Ref_Or_Motion_Transfer.json",
+    "workflows/04_LTX25_EditAnything_Qwen21_Upscale/Official_EditAnything_LTX25.json",
+    "workflows/04_LTX25_EditAnything_Qwen21_Upscale/Official_Qwen_Image_2_1_Edit.json",
+    "workflows/04_LTX25_EditAnything_Qwen21_Upscale/qwenedit.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/00_H3_Timeline_MultiCut_Director_DeepSeek.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/01_H3_Text_To_Video_DeepSeek_Simple.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/02_H3_Image_To_Video_DeepSeek_Simple.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/02_H3_Seamless_Loop_XoayVong_DeepSeek_Simple.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/03_H3_Seamless_Loop_XoayVong_DeepSeek_Simple.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/04_H3_Reference_To_Video_DeepSeek_Simple.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/H3_Extend_Take.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/H3_Keyframes.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/H3_Seamless_Chain_CORE.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/H3_Seamless_Chain_v2.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/MiniMax_H3_360_Orbit_BulletTime_Seamless_Loop.json"
   ]
 }

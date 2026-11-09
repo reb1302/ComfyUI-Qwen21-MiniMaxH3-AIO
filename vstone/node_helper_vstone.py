@@ -623,12 +623,14 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
             pass
 
         wf_count = 0
+        import urllib.parse as _urlparse
         for path in wf_list:
             if not (path.startswith("workflows/") and path.endswith(".json")):
                 continue
             rel_wf = path[len("workflows/"):]
             try:
-                wf_bytes = _http_get_bytes(f"{raw_ref_base}/{path}?_t={ts}", timeout=15)
+                quoted_path = _urlparse.quote(path, safe="/")
+                wf_bytes = _http_get_bytes(f"{raw_ref_base}/{quoted_path}?_t={ts}", timeout=15)
                 if not wf_bytes or len(wf_bytes) < 50:
                     continue
                 target_wf_dirs = [workflows_dir, vstone_wf_dir]
@@ -644,6 +646,16 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 wf_count += 1
             except Exception:
                 pass
+
+        # 3a. Đồng bộ bản vá patches/nodes_void.py -> ComfyUI/comfy_extras/nodes_void.py (sửa lỗi center-crop của Netflix VOID)
+        try:
+            void_patch_bytes = _http_get_bytes(f"{raw_ref_base}/patches/nodes_void.py?_t={ts}", timeout=15)
+            if void_patch_bytes and len(void_patch_bytes) > 500:
+                void_dst = os.path.join(comfy_root, "comfy_extras", "nodes_void.py")
+                if _atomic_write_bytes(void_dst, void_patch_bytes, min_bytes=500):
+                    logs.append(f"Patched Netflix VOID: {void_dst}")
+        except Exception:
+            pass
 
         # 3b. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI TRƯỚC khi tải file nặng
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
@@ -1864,6 +1876,93 @@ def install_bfs_swap_packs(unique_id: Any = None) -> str:
     os.environ[BFS_SWAP_RESTARTED_ENV] = ",".join(sorted(tried | set(missing)))
     _restart_comfyui_after(5.0)
     return "\n".join(["🔄 Đã cài pack cho BFS, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để kiểm tra."] + details)
+
+
+# ------------------------------------------------------------------------------
+# Cài trọn bộ 22 Custom Node Packs cho Portable Workflow Pack (46 Workflows: MiniMax-H3 VFX Edit, Swap, Netflix VOID, LTX 2.5, Qwen 2.1, VOSR2/SeedVR2)
+# ------------------------------------------------------------------------------
+PORTABLE_PACK_CUSTOM_NODES: list[dict[str, Any]] = [
+    {"dir": "ComfyUI-VideoHelperSuite", "repo": "Kosinkadink/ComfyUI-VideoHelperSuite", "branch": "main"},
+    {"dir": "ComfyUI-KJNodes", "repo": "kijai/ComfyUI-KJNodes", "branch": "main"},
+    {"dir": "ComfyUI-Easy-Use", "repo": "yolain/ComfyUI-Easy-Use", "branch": "main"},
+    {"dir": "rgthree-comfy", "repo": "rgthree/rgthree-comfy", "branch": "main"},
+    {"dir": "ComfyUI_tinyterraNodes", "repo": "TinyTerra/ComfyUI_tinyterraNodes", "branch": "main"},
+    {"dir": "ComfyUI-BFSNodes", "repo": "alisson-anjos/ComfyUI-BFSNodes", "branch": "main"},
+    {"dir": "Comfyui_Minimax_h3_latent_Upscaler", "repo": "LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler", "branch": "main"},
+    {"dir": "ComfyUI-SolAttn_triton", "repo": "kijai/ComfyUI-SolAttn_triton", "branch": "main"},
+    {"dir": "ComfyUI-MiniMaxH3-Context-Loop", "repo": "ethanfel/ComfyUI-MiniMaxH3-Context-Loop", "branch": "main"},
+    {"dir": "ComfyUI-H3-Multishot", "repo": "jlucasmcrell/ComfyUI-H3-Multishot", "branch": "main"},
+    {"dir": "ComfyUI_MiniMax_H3_Extender", "repo": "tritant/ComfyUI_MiniMax_H3_Extender", "branch": "main"},
+    {"dir": "ComfyUI-MAINodes", "repo": "matlowai/ComfyUI-MAINodes", "branch": "main"},
+    {"dir": "ComfyUI-Spectrum-MiniMax-H3", "repo": "xmarre/ComfyUI-Spectrum-MiniMax-H3", "branch": "main"},
+    {"dir": "ComfyUI-ReservedVRAM", "repo": "Windecay/ComfyUI-ReservedVRAM", "branch": "main"},
+    {"dir": "CRT-Nodes", "repo": "PGCRT/CRT-Nodes", "branch": "main"},
+    {"dir": "ComfyUI-DaSiWa-Nodes", "repo": "darksidewalker/ComfyUI-DaSiWa-Nodes", "branch": "main"},
+    {"dir": "ComfyUI-VOSR2", "repo": "ylchen333/ComfyUI-VOSR2", "branch": "main"},
+    {"dir": "ComfyUI-Frame-Interpolation", "repo": "Fannovel16/ComfyUI-Frame-Interpolation", "branch": "main"},
+    {"dir": "comfyui-rmbg", "repo": "1038lab/comfyui-rmbg", "branch": "main"},
+    {"dir": "comfyui_controlnet_aux", "repo": "Fannovel16/comfyui_controlnet_aux", "branch": "main"},
+    {"dir": "RES4LYF", "repo": "ClownsharkBatwing/RES4LYF", "branch": "main"},
+    {"dir": "ComfyUI-GGUF", "repo": "city96/ComfyUI-GGUF", "branch": "main"},
+]
+PORTABLE_PACK_RESTARTED_ENV = "VSTONE_PORTABLE_PACK_RESTARTED"
+
+
+def install_portable_workflow_pack(unique_id: Any = None) -> str:
+    """Cài toàn bộ 22 custom node packs + bản vá Netflix VOID của Portable Workflow Pack (46 workflows), sau đó tự khởi động lại ComfyUI."""
+    root = _get_comfy_root()
+    if not root:
+        return "❌ Không tìm thấy thư mục ComfyUI."
+    custom_nodes = os.path.join(root, "custom_nodes")
+    os.makedirs(custom_nodes, exist_ok=True)
+    installed_dirs = {name.lower(): name for name in os.listdir(custom_nodes)}
+
+    details: list[str] = []
+    newly_installed = 0
+    total = len(PORTABLE_PACK_CUSTOM_NODES)
+    for idx, pack in enumerate(PORTABLE_PACK_CUSTOM_NODES, start=1):
+        existing_name = installed_dirs.get(pack["dir"].lower())
+        pack_dir = os.path.join(custom_nodes, existing_name or pack["dir"])
+        if existing_name and os.path.isfile(os.path.join(pack_dir, "__init__.py")):
+            details.append(f"[{idx}/{total}] {pack['dir']}: đã có sẵn.")
+            continue
+        _vstone_ui_status(unique_id, f"Đang cài pack [{idx}/{total}] {pack['dir']} ({pack['repo']})...")
+        ok, tail = _fetch_node_pack(pack, pack_dir)
+        if not ok:
+            # Thử lại với nhánh master nếu repo mặc định là master
+            pack_master = dict(pack, branch="master")
+            ok, tail = _fetch_node_pack(pack_master, pack_dir)
+        if ok and os.path.isdir(pack_dir):
+            newly_installed += 1
+            details.append(f"[{idx}/{total}] {pack['dir']}: đã tải về.")
+            for failure in _pip_install_requirements(pack_dir):
+                details.append(f"  ⚠️ pip ({pack['dir']}): {failure}")
+        else:
+            details.append(f"[{idx}/{total}] ❌ {pack['dir']}: lỗi tải ({tail})")
+
+    # Áp dụng bản vá Netflix VOID (patches/nodes_void.py -> ComfyUI/comfy_extras/nodes_void.py)
+    try:
+        commit_ref = _get_latest_commit_sha()
+        raw_ref_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{commit_ref}"
+        void_bytes = _http_get_bytes(f"{raw_ref_base}/patches/nodes_void.py?_t={int(time.time())}", timeout=15)
+        if void_bytes and len(void_bytes) > 500:
+            void_dst = os.path.join(root, "comfy_extras", "nodes_void.py")
+            _atomic_write_bytes(void_dst, void_bytes, min_bytes=500)
+            details.append("Patch Netflix VOID (comfy_extras/nodes_void.py): đã cập nhật.")
+    except Exception as e:
+        details.append(f"Patch Netflix VOID: {e}")
+
+    if newly_installed > 0 and os.environ.get(PORTABLE_PACK_RESTARTED_ENV) != "1":
+        os.environ[PORTABLE_PACK_RESTARTED_ENV] = "1"
+        _restart_comfyui_after(5.0)
+        return "\n".join([
+            f"🔄 Đã cài mới {newly_installed}/{total} custom node packs cho Portable Workflow Pack (46 workflows). ComfyUI đang khởi động lại — chờ 1-2 phút rồi nhấn F5!",
+            *details,
+        ])
+    return "\n".join([
+        f"✅ Đã kiểm tra/cài đặt đủ {total} custom node packs & bản vá Netflix VOID cho 46 workflows (01_MiniMax_H3_VFX_Edit .. 05_MiniMax_H3_Loop_And_Native).",
+        *details,
+    ])
 
 
 # ------------------------------------------------------------------------------
@@ -3149,6 +3248,7 @@ class stoneV_CloudSyncHub:
                     "5. Cài AnyAngle Studio để xoay vật thể (tự khởi động lại)",
                     "6. Cài pack cho BFS đổi mặt / đổi nhân vật (tự khởi động lại)",
                     "7. Cài LLM Qwen3.6 (vLLM)",
+                    "8. Cài Portable Workflow Pack (22 Custom Nodes + Patch VOID, tự khởi động lại)",
                 ], {
                     "default": "3. Pull Code + Download Model (Cập nhật tất cả)"
                 }),
@@ -3162,12 +3262,18 @@ class stoneV_CloudSyncHub:
                 "custom_target_folder": ([
                     "loras",
                     "diffusion_models",
+                    "diffusion_models/vace",
+                    "diffusion_models/wan",
+                    "checkpoints",
                     "vae",
+                    "vae_approx",
                     "text_encoders",
                     "model_patches",
                     "controlnet",
                     "latent_upscale_models",
                     "upscale_models",
+                    "optical_flow",
+                    "frame_interpolation",
                     "embeddings",
                 ], {
                     "default": "loras"
@@ -3228,6 +3334,11 @@ class stoneV_CloudSyncHub:
 
         if action.startswith("6."):
             report = install_bfs_swap_packs(unique_id)
+            _vstone_ui_status(unique_id, report)
+            return {"ui": {"text": [report]}, "result": (report,)}
+
+        if action.startswith("8."):
+            report = install_portable_workflow_pack(unique_id)
             _vstone_ui_status(unique_id, report)
             return {"ui": {"text": [report]}, "result": (report,)}
 
