@@ -1,0 +1,67 @@
+{
+  "id": "a1524920-c94e-58e7-a13a-8a208af9fe99",
+  "revision": 0,
+  "last_node_id": 2,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "stoneV_CloudSyncHub",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        720,
+        240
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "status_report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "stoneV_CloudSyncHub"
+      },
+      "widgets_values": [
+        "0B. C?i Lightricks Creative Lab ??y ?? (Pack + Core 22B + 15 Creative Lab IC-LoRAs, t? kh?i ??ng l?i)",
+        "ALL Lightricks LTX-2.5 Creative Lab Suite (T?i tr?n b? Core 22B + 15 Creative Lab IC-LoRAs)",
+        "",
+        "loras"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "MarkdownNote",
+      "title": "H??ng d?n C?i ??t 1-Click tr?n b? Lightricks LTX-2.5 & Creative Lab tr?n H200",
+      "pos": [
+        0,
+        290
+      ],
+      "size": [
+        720,
+        420
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# C?i ??t tr?n b? Lightricks LTX-2.5 + Creative Lab (H200)\n\n1. **L?n b?m Queue 1:** T? ??ng c?i ??t to?n b? Custom Node ph? thu?c (`Lightricks/ComfyUI-LTXVideo`, `kijai/ComfyUI-KJNodes`, v? c?c th? vi?n Python `pip`) r?i t? kh?i ??ng l?i ComfyUI.\n2. **L?n b?m Queue 2 (sau khi F5):** T? ??ng t?i b?ng `aria2c` 16 lu?ng to?n b?:\n   - **Core LTX-2.5 22B:** `ltx-2.5-22b-distilled-transformer-bf16`, `ltx-2.5-22b-dev-transformer-bf16`, `gemma4-12b-with-proj-ltx-2.5-bf16`, `gemma4_e2b_it_bf16`, `ltx-2.5-video-vae-bf16`, `ltx-2.5-audio-vae-bf16`, Spatial & Temporal Upscaler x2.\n   - **15 B? IC-LoRA & LoRA Creative Lab:** `Day-To-Night`, `Clean-Plate`, `Water-Simulation`, `Pixel-Spatial-Upscaler`, `Deblur`, `Decompression`, `Colorization`, `Cinemagraph`, `Slow-Motion-Control`, `Ingredients`, `SDR-To-HDR` (+ `scene-emb`), `Layout-To-Render`, `Refine-Details`, `Restore`, `Alpha-Gen`, `In-Outpainting`, `Motion-Track`, `Union-Control`, `BBox-Control`.\n3. **T?y ch?n HuggingFace Token (`custom_url`):**\n   - N?u ?? tr?ng `custom_url`, h? th?ng t? ??ng t?i qua **Mirror Ungated HTTP 200** (kh?ng c?n t?i kho?n).\n   - N?u mu?n t?i tr?c ti?p t? c?c repo Gated c?a Lightricks, d?n m? `hf_xxxx` c?a b?n v?o ? `custom_url` tr??c khi b?m Queue."
+      ]
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

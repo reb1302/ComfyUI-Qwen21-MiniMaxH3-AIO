@@ -87,6 +87,203 @@ LTX25_OUTPAINT_SUITE_MODELS: list[dict[str, str]] = [
     },
 ]
 
+# Danh sách trọn bộ Lightricks LTX-2.5 Core + LTX-2.5 Creative Lab (15 bộ IC-LoRA & LoRA chuyên dụng + Mirror Ungated)
+LIGHTRICKS_CREATIVE_LAB_MODELS: list[dict[str, str]] = list(LTX25_OUTPAINT_SUITE_MODELS) + [
+    # --- Core LTX-2.5 Additional Models (Ungated Mirrors HTTP 200) ---
+    {
+        "folder": "diffusion_models",
+        "filename": "ltx-2.5-22b-dev-transformer-bf16.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-dev-transformer-bf16.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-distilled-lora-450-bf16.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-lora-450-bf16.safetensors",
+    },
+    {
+        "folder": "latent_upscale_models",
+        "filename": "ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
+    },
+    # --- Ungated LTX-2.3 / LTX-2.5 IC-LoRAs & LoRAs (HTTP 200 - Không cần Token, dùng trực tiếp cho các Workflow 2.5) ---
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+        "url": "https://huggingface.co/oumoumad/LTX-2.3-22b-IC-LoRA-Outpaint/resolve/main/ltx-2.3-22b-ic-lora-outpaint.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients/ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-day-to-night-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Day-To-Night/ltx-2.3-22b-ic-lora-day-to-night-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Deblur/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-decompression-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Decompression/ltx-2.3-22b-ic-lora-decompression-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-colorization-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Colorization/ltx-2.3-22b-ic-lora-colorization-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-water-simulation-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Water-Simulation/ltx-2.3-22b-ic-lora-water-simulation-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-HDR/ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+    },
+    {
+        "folder": "embeddings",
+        "filename": "ltx-2.3-22b-ic-lora-hdr-scene-emb.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-HDR/ltx-2.3-22b-ic-lora-hdr-scene-emb.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-instant-shave-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Instant-Shave/ltx-2.3-22b-ic-lora-instant-shave-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-lipdub-0.9.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-LipDub/ltx-2.3-22b-ic-lora-lipdub-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Motion-Track-Control/ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+        "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+        "url": "https://huggingface.co/thinklikeajew2/ltx23-cinemagraph-mirror/resolve/main/ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors",
+        "url": "https://huggingface.co/yuvraj108c/LTX-2.5-22b-IC-LoRA-BBox-Control/resolve/main/ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors",
+    },
+    # --- 15 Official Lightricks/ltx-25-creative-lab Models (Hỗ trợ HF_TOKEN + Tự động Fallback sang Mirror Ungated) ---
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Day-To-Night/resolve/main/ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Clean-Plate/resolve/main/ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Water-Simulation/resolve/main/ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Pixel-Spatial-Upscaler/resolve/main/ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Deblur/resolve/main/ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-decompression-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Decompression/resolve/main/ltx-2.5-22b-ic-lora-decompression-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-colorization-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Colorization/resolve/main/ltx-2.5-22b-ic-lora-colorization-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-lora-cinemagraph-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Cinemagraph/resolve/main/ltx-2.5-22b-lora-cinemagraph-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Slow-Motion-Control/resolve/main/ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Ingredients/resolve/main/ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-SDR-To-HDR/resolve/main/ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors",
+    },
+    {
+        "folder": "embeddings",
+        "filename": "ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-SDR-To-HDR/resolve/main/ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Layout-To-Render/resolve/main/ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Refine-Details/resolve/main/ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-restore-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Restore/resolve/main/ltx-2.5-22b-ic-lora-restore-1.0.safetensors",
+    },
+    {
+        "folder": "loras",
+        "filename": "ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Alpha-Gen/resolve/main/ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors",
+    },
+]
+
+# Bảng ánh xạ Fallback sang Mirror Ungated (HTTP 200) khi máy H200 chưa cấu hình HF_TOKEN cho các repo Gated của Lightricks
+LIGHTRICKS_UNGATED_FALLBACK_URLS: dict[str, str] = {
+    "ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Day-To-Night/ltx-2.3-22b-ic-lora-day-to-night-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Water-Simulation/ltx-2.3-22b-ic-lora-water-simulation-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Deblur/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-deblur-0.9.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Deblur/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-decompression-0.9.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Decompression/ltx-2.3-22b-ic-lora-decompression-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-colorization-0.9.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Colorization/ltx-2.3-22b-ic-lora-colorization-0.9.safetensors",
+    "ltx-2.5-22b-lora-cinemagraph-0.9.safetensors": "https://huggingface.co/thinklikeajew2/ltx23-cinemagraph-mirror/resolve/main/ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+    "ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors": "https://huggingface.co/thinklikeajew2/ltx23-cinemagraph-mirror/resolve/main/ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients/ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-HDR/ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-HDR/ltx-2.3-22b-ic-lora-hdr-scene-emb.safetensors",
+    "ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+    "ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Deblur/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-restore-1.0.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Deblur/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-In-Outpainting/ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+}
+
 WAN21_VACE_OUTPAINT_MODELS: list[dict[str, str]] = [
     {
         "folder": "text_encoders",
@@ -132,10 +329,11 @@ WAN21_VACE_OUTPAINT_MODELS: list[dict[str, str]] = [
 
 LTX25_URL_BY_FILENAME: dict[str, tuple[str, str]] = {
     item["filename"]: (item["folder"], item["url"])
-    for item in (LTX25_OUTPAINT_SUITE_MODELS + WAN21_VACE_OUTPAINT_MODELS)
+    for item in (LTX25_OUTPAINT_SUITE_MODELS + LIGHTRICKS_CREATIVE_LAB_MODELS + WAN21_VACE_OUTPAINT_MODELS)
 }
 
 PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
+    "ALL Lightricks LTX-2.5 Creative Lab Suite (Tải trọn bộ Core 22B + 15 Creative Lab IC-LoRAs)": ("__ALL_LIGHTRICKS_CREATIVE_LAB__", "", ""),
     "ALL Wan 2.1 VACE Outpaint Suite (Tải trọn bộ Wan 2.1 VACE 14B + UMT5 + VAE + CausVid LoRA)": ("__ALL_WAN21_VACE__", "", ""),
     "Wan 2.1 UMT5-XXL FP8 Scaled Text Encoder (umt5_xxl_fp8_e4m3fn_scaled.safetensors - 6.7GB)": (
         "text_encoders",
@@ -175,15 +373,115 @@ PRESET_DOWNLOAD_CATALOG: dict[str, tuple[str, str, str]] = {
         "ltx-2.3-22b-ic-lora-outpaint.safetensors",
         "https://huggingface.co/oumoumad/LTX-2.3-22b-IC-LoRA-Outpaint/resolve/main/ltx-2.3-22b-ic-lora-outpaint.safetensors",
     ),
+    "LTX-2.5 Creative Lab: Day-To-Night IC-LoRA (ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors - 327MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Day-To-Night/resolve/main/ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Clean-Plate Object Removal IC-LoRA (ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors - 327MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Clean-Plate/resolve/main/ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Water-Simulation IC-LoRA (ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors - 906MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Water-Simulation/resolve/main/ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Pixel-Spatial-Upscaler x2 IC-LoRA (ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors - 327MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Pixel-Spatial-Upscaler/resolve/main/ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Deblur IC-LoRA (ltx-2.5-22b-ic-lora-deblur-0.9.safetensors - 906MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Deblur/resolve/main/ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Decompression IC-LoRA (ltx-2.5-22b-ic-lora-decompression-0.9.safetensors - 906MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-decompression-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Decompression/resolve/main/ltx-2.5-22b-ic-lora-decompression-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Colorization B&W to Color IC-LoRA (ltx-2.5-22b-ic-lora-colorization-0.9.safetensors - 906MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-colorization-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Colorization/resolve/main/ltx-2.5-22b-ic-lora-colorization-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Cinemagraph LoRA (ltx-2.5-22b-lora-cinemagraph-0.9.safetensors - 201MB)": (
+        "loras",
+        "ltx-2.5-22b-lora-cinemagraph-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Cinemagraph/resolve/main/ltx-2.5-22b-lora-cinemagraph-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Slow-Motion-Control LoRA (ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors - 655MB)": (
+        "loras",
+        "ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Slow-Motion-Control/resolve/main/ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Ingredients Multi-Ref IC-LoRA (ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors - 1.31GB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Ingredients/resolve/main/ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: SDR-To-HDR IC-LoRA (ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors - 1.31GB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-SDR-To-HDR/resolve/main/ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Layout-To-Render 3D Viewport IC-LoRA (ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors - 1.31GB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Layout-To-Render/resolve/main/ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Refine-Details 4K/8K IC-LoRA (ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors - 1.31GB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Refine-Details/resolve/main/ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Restore Archival Film IC-LoRA (ltx-2.5-22b-ic-lora-restore-1.0.safetensors - 1.71GB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-restore-1.0.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Restore/resolve/main/ltx-2.5-22b-ic-lora-restore-1.0.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Alpha-Gen Video Matte IC-LoRA (ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors - 1.31GB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors",
+        "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Alpha-Gen/resolve/main/ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Motion-Track-Control IC-LoRA (ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors - 654MB)": (
+        "loras",
+        "ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors",
+        "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Motion-Track-Control/ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: Union-Control IC-LoRA (ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors - 654MB)": (
+        "loras",
+        "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+        "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+    ),
+    "LTX-2.5 Creative Lab: BBox-Control IC-LoRA (ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors - 654MB)": (
+        "loras",
+        "ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5-22b-IC-LoRA-BBox-Control/resolve/main/ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors",
+    ),
     "LTX-2.5 22B Distilled Transformer BF16 (ltx-2.5-22b-distilled-transformer-bf16.safetensors)": (
         "diffusion_models",
         "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
         "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
     ),
+    "LTX-2.5 22B Dev Transformer BF16 (ltx-2.5-22b-dev-transformer-bf16.safetensors)": (
+        "diffusion_models",
+        "ltx-2.5-22b-dev-transformer-bf16.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-22b-dev-transformer-bf16.safetensors",
+    ),
     "LTX-2.5 Latent Spatial Upscaler x2 BF16 (ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors)": (
         "latent_upscale_models",
         "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
         "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+    ),
+    "LTX-2.5 Latent Temporal Upscaler x2 BF16 (ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors)": (
+        "latent_upscale_models",
+        "ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
+        "https://huggingface.co/yuvraj108c/LTX-2.5/resolve/main/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
     ),
     "LTX-2.5 Video VAE BF16 (ltx-2.5-video-vae-bf16.safetensors)": (
         "vae",
@@ -365,6 +663,28 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/ltx_2.5/LTX25_Outpaint_Official.json",
     "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/ltx_2.5/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
+    "workflows/lighttrick/00_Lightricks_Creative_Lab_1Click_Install_H200.json",
+    "workflows/lighttrick/LTX25_Cai_Dat_1_Click.json",
+    "workflows/lighttrick/LTX25_Outpaint_Official.json",
+    "workflows/lighttrick/stoneV_LTX25_Outpaint_TwoStage_Pro_H200.json",
+    "workflows/lighttrick/LTX-2.5_CreativeLab_All_In_One_V2V_Selector.json",
+    "workflows/lighttrick/LTX-2.5_I2V_Speed_Control_SlowMo_Cinemagraph.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_Layout_To_Render_Two_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_A2V_Two_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_Motion_Track_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_Union_Control_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_T2A_Single_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_T2V_I2V_Single_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_T2V_I2V_Two_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_Native_4K_8K.json",
+    "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_Upscale.json",
+    "workflows/lighttrick/AutoDetect_Wire_Object_Removal_SAM31_LTX25_BFS_AutoCrop.json",
+    "workflows/lighttrick/EditAnything_LTX25_With_Ref_Or_Motion_Transfer.json",
+    "workflows/lighttrick/Official_EditAnything_LTX25.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
     "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
@@ -1824,11 +2144,52 @@ def _clear_comfy_model_cache() -> None:
         pass
 
 
+def _get_hf_token() -> str:
+    """Đọc Hugging Face Token từ biến môi trường hoặc file ~/.cache/huggingface/token trên H200."""
+    for env_key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HF_API_TOKEN"):
+        val = (os.environ.get(env_key) or "").strip()
+        if val.startswith("hf_"):
+            return val
+    for token_path in (
+        os.path.expanduser("~/.cache/huggingface/token"),
+        os.path.expanduser("~/.huggingface/token"),
+    ):
+        try:
+            if os.path.isfile(token_path):
+                with open(token_path, "r", encoding="utf-8", errors="ignore") as f:
+                    val = f.read().strip()
+                    if val.startswith("hf_"):
+                        return val
+        except Exception:
+            pass
+    return ""
+
+
+def _save_hf_token(token: str) -> None:
+    """Lưu Hugging Face Token vào biến môi trường và ~/.cache/huggingface/token để dùng cho các repo Gated của Lightricks."""
+    clean = (token or "").strip()
+    if not clean.startswith("hf_"):
+        return
+    os.environ["HF_TOKEN"] = clean
+    try:
+        cache_tok = os.path.expanduser("~/.cache/huggingface/token")
+        os.makedirs(os.path.dirname(cache_tok), exist_ok=True)
+        with open(cache_tok, "w", encoding="utf-8") as f:
+            f.write(clean)
+    except Exception:
+        pass
+
+
 def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> str:
-    """Download model/LoRA safely using a lock, .safetensors integrity verification, and temporary .part file."""
+    """Download model/LoRA safely using a lock, .safetensors integrity verification, HF_TOKEN auth, and Ungated Mirror fallback."""
     comfy_root = _get_comfy_root()
     if not comfy_root:
         return "[VStone Downloader] ComfyUI root not found."
+
+    if "|" in url and url.split("|", 1)[0].strip().startswith("hf_"):
+        tok_part, url_part = url.split("|", 1)
+        _save_hf_token(tok_part.strip())
+        url = url_part.strip()
 
     if "huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/" in url:
         url = url.replace(
@@ -1849,6 +2210,16 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
         except Exception:
             pass
 
+    hf_token = _get_hf_token()
+    fallback_url = LIGHTRICKS_UNGATED_FALLBACK_URLS.get(filename, "")
+    is_gated_lightricks = "huggingface.co/Lightricks/LTX-2.5-22b-" in url
+    if is_gated_lightricks and not hf_token and fallback_url:
+        candidate_urls = [fallback_url, url]
+    elif fallback_url and fallback_url != url:
+        candidate_urls = [url, fallback_url]
+    else:
+        candidate_urls = [url]
+
     with _DOWNLOAD_LOCK:
         if os.path.exists(target_path):
             if _is_valid_safetensors_file(target_path):
@@ -1860,48 +2231,85 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str) -> 
 
         tmp_name = f"{filename}.part"
         tmp_path = os.path.join(target_dir, tmp_name)
-        print(f"[VStone Downloader] Downloading {filename} to {target_dir} from {url} ...")
-
         aria2_bin = shutil.which("aria2c")
-        if aria2_bin:
-            cmd = [
-                aria2_bin, "--check-certificate=false", "--disable-ipv6=true",
-                "--file-allocation=none", "-c", "-x", "16", "-s", "16", "-k", "1M",
-                "--allow-overwrite=true", "-d", target_dir, "-o", tmp_name, url
-            ]
-            res = subprocess.run(cmd, check=False, timeout=3600)
-            if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
-                os.replace(tmp_path, target_path)
-                if _is_valid_safetensors_file(target_path):
-                    _clear_comfy_model_cache()
-                    return f"[VStone Downloader] Downloaded & verified via aria2c: {target_path}"
-                print(f"[VStone Downloader] aria2c file failed safetensors verification, retrying via curl: {target_path}")
-                try:
-                    os.remove(target_path)
-                except Exception:
-                    pass
-
         curl_bin = shutil.which("curl")
-        if curl_bin:
-            cmd = [curl_bin, "-4", "-L", "-C", "-", "--max-time", "3600", url, "-o", tmp_path]
-            res = subprocess.run(cmd, check=False, timeout=3610)
-            if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
-                os.replace(tmp_path, target_path)
-                if _is_valid_safetensors_file(target_path):
-                    _clear_comfy_model_cache()
-                    return f"[VStone Downloader] Downloaded & verified via curl: {target_path}"
-                try:
-                    os.remove(target_path)
-                except Exception:
-                    pass
 
-        req = urllib.request.Request(url, headers={"User-Agent": "VStone-ComfyUI-Sync/2.0"})
-        with urllib.request.urlopen(req, timeout=120) as resp, open(tmp_path, "wb") as out_f:
-            shutil.copyfileobj(resp, out_f)
-        if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
-            os.replace(tmp_path, target_path)
-        _clear_comfy_model_cache()
-        return f"[VStone Downloader] Downloaded: {target_path}"
+        for cur_url in candidate_urls:
+            print(f"[VStone Downloader] Downloading {filename} to {target_dir} from {cur_url} ...")
+            use_auth = bool(hf_token and "huggingface.co" in cur_url and "/buckets/" not in cur_url)
+
+            if aria2_bin:
+                cmd = [
+                    aria2_bin, "--check-certificate=false", "--disable-ipv6=true",
+                    "--file-allocation=none", "-c", "-x", "16", "-s", "16", "-k", "1M",
+                    "--allow-overwrite=true",
+                ]
+                if use_auth:
+                    cmd.append(f"--header=Authorization: Bearer {hf_token}")
+                cmd.extend(["-d", target_dir, "-o", tmp_name, cur_url])
+                res = subprocess.run(cmd, check=False, timeout=3600)
+                if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
+                    os.replace(tmp_path, target_path)
+                    if _is_valid_safetensors_file(target_path):
+                        _clear_comfy_model_cache()
+                        return f"[VStone Downloader] Downloaded & verified via aria2c: {target_path}"
+                    print(f"[VStone Downloader] aria2c file failed safetensors verification, retrying: {target_path}")
+                    try:
+                        os.remove(target_path)
+                    except Exception:
+                        pass
+                elif os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+
+            if curl_bin:
+                cmd = [curl_bin, "-4", "-L", "-C", "-", "--max-time", "3600"]
+                if use_auth:
+                    cmd.extend(["-H", f"Authorization: Bearer {hf_token}"])
+                cmd.extend([cur_url, "-o", tmp_path])
+                res = subprocess.run(cmd, check=False, timeout=3610)
+                if res.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
+                    os.replace(tmp_path, target_path)
+                    if _is_valid_safetensors_file(target_path):
+                        _clear_comfy_model_cache()
+                        return f"[VStone Downloader] Downloaded & verified via curl: {target_path}"
+                    try:
+                        os.remove(target_path)
+                    except Exception:
+                        pass
+                elif os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+
+            try:
+                headers = {"User-Agent": "VStone-ComfyUI-Sync/2.0"}
+                if use_auth:
+                    headers["Authorization"] = f"Bearer {hf_token}"
+                req = urllib.request.Request(cur_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=120) as resp, open(tmp_path, "wb") as out_f:
+                    shutil.copyfileobj(resp, out_f)
+                if os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 1024:
+                    os.replace(tmp_path, target_path)
+                    if _is_valid_safetensors_file(target_path):
+                        _clear_comfy_model_cache()
+                        return f"[VStone Downloader] Downloaded & verified: {target_path}"
+                    try:
+                        os.remove(target_path)
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"[VStone Downloader] URL attempt failed ({cur_url}): {e}")
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+
+        return f"[VStone Downloader] Failed to download {filename}"
 
 
 # ------------------------------------------------------------------------------
@@ -2111,7 +2519,7 @@ def _wait_for_background_downloads(unique_id: Any) -> None:
         time.sleep(15)
 
 
-def install_ltx25_one_click(unique_id: Any = None) -> str:
+def install_ltx25_one_click(unique_id: Any = None, include_creative_lab: bool = False) -> str:
     """Cài pack rồi khởi động lại ngay để hết báo thiếu node, lần Queue sau mới tải model. Dòng đầu của báo cáo là kết luận."""
     root = _get_comfy_root()
     if not root:
@@ -2134,22 +2542,24 @@ def install_ltx25_one_click(unique_id: Any = None) -> str:
         fetch_failed = fetch_failed or not os.path.isdir(pack_dir)
         for failure in _pip_install_requirements(pack_dir):
             details.append(f"Pack {pack['dir']}: LỖI pip {failure}")
+        _hot_load_custom_node_pack(pack_dir)
 
     missing_ids = _missing_node_ids([node_id for pack in LTX25_CUSTOM_NODE_PACKS for node_id in pack["node_ids"]])
     if missing_ids:
         if not fetch_failed and os.environ.get(LTX25_RESTARTED_ENV) != "1":
             os.environ[LTX25_RESTARTED_ENV] = "1"
             _restart_comfyui_after(5.0)
-            summary = "🔄 Đã cài pack, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để tải model."
+            summary = "🔄 Đã cài pack Lightricks LTX-2.5, ComfyUI đang khởi động lại. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa để tải model."
             return "\n".join([summary] + details)
         details.append("Thiếu node: " + ", ".join(missing_ids) + ". Xem log khởi động, dòng IMPORT FAILED.")
         return "\n".join(["❌ Chưa cài xong pack LTX-2.5."] + details)
 
     _wait_for_background_downloads(unique_id)
 
+    target_models = LIGHTRICKS_CREATIVE_LAB_MODELS if include_creative_lab else LTX25_OUTPAINT_SUITE_MODELS
     models_missing: list[str] = []
-    total = len(LTX25_OUTPAINT_SUITE_MODELS)
-    for index, item in enumerate(LTX25_OUTPAINT_SUITE_MODELS, start=1):
+    total = len(target_models)
+    for index, item in enumerate(target_models, start=1):
         filename = item["filename"]
         _vstone_ui_status(
             unique_id,
@@ -2168,7 +2578,9 @@ def install_ltx25_one_click(unique_id: Any = None) -> str:
     if models_missing:
         details.append("Model chưa có: " + ", ".join(models_missing) + ". Bấm Queue lần nữa để tải tiếp.")
         return "\n".join(["❌ Pack đã đủ, còn thiếu model."] + details)
-    return "\n".join(["✅ LTX-2.5 đã đủ pack và model. Mở workflow ltx_2.5/LTX25_Outpaint_Official."] + details)
+    if include_creative_lab:
+        return "\n".join(["✅ Lightricks LTX-2.5 + Creative Lab (Core 22B + 15 IC-LoRAs) đã đủ pack và model! Mở thư mục workflows/lighttrick/."] + details)
+    return "\n".join(["✅ LTX-2.5 đã đủ pack và model. Mở workflow lighttrick/LTX25_Outpaint_Official."] + details)
 
 
 # ------------------------------------------------------------------------------
@@ -4065,6 +4477,7 @@ class stoneV_CloudSyncHub:
             "required": {
                 "action": ([
                     "0. Cài LTX-2.5 đầy đủ (Pack + Model, tự khởi động lại)",
+                    "0B. Cài Lightricks Creative Lab đầy đủ (Pack + Core 22B + 15 Creative Lab IC-LoRAs, tự khởi động lại)",
                     "3. Pull Code + Download Model (Cập nhật tất cả)",
                     "1. Pull Latest Nodes & Workflows from Laptop (Cập nhật Code + Workflow ngay)",
                     "2. Download Selected Model / LoRA (Tải Model/LoRA đã chọn bên dưới)",
@@ -4081,7 +4494,7 @@ class stoneV_CloudSyncHub:
                 }),
                 "custom_url": ("STRING", {
                     "default": "",
-                    "tooltip": "Tùy chọn: Dán link HuggingFace bất kỳ vào đây nếu muốn tải file ngoài danh sách."
+                    "tooltip": "Tùy chọn: Dán link HuggingFace bất kỳ, hoặc dán HF Token (hf_xxx) nếu muốn tải trực tiếp các repo Gated của Lightricks."
                 }),
                 "custom_target_folder": ([
                     "loras",
@@ -4136,8 +4549,19 @@ class stoneV_CloudSyncHub:
         newest = nodes.NODE_CLASS_MAPPINGS.get("stoneV_CloudSyncHub")
         if newest is not None and getattr(newest, "run_sync", None) is not stoneV_CloudSyncHub.run_sync:
             return newest.run_sync(self, action, preset_model, custom_url, custom_target_folder, unique_id)
+        if custom_url and custom_url.strip().startswith("hf_"):
+            tok_str = custom_url.strip().split("|", 1)[0].strip()
+            _save_hf_token(tok_str)
+            custom_url = custom_url.strip().split("|", 1)[1].strip() if "|" in custom_url else ""
+
+        if action.startswith("0B."):
+            report = install_ltx25_one_click(unique_id, include_creative_lab=True)
+            _vstone_ui_status(unique_id, report)
+            return {"ui": {"text": [report]}, "result": (report,)}
+
         if action.startswith("0."):
-            report = install_ltx25_one_click(unique_id)
+            use_creative_lab = "Creative Lab" in str(preset_model or "")
+            report = install_ltx25_one_click(unique_id, include_creative_lab=use_creative_lab)
             _vstone_ui_status(unique_id, report)
             return {"ui": {"text": [report]}, "result": (report,)}
 
@@ -4187,6 +4611,12 @@ class stoneV_CloudSyncHub:
                 elif folder == "__ALL_LTX25_OUTPAINT__":
                     reports.append(_ensure_ltx_video_custom_node())
                     for item in LTX25_OUTPAINT_SUITE_MODELS:
+                        reports.append(
+                            download_file_to_comfy_models(item["folder"], item["filename"], item["url"])
+                        )
+                elif folder == "__ALL_LIGHTRICKS_CREATIVE_LAB__":
+                    reports.append(_ensure_ltx_video_custom_node())
+                    for item in LIGHTRICKS_CREATIVE_LAB_MODELS:
                         reports.append(
                             download_file_to_comfy_models(item["folder"], item["filename"], item["url"])
                         )
@@ -12888,9 +13318,43 @@ def _ensure_ltx25_model_path(folder_type: str, filename: str) -> str:
     return folder_paths.get_full_path_or_raise(folder_type, filename)
 
 
+_LIGHTRICKS_ALL_ICLORA_FILENAMES = [
+    "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+    "ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors",
+    "ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors",
+    "ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-decompression-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-colorization-0.9.safetensors",
+    "ltx-2.5-22b-lora-cinemagraph-0.9.safetensors",
+    "ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+    "ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors",
+    "ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors",
+    "ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors",
+    "ltx-2.5-22b-ic-lora-restore-1.0.safetensors",
+    "ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors",
+    "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-day-to-night-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-decompression-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-colorization-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-water-simulation-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-instant-shave-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-lipdub-0.9.safetensors",
+    "ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors",
+    "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+    "ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+]
+
+
 class stoneV_LTX25_Outpaint_Loader:
     """
-    Trình nạp & tự động tải trọn bộ 5 Model LTX-2.5 Outpaint/Inpaint trên H200 (Không cần API Key, Không báo đỏ thiếu file):
+    Trình nạp & tự động tải trọn bộ Model LTX-2.5 Outpaint/Inpaint & Creative Lab trên H200 (Không cần API Key, Không báo đỏ thiếu file):
     - Tự động kiểm tra và tải bằng aria2c 16 luồng từ Mirror Ungated HTTP 200 nếu máy H200 chưa có model.
     - Trả ra cả `model_iclora_stage1` (có gắn IC-LoRA) và `model_base_stage2` (cho Stage 2 High-Res), cùng `latent_downscale_factor`, `clip`, `video_vae`, `audio_vae`.
     """
@@ -12900,19 +13364,22 @@ class stoneV_LTX25_Outpaint_Loader:
         return {
             "required": {
                 "unet_name": (
-                    ["ltx-2.5-22b-distilled-transformer-bf16.safetensors"],
+                    [
+                        "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+                        "ltx-2.5-22b-dev-transformer-bf16.safetensors",
+                    ],
                     {"default": "ltx-2.5-22b-distilled-transformer-bf16.safetensors"},
                 ),
                 "ic_lora_name": (
-                    [
-                        "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
-                        "ltx-2.3-22b-ic-lora-outpaint.safetensors",
-                    ],
+                    list(_LIGHTRICKS_ALL_ICLORA_FILENAMES),
                     {"default": "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors"},
                 ),
                 "ic_lora_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.05}),
                 "clip_name": (
-                    ["gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"],
+                    [
+                        "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+                        "gemma4_e2b_it_bf16.safetensors",
+                    ],
                     {"default": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"},
                 ),
                 "video_vae_name": (
@@ -13119,10 +13586,7 @@ class LTXICLoRALoaderModelOnly:
             loras = list(folder_paths.get_filename_list("loras"))
         except Exception:
             loras = []
-        for default_ltx_lora in (
-            "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
-            "ltx-2.3-22b-ic-lora-outpaint.safetensors",
-        ):
+        for default_ltx_lora in reversed(_LIGHTRICKS_ALL_ICLORA_FILENAMES):
             if default_ltx_lora not in loras:
                 loras.insert(0, default_ltx_lora)
         return {
