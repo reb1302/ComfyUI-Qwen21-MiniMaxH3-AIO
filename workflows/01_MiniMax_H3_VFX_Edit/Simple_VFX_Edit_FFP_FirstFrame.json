@@ -65,9 +65,9 @@
         "Node name for S&R": "PrimitiveStringMultiline"
       },
       "widgets_values": [
-        "Apply the visual changes from <Picture 1>"
+        "Replace the background and lighting to match the edited scene"
       ],
-      "title": "VFX Edit Instruction {a} (Add / Change / Replace / Remove)"
+      "title": "VFX Edit Instruction {a} (Mô tả rõ thay đổi trên First Frame)"
     },
     {
       "id": 3,
@@ -269,14 +269,16 @@
           "name": "width",
           "type": "INT",
           "links": [
-            12
+            12,
+            71
           ]
         },
         {
           "name": "height",
           "type": "INT",
           "links": [
-            14
+            14,
+            72
           ]
         },
         {
@@ -961,7 +963,7 @@
       "type": "PreviewImage",
       "pos": [
         1120,
-        1410
+        1680
       ],
       "size": [
         420,
@@ -1165,7 +1167,7 @@
       },
       "widgets_values": [
         "minimax_h3_vfx_edit_v1.0_r128_ffp.safetensors",
-        0.8
+        1.0
       ]
     },
     {
@@ -1507,7 +1509,7 @@
           "name": "image",
           "type": "IMAGE",
           "shape": 7,
-          "link": 54
+          "link": 75
         },
         {
           "name": "audio",
@@ -1945,10 +1947,10 @@
     {
       "id": 8,
       "type": "ComfySoftSwitchNode",
-      "title": "First Frame Guide Switch (False = Qwen 2.1 Auto-Edit, True = Custom LoadImage)",
+      "title": "First Frame Source Switch (False = Qwen 2.1 Auto-Edit, True = Custom LoadImage)",
       "pos": [
         1120,
-        1290
+        1280
       ],
       "size": [
         420,
@@ -1982,8 +1984,203 @@
           "name": "output",
           "type": "IMAGE",
           "links": [
+            70
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfySoftSwitchNode"
+      },
+      "widgets_values": [
+        false
+      ]
+    },
+    {
+      "id": 27,
+      "type": "ImageResizeKJv2",
+      "title": "Match First Frame to Video Size",
+      "pos": [
+        1120,
+        1410
+      ],
+      "size": [
+        420,
+        220
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 70
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 71
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 72
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
             38,
-            69
+            69,
+            73,
+            76
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageResizeKJv2"
+      },
+      "widgets_values": [
+        672,
+        384,
+        "lanczos",
+        "stretch",
+        "0, 0, 0",
+        "center",
+        2,
+        "cpu"
+      ]
+    },
+    {
+      "id": 41,
+      "type": "ReplaceImagesInBatch",
+      "title": "Inject Edited First Frame into Video Frame 0 (start_index=0)",
+      "pos": [
+        2340,
+        480
+      ],
+      "size": [
+        460,
+        120
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "original_images",
+          "type": "IMAGE",
+          "link": 54
+        },
+        {
+          "name": "replacement_images",
+          "type": "IMAGE",
+          "link": 73
+        },
+        {
+          "name": "original_masks",
+          "type": "MASK",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "replacement_masks",
+          "type": "MASK",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            74
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ReplaceImagesInBatch"
+      },
+      "widgets_values": [
+        0
+      ]
+    },
+    {
+      "id": 42,
+      "type": "ComfySoftSwitchNode",
+      "title": "Pure First-Frame Only? (False = V2V Motion + Edited Frame 0, True = Only Frame 0 I2V)",
+      "pos": [
+        2340,
+        660
+      ],
+      "size": [
+        460,
+        85
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "on_false",
+          "type": "IMAGE",
+          "link": 74
+        },
+        {
+          "name": "on_true",
+          "type": "IMAGE",
+          "link": 76
+        },
+        {
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "IMAGE",
+          "links": [
+            75
           ]
         }
       ],
@@ -1997,14 +2194,14 @@
     {
       "id": 9,
       "type": "MarkdownNote",
-      "title": "HƯỚNG DẪN FIRST-FRAME GUIDE (FFP - ĐA NĂNG)",
+      "title": "HƯỚNG DẪN FIRST-FRAME GUIDE (FFP - ĐÃ FIX LỖI GIỮ CỨNG VIDEO GỐC)",
       "pos": [
-        -430,
+        -450,
         80
       ],
       "size": [
-        460,
-        520
+        480,
+        640
       ],
       "flags": {},
       "order": 0,
@@ -2013,7 +2210,7 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "## 🎯 HƯỚNG DẪN SỬ DỤNG FIRST-FRAME GUIDE (FFP)\n\nWorkflow này **đã mở khóa hoàn toàn** (không còn hardcode Remove). Nhiệm vụ của nó là lấy **First Frame (<Picture 1>)** làm chuẩn để **Guide (lan truyền)** sang toàn bộ các frame của video.\n\n---\n\n### Cách 1: Dùng Qwen 2.1 tự sửa First Frame rồi Guide cả Video (Mặc định)\n1. Để công tắc **Node #8 (First Frame Guide Switch) = \false**.\n2. Nhập bất kỳ lệnh VFX nào vào **Node #2 (VFX Edit Instruction {a})**:\n   - **Thêm hiệu ứng / vật thể:** Add glowing fire on the sword / Add sunglasses to the person\n   - **Đổi trang phục / màu sắc / bối cảnh:** Change the jacket to red leather\n   - **Xóa vật thể:** Remove the boom microphone\n\n---\n\n### Cách 2: Đưa sẵn ảnh First Frame đã sửa từ bên ngoài vào để Guide cả Video\n1. Bấm **Ctrl + B** vào **Node #7 (Custom First Frame)** ở cuối cột 1 để bật node và tải ảnh First Frame của bạn lên.\n2. Bật công tắc **Node #8 (First Frame Guide Switch) = \true** *(Hệ thống sẽ tự động bỏ qua toàn bộ cụm Qwen 2.1 để tiết kiệm VRAM & thời gian)*.\n3. Ở **Node #2**, để nguyên câu mặc định: Apply the visual changes from <Picture 1> (hoặc mô tả ngắn thay đổi trên ảnh First Frame)."
+        "## 🎯 TẠI SAO TRƯỚC ĐÂY VIDEO RA Y HỆT VIDEO GỐC & ĐÃ SỬA GÌ?\n\n1. **Khôi phục `Node #41 (ReplaceImagesInBatch, index=0)`:**\n   - Bản cũ bị thiếu node này, làm **Frame 0 gốc chưa sửa** bị truyền thẳng vào `MiniMaxH3AddGuide (Node #44)` đè chết tấm First Frame mới!\n   - Hiện tại **Node #41** đã tự động **thay thế Frame 0 của chuỗi video bằng tấm First Frame đã sửa** trước khi vào `AddGuide`.\n2. **Tăng LoRA `minimax_h3_vfx_edit_v1.0_r128_ffp (Node #34)` lên `1.0`** (thay vì `0.8`).\n3. **Thêm công tắc `Node #42 (Pure First-Frame Only?)` ở cột 4:**\n   - **`false` (Mặc định - V2V VFX Edit):** Giữ chuyển động của chuỗi video gốc nhưng **bắt buộc lấy Frame 0 mới** để lan truyền sang cả video. *(Lưu ý: Ở chế độ này, **Node #2** phải ghi rõ lệnh thay đổi gì so với video gốc, ví dụ: `Add sunglasses to the man`, `Replace the background with a snowy forest`)*.\n   - **`true` (Chỉ neo đúng First Frame - I2V):** Ngắt toàn bộ các frame `1..N` của video gốc khỏi `AddGuide`, chỉ truyền **duy nhất tấm First Frame mới** vào `AddGuide` khi bạn đổi toàn bộ bố cục mà không muốn bị frame gốc giữ lại!"
       ],
       "color": "#2b4c3f",
       "bgcolor": "#1f362d"
@@ -2389,14 +2586,6 @@
       "CONDITIONING"
     ],
     [
-      54,
-      5,
-      0,
-      44,
-      4,
-      "IMAGE"
-    ],
-    [
       55,
       40,
       1,
@@ -2509,14 +2698,6 @@
       "IMAGE"
     ],
     [
-      38,
-      8,
-      0,
-      40,
-      3,
-      "IMAGE"
-    ],
-    [
       68,
       7,
       0,
@@ -2525,11 +2706,83 @@
       "IMAGE"
     ],
     [
-      69,
+      70,
       8,
+      0,
+      27,
+      0,
+      "IMAGE"
+    ],
+    [
+      71,
+      6,
+      0,
+      27,
+      2,
+      "INT"
+    ],
+    [
+      72,
+      6,
+      1,
+      27,
+      3,
+      "INT"
+    ],
+    [
+      38,
+      27,
+      0,
+      40,
+      3,
+      "IMAGE"
+    ],
+    [
+      69,
+      27,
       0,
       26,
       0,
+      "IMAGE"
+    ],
+    [
+      54,
+      5,
+      0,
+      41,
+      0,
+      "IMAGE"
+    ],
+    [
+      73,
+      27,
+      0,
+      41,
+      1,
+      "IMAGE"
+    ],
+    [
+      74,
+      41,
+      0,
+      42,
+      0,
+      "IMAGE"
+    ],
+    [
+      76,
+      27,
+      0,
+      42,
+      1,
+      "IMAGE"
+    ],
+    [
+      75,
+      42,
+      0,
+      44,
+      4,
       "IMAGE"
     ]
   ],
@@ -2554,7 +2807,7 @@
         600,
         -10,
         980,
-        1760
+        2020
       ],
       "color": "#8a5a44",
       "font_size": 24,
