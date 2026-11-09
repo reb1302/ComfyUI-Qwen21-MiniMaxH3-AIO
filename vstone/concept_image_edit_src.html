@@ -370,6 +370,10 @@ a.btn{color:inherit;text-decoration:none}
       </div>
       <div class="sheetslots swapslots" id="swapSlots"></div>
       <p class="envhint" id="swapHint"></p>
+      <textarea class="field" id="swapNote" placeholder="Yêu cầu thêm (tiếng Anh), không bắt buộc" aria-label="Yêu cầu thêm cho lượt đổi người"></textarea>
+      <div class="viewchips" id="swapNormRow" hidden>
+        <button class="viewchip" type="button" id="swapNorm" aria-pressed="true" title="Trước khi đổi, Qwen 2.1 vẽ lại ảnh nhân vật đứng thẳng, toàn thân, nhìn thẳng, tay buông xuôi, nền sáng trơn, để tư thế của ảnh nhân vật không lấn át tư thế trong cảnh">Chuẩn hoá ảnh nhân vật</button>
+      </div>
       <div class="swappick" id="swapPick" hidden>
         <div class="swappick-head"><span class="swapswatch" aria-hidden="true"></span><strong>Tô chọn người</strong><span>(không bắt buộc)</span></div>
         <p class="envhint">Cảnh đông người thì tô lên người cần thay. Không tô thì thay người chính trong cảnh.</p>
@@ -1272,6 +1276,8 @@ function renderPanel() {
       Rotate.slots.slice(1).filter(s => s.ref).forEach(slot => {
         slots.append(slotFigure(`image_${n++}`, slot.label, cv => paintRefThumb(cv, slot.ref)));
       });
+    } else if (pass.kind === 'norm_ref') {
+      slots.append(slotFigure('image_1', 'Ảnh nhân vật gốc', cv => paintRefThumb(cv, Swap.slots[1].ref)));
     } else if (pass.kind.startsWith('swap')) {
       const [shot, ref] = Swap.slots;
       slots.append(slotFigure('image_1', 'Ảnh cảnh', cv => paintRefThumb(cv, shot.ref)));
@@ -4262,6 +4268,13 @@ const SWAP_PROMPTS = {
   },
 };
 const SWAP_REF_LABEL = { head: 'Ảnh mặt', body: 'Ảnh nhân vật' };
+// Hướng dẫn body swap của tác giả BFS: ảnh nhân vật nên đúng kiểu đã huấn luyện (đứng thẳng, toàn thân, nhìn thẳng, nền sáng trơn,
+// chiếm gần hết khung vuông); ảnh khác kiểu thì chạy một lượt Qwen 2.1 không LoRA ở 1024x1024 để chuẩn hoá trước.
+// Câu prompt dưới đây do trang viết, tác giả không đưa câu mẫu.
+const SWAP_NORM_PROMPT = {
+  en: 'Show the same person from <image1> standing upright, full body from head to feet, facing the camera, arms relaxed down at the sides, neutral expression, centered on a plain light gray background and filling most of a square frame. Keep their face, hairstyle, skin tone, body shape and every piece of clothing and accessory exactly the same.',
+  vi: 'Vẽ lại đúng người trong <image1> đứng thẳng, toàn thân từ đầu đến chân, nhìn thẳng vào máy, tay buông xuôi, mặt bình thường, ở giữa nền xám nhạt trơn, chiếm gần hết khung vuông. Giữ nguyên mặt, kiểu tóc, màu da, dáng người và mọi món quần áo, phụ kiện.',
+};
 const SWAP_HINTS = {
   head: 'Thay cả đầu (gồm tóc) của người trong cảnh bằng người ở ảnh mặt. Giữ dáng, ánh sáng, nền. Hợp nhất khi cảnh có 1 người và mặt không quá nhỏ. Dùng LoRA BFS Head v1.1.',
   body: 'Thay cả người (mặt, tóc, dáng, quần áo) bằng nhân vật ở ảnh mẫu. Giữ dáng, khung hình, ánh sáng và nền của cảnh. Ảnh nhân vật nên toàn thân, chính diện, nền trơn. Dùng LoRA BFS Body Swap.',
@@ -4276,6 +4289,9 @@ const Swap = {
   hasMark: false,
   tool: null,
   size: 60,
+  note: '',
+  normalize: true,
+  norm: null,
 };
 const swapFit = { x: 0, y: 0, s: 1 };
 const swapVariant = () => (Swap.mode === 'head' ? 'head' : Swap.hasMark ? 'selective' : 'body');
@@ -4325,7 +4341,9 @@ function buildSwapGraph(variant, { scene, person, marked, text, seed }) {
   const fit = id => ({ class_type: 'ImageResizeKJv2', inputs: { image: [id, 0], width: ['12', 0], height: ['12', 1], upscale_method: 'lanczos', keep_proportion: 'resize', pad_color: '0, 0, 0', crop_position: 'center', divisible_by: 32, device: 'cpu' } });
   graph[12] = { class_type: 'ResolutionSelector', inputs: { aspect_ratio: '1:1 (Square)', megapixels: run.mp, multiple: 32 } };
   graph[10] = fit('4');
-  graph[11] = fit('20');
+  graph[11] = variant === 'body'
+    ? { class_type: 'ResizeImageMaskNode', inputs: { input: ['20', 0], resize_type: 'scale total pixels', 'resize_type.megapixels': 0.59, scale_method: 'lanczos' } }
+    : fit('20');
   encoder['images.image_1'] = ['10', 0];
   encoder['images.image_2'] = ['11', 0];
   let latent = ['7', 2];
@@ -4348,16 +4366,34 @@ async function requireSwapPacks() {
 }
 async function generateSwap() {
   const pass = S.passes.find(p => p.kind.startsWith('swap_'));
+  const norm = S.passes.find(p => p.kind === 'norm_ref');
   const variant = pass.kind.slice(5);
   const text = promptFor(pass);
+  const normText = norm && promptFor(norm);
+  const refImg = Swap.slots[1].ref;
   const scene = fitReference(Swap.slots[0].ref, SWAP_UPLOAD_MP);
-  const person = fitReference(Swap.slots[1].ref, SWAP_UPLOAD_MP);
   const marked = variant === 'selective' ? fitReference(swapMarked(), SWAP_UPLOAD_MP) : null;
   const stamp = Date.now().toString(36);
+  const label = (i, name) => (norm ? `Lượt ${i}/2: ${name}` : name);
   beginRun();
   try {
-    startPass(pass.name);
     if (variant !== 'selective') await requireSwapPacks();
+    let personSrc = swapPersonSource(variant);
+    if (norm) {
+      startPass(label(1, norm.name));
+      const refName = await uploadCanvas(fitReference(refImg, 2), `${stamp}_normref.png`);
+      run.promptId = await queueGraph(buildApiPrompt({ image1: refName, refs: [], text: normText, resolution: 0, seed: randomSeed(), lora: null, latent: { w: 1024, h: 1024 } }));
+      advanceJob('queue');
+      renderJob();
+      const done = await loadOutput(await waitForImage(run.promptId));
+      Swap.norm = { for: refImg, img: done.img, url: done.url };
+      personSrc = done.img;
+      syncSwap();
+      if (run.cancelled) throw new Error('Đã dừng.');
+      run.promptId = null;
+    }
+    startPass(label(2, pass.name));
+    const person = fitReference(personSrc, SWAP_UPLOAD_MP);
     const names = await uploadAll(marked ? [scene, person, marked] : [scene, person], `${stamp}_swap`);
     run.promptId = await queueGraph(buildSwapGraph(variant, { scene: names[0], person: names[1], marked: names[2], text, seed: randomSeed() }));
     advanceJob('queue');
@@ -4371,15 +4407,25 @@ async function generateSwap() {
     failRun(e);
   } finally {
     endRun();
+    renderPanel();
   }
 }
+// Ảnh nhân vật dùng cho lượt đổi người: bản đã chuẩn hoá nếu đang bật và đã có cho đúng ảnh này, không thì ảnh gốc.
+const swapNormReady = () => !!(Swap.norm && Swap.norm.for === Swap.slots[1].ref);
+const swapPersonSource = variant => (variant !== 'head' && Swap.normalize && swapNormReady() ? Swap.norm.img : Swap.slots[1].ref);
 function buildSwapPasses() {
   const [shot, ref] = Swap.slots;
   if (!shot.ref) return { passes: [], problems: [] };
   const variant = swapVariant();
   const problems = ref.ref ? [] : [{ brush: null, text: `Thêm ${SWAP_REF_LABEL[Swap.mode].toLowerCase()}` }];
   const name = { head: 'Đổi mặt', body: 'Thay nhân vật', selective: 'Thay người đã tô' }[variant];
-  return { passes: [{ kind: `swap_${variant}`, name, lines: [SWAP_PROMPTS[variant]], slots: [] }], problems };
+  const note = Swap.note.trim().replace(/\s+/g, ' ');
+  const lines = [SWAP_PROMPTS[variant]];
+  if (note) lines.push({ en: note, vi: `Yêu cầu thêm: ${note}` });
+  const passes = [];
+  if (ref.ref && variant !== 'head' && Swap.normalize && !swapNormReady()) passes.push({ kind: 'norm_ref', name: 'Chuẩn hoá ảnh nhân vật', lines: [SWAP_NORM_PROMPT], slots: [] });
+  passes.push({ kind: `swap_${variant}`, name, lines, slots: [] });
+  return { passes, problems };
 }
 // Lớp tô cùng cỡ ảnh cảnh. Đổi ảnh cảnh thì bỏ vùng tô cũ.
 function swapMark() {
@@ -4438,6 +4484,8 @@ function syncSwapMode() {
   const body = Swap.mode === 'body', shot = Swap.slots[0].ref;
   $('swapMode').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.mode === Swap.mode)));
   $('swapHint').textContent = SWAP_HINTS[Swap.mode];
+  $('swapNormRow').hidden = !body;
+  $('swapNorm').setAttribute('aria-pressed', String(Swap.normalize));
   $('swapPick').hidden = !body || !shot;
   Swap.tool = body && shot ? Swap.tool || 'paint' : null;
   $('swapTools').querySelectorAll('[data-tool]').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.tool === Swap.tool)));
@@ -4447,6 +4495,13 @@ function syncSwapMode() {
 }
 function syncSwap() {
   syncSlotBoxes('swapSlots', Swap.slots);
+  // Ô ảnh nhân vật hiện bản đã chuẩn hoá khi bản đó sẽ được dùng.
+  const wrap = document.querySelectorAll('#swapSlots .sheetwrap')[1];
+  if (wrap && Swap.slots[1].ref) {
+    const used = Swap.mode === 'body' && Swap.normalize && swapNormReady();
+    wrap.querySelector('img').src = used ? Swap.norm.url : Swap.slots[1].refUrl;
+    wrap.querySelector('.slotlabel').textContent = used ? `${Swap.slots[1].label} (đã chuẩn hoá)` : Swap.slots[1].label;
+  }
   swapMark();
   syncSwapMode();
 }
@@ -4460,6 +4515,12 @@ function buildSwapSlots() {
 }
 function buildSwapPanel() {
   buildSwapSlots();
+  $('swapNote').addEventListener('input', e => { Swap.note = e.target.value; renderPanel(); });
+  $('swapNorm').addEventListener('click', () => {
+    Swap.normalize = !Swap.normalize;
+    syncSwap();
+    renderPanel();
+  });
   $('swapMode').addEventListener('click', e => {
     const chip = e.target.closest('.viewchip');
     if (!chip || chip.dataset.mode === Swap.mode) return;
