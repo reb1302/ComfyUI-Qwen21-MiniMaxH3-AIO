@@ -77,6 +77,11 @@
       "folder": "loras"
     },
     {
+      "filename": "Qwenimag21_c2-st2000.safetensors",
+      "url": "https://huggingface.co/RunningHubAI/rh-qwen-image-2.1-lora-2104918997757157378/resolve/main/Qwenimag21_c2-st2000.safetensors",
+      "folder": "loras"
+    },
+    {
       "filename": "sam3.1_multiplex_fp16.safetensors",
       "url": "https://huggingface.co/Comfy-Org/sam3.1/resolve/main/checkpoints/sam3.1_multiplex_fp16.safetensors",
       "folder": "checkpoints"

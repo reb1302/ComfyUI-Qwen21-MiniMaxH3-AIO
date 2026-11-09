@@ -51,6 +51,14 @@ svg{display:block}
 .tilex svg{width:10px;height:10px}
 .tilex:hover{background:var(--paper);color:var(--paper-ink);border-color:var(--paper)}
 .tilewrap:hover .tilex,.tilewrap:focus-within .tilex,.tile[data-active="true"] + .tilex{display:grid}
+.ltile{position:relative;width:48px;height:48px;padding:3px;border:1px solid var(--line);border-radius:6px;background:repeating-conic-gradient(var(--raised) 0 25%,var(--surface) 0 50%) 0 0/10px 10px;cursor:pointer;display:grid;place-items:center}
+.ltile canvas{display:block;max-width:100%;max-height:100%}
+.ltile[data-active="true"]{box-shadow:0 0 0 2px var(--bench),0 0 0 4px var(--paper)}
+.ltile[data-active="true"] + .tilex{display:grid}
+.floatbar{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:calc(100% - 20px);padding:6px 8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px #00000080}
+.floatbar .viewchip{padding:3px 10px;font-size:12px}
+.floatbar .viewchip:disabled{opacity:.45;cursor:default}
+.floatbar > span{padding:0 4px;font-size:12px;color:var(--ink-2)}
 .qstate{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
 .qdot{width:8px;height:8px;flex:none;border:1.5px solid var(--ink-2);border-radius:50%}
 .qstate[data-busy="true"]{color:var(--ink)}
@@ -303,6 +311,10 @@ a.btn{color:inherit;text-decoration:none}
       <hr>
       <button class="env" id="envBtn" type="button" title="Môi trường: ảnh cho model hiểu cảnh khi kéo rộng" aria-label="Môi trường" aria-expanded="false" aria-controls="envPop"><span data-icon="mountain"></span><img id="envThumb" alt="" hidden><span class="envcount" id="envCount" hidden></span></button>
       <hr>
+      <button class="ibtn" id="selectTool" type="button" title="Chọn vật bằng SAM 3.1: kéo khung hoặc bấm lên vật" aria-label="Chọn vật" aria-pressed="false" data-icon="select"></button>
+      <div class="tiles" id="layerTiles"></div>
+      <label class="ibtn" title="Thêm layer từ ảnh khác"><span data-icon="layerAdd"></span><input class="sr" id="layerFile" type="file" accept="image/*" aria-label="Thêm layer từ ảnh khác"></label>
+      <hr>
       <button class="ibtn" id="erase" type="button" title="Tẩy nét (E)" aria-label="Tẩy nét" aria-pressed="false" data-icon="eraser"></button>
       <button class="ibtn" id="undo" type="button" title="Hoàn tác (Ctrl+Z)" aria-label="Hoàn tác" data-icon="undo"></button>
       <button class="ibtn" id="redo" type="button" title="Làm lại (Ctrl+Y)" aria-label="Làm lại" data-icon="redo"></button>
@@ -444,6 +456,26 @@ a.btn{color:inherit;text-decoration:none}
         <input class="sr" id="baseFile2" type="file" accept="image/*" aria-label="Chọn ảnh gốc">
       </label>
       <div class="status" id="status" role="status"></div>
+      <div class="capture-hint" id="selHint" hidden>
+        <span>Kéo khung quanh vật, hoặc bấm lên vật. Shift + bấm để bỏ phần thừa.</span>
+        <button id="selExit" type="button">Xong</button>
+      </div>
+      <div class="floatbar" id="selBar" hidden>
+        <span id="selText">Đã chọn vật</span>
+        <button class="viewchip" type="button" id="selRemove" title="Biến vùng chọn thành vùng tô của một cọ Xoá">Xoá vật</button>
+        <button class="viewchip" type="button" id="selLayer" title="Cắt vật ra thành layer để dời, biến dạng, uốn">Tách thành layer</button>
+        <button class="viewchip" type="button" id="selClear">Bỏ chọn</button>
+      </div>
+      <div class="floatbar" id="layerBar" hidden>
+        <div class="viewchips" id="layerMode" role="group" aria-label="Cách chỉnh layer">
+          <button class="viewchip" type="button" data-mode="transform" aria-pressed="true" title="Kéo để dời, kéo góc để bẻ phối cảnh, Shift + kéo góc để đổi cỡ, kéo nút tròn để xoay">Biến dạng</button>
+          <button class="viewchip" type="button" data-mode="warp" aria-pressed="false" title="Kéo 9 điểm để uốn layer">Uốn</button>
+        </div>
+        <button class="viewchip" type="button" id="layerFlip">Lật ngang</button>
+        <button class="viewchip" type="button" id="layerCut" title="Tách nền layer bằng BiRefNet">Tách nền</button>
+        <button class="viewchip" type="button" id="blendLora" aria-pressed="false" title="LoRA Qwen-image-2.1 光影溶图 của RunningHub, thử nghiệm">LoRA ánh sáng</button>
+        <span>Bấm Gen để ghép vào ảnh</span>
+      </div>
       <div class="capture-hint" id="captureHint" hidden>
         <span>Kéo khung quanh vùng muốn clone</span>
         <button id="captureCancel" type="button">Huỷ</button>
@@ -567,6 +599,8 @@ const ICONS = {
   lines: 'M4 5h12M4 10h12M4 15h8',
   copy: 'M7 7h9v10H7zM4 13V3h9',
   check: 'M4 10l4 4 8-9',
+  select: 'M3 6V3h3M9 3h2M14 3h3v3M3 9v2M3 14v3h3M10 10l7 3-3 1.2-1.2 3z',
+  layerAdd: 'M3 8l6.5-3.5L16 8l-6.5 3.5zM3 12l6.5 3.5 2.5-1.300M15.5 12.500v5M13 15h5',
 };
 const icon = name => `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => { el.innerHTML = icon(el.dataset.icon); });
@@ -671,7 +705,7 @@ function buildEditPass(marks, problems) {
   return { kind: 'edit', name: 'Sửa', lines, slots, brushes };
 }
 
-function buildPasses({ marks, expanded, scene, envCount, expandLora }) {
+function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, blendLora }) {
   const problems = [];
   const passes = [];
   if (expanded) {
@@ -685,6 +719,7 @@ function buildPasses({ marks, expanded, scene, envCount, expandLora }) {
     const loraNote = expandLora === 1 ? '' : expandLora ? ` (LoRA ${String(expandLora).replace('.', ',')})` : ' (không LoRA)';
     passes.push({ kind: 'expand', name: `Kéo rộng${loraNote}`, lines: out, slots: [] });
   }
+  if (layers && layers.length) passes.push(buildMergePass(layers, blendLora));
   const edit = buildEditPass(marks.filter(m => m.cover), problems);
   if (edit) passes.push(edit);
   return { passes, problems };
@@ -709,21 +744,30 @@ const S = {
   padsPainted: false, capture: null, baseFromResult: false, isSample: false, tab: 'edit',
   scene: '',
   expandLora: 1,
+  tool: null,
+  blendLora: false,
   env: [0, 1, 2, 3].map(() => ({ ref: null, refUrl: '' })),
   overrides: { expand: null, edit: null },
 };
 const V = { scale: 1, x: 0, y: 0 };
+// Vùng chọn của SAM 3.1 và các layer, toạ độ theo ảnh gốc (không tính vùng nới).
+const Sel = { box: null, points: [], mask: null, tint: null, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
+const Layers = { list: [], active: null, mode: 'transform', nextId: 1, busy: false };
 const W = () => S.w + S.pads.left + S.pads.right;
 const H = () => S.h + S.pads.top + S.pads.bottom;
 const isExpanded = () => S.pads.left + S.pads.right + S.pads.top + S.pads.bottom > 0;
 const needsOutpaint = () => isExpanded() && !S.padsPainted;
 const brushOf = id => S.brushes.find(b => b.id === id);
-const canPaint = () => !!S.base && (S.erase || !!brushOf(S.active));
-const viewCursor = () => (S.capture !== null ? 'crosshair' : canPaint() ? 'none' : 'default');
+const canPaint = () => !!S.base && !S.tool && (S.erase || !!brushOf(S.active));
+const viewCursor = () => (S.capture !== null || S.tool === 'select' ? 'crosshair' : S.tool === 'layer' ? 'move' : canPaint() ? 'none' : 'default');
 
 function drawStroke(g, s) {
   const b = brushOf(s.brush);
   if (!s.erase && !b) return;
+  if (s.mask) {
+    drawMaskStroke(g, s, b);
+    return;
+  }
   g.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
   g.strokeStyle = s.erase ? '#000' : PAINT[b.color].hex;
   g.lineWidth = s.size;
@@ -817,6 +861,7 @@ function renderView() {
   g.globalAlpha = 0.5;
   g.drawImage(layer, 0, 0);
   g.globalAlpha = 1;
+  drawOverlays(g);
 }
 
 function place() {
@@ -920,6 +965,11 @@ function renderTiles() {
 function selectBrush(id) {
   S.active = id;
   S.erase = false;
+  if (S.tool) {
+    S.tool = null;
+    clearSelection();
+    syncToolUi();
+  }
   syncTools();
 }
 function syncTools() {
@@ -1120,7 +1170,7 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.tab === 'upscale' ? buildUpscalePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.tab === 'upscale' ? buildUpscalePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora, layers: Layers.list, blendLora: S.blendLora }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
@@ -1181,6 +1231,8 @@ function renderPanel() {
       let n = 2;
       if (pass.kind === 'swap_selective') slots.append(slotFigure(`image_${n++}`, 'Ảnh cảnh, người cần thay phủ hồng', cv => paintRefThumb(cv, swapMarked())));
       if (ref.ref) slots.append(slotFigure(`image_${n}`, SWAP_REF_LABEL[Swap.mode], cv => paintRefThumb(cv, ref.ref)));
+    } else if (pass.kind === 'merge') {
+      slots.append(slotFigure('image_1', 'Cả shot với layer đã đặt: vùng lấp viền đỏ, vùng ghép viền xanh', cv => paintMergeThumb(cv)));
     } else if (pass.kind === 'upscale') {
       slots.append(slotFigure('image_1', 'Từng ô khoảng 2 MP của ảnh đã phóng to, vẽ lại lần lượt', cv => paintRefThumb(cv, Up.slots[0].ref)));
     } else if (pass.kind === 'expand') {
@@ -1348,6 +1400,10 @@ function moveBrushCursor(e) {
 }
 view.addEventListener('pointerdown', e => {
   if (e.button !== 0 || !S.base) return;
+  if (S.tool) {
+    toolDown(e);
+    return;
+  }
   if (S.capture !== null) {
     view.setPointerCapture(e.pointerId);
     capDrag = toImage(e);
@@ -1369,6 +1425,10 @@ view.addEventListener('pointerdown', e => {
   schedule();
 });
 view.addEventListener('pointermove', e => {
+  if (S.tool) {
+    toolMove(e);
+    return;
+  }
   moveBrushCursor(e);
   if (capDrag) drawCapBox(toImage(e));
   if (!live) return;
@@ -1387,16 +1447,779 @@ const endStroke = () => {
   afterChange();
 };
 view.addEventListener('pointerup', e => {
+  if (S.tool || toolDrag) {
+    toolUp(e);
+    return;
+  }
   if (capDrag) finishCapture(toImage(e));
   endStroke();
 });
 view.addEventListener('pointercancel', () => {
+  toolDrag = null;
   capDrag = null;
   $('capbox').hidden = true;
   endStroke();
 });
 view.addEventListener('pointerleave', () => { if (!live) brushcur.hidden = true; });
 
+
+// ---------- Chọn vật bằng SAM 3.1 và layer ----------
+// SAM chạy bằng node SAM3_Detect có sẵn trong ComfyUI 0.43, model như template utility_image_segment_sam3.
+const SAM_CKPT = 'sam3.1_multiplex_fp16.safetensors';
+const SAM_UPLOAD_MP = 2;
+const SEL_COLOR = '#34D3FF';
+// LoRA Qwen-image-2.1 光影溶图 của RunningHub (tác giả 浩的AI日常), thử nghiệm: trang của LoRA không ghi cách đưa ảnh vào.
+const BLEND_LORA = 'Qwenimag21_c2-st2000.safetensors';
+const MERGE_PROMPTS = {
+  hole: { en: 'Fill the gray area inside the red outline in <image1> with the surrounding background, as if nothing was ever there.', vi: 'Lấp vùng xám trong viền đỏ trên <image1> bằng nền xung quanh, như chưa từng có gì ở đó.' },
+  blend: { en: 'Blend what is inside the blue outline into <image1>: match the lighting, colors, shadows and perspective of the scene and add a natural contact shadow, keeping its shape and details.', vi: 'Hoà thứ trong viền xanh vào <image1>: khớp ánh sáng, màu, bóng đổ và phối cảnh của cảnh, thêm bóng tiếp xúc tự nhiên, giữ dáng và chi tiết của nó.' },
+  lora: { en: 'pengyu, Apply consistent lighting to the product or object, enhance specular highlights, front-back spatial relationship, add natural contact shadow, and blend it seamlessly into the background.', vi: 'pengyu (từ khoá của LoRA), prompt mẫu của tác giả: ánh sáng đồng bộ cho vật, tăng ánh phản chiếu, đúng quan hệ trước sau, thêm bóng tiếp xúc, hoà liền vào nền.' },
+  where: { en: 'The object is inside the blue outline in <image1>.', vi: 'Vật nằm trong viền xanh trên <image1>.' },
+  finish: { en: 'Remove the outlines.', vi: 'Xoá các viền đi.' },
+};
+function buildMergePass(layers, blendLora) {
+  const lines = [];
+  if (layers.some(L => L.hole)) lines.push(MERGE_PROMPTS.hole);
+  if (blendLora) lines.push(MERGE_PROMPTS.lora, MERGE_PROMPTS.where);
+  else lines.push(MERGE_PROMPTS.blend);
+  lines.push(MERGE_PROMPTS.finish, PROMPTS.keep);
+  return { kind: 'merge', name: blendLora ? 'Ghép layer (LoRA ánh sáng)' : 'Ghép layer', lines, slots: [] };
+}
+
+// Ánh xạ ô vuông đơn vị lên tứ giác 4 góc (phối cảnh), hoặc qua lưới 3x3 khi uốn.
+function quadMap(q) {
+  const [p0, p1, p2, p3] = q;
+  const dx1 = p1.x - p2.x, dx2 = p3.x - p2.x, dx3 = p0.x - p1.x + p2.x - p3.x;
+  const dy1 = p1.y - p2.y, dy2 = p3.y - p2.y, dy3 = p0.y - p1.y + p2.y - p3.y;
+  let g = 0, h = 0;
+  if (Math.abs(dx3) > 1e-9 || Math.abs(dy3) > 1e-9) {
+    const den = dx1 * dy2 - dx2 * dy1;
+    g = (dx3 * dy2 - dx2 * dy3) / den;
+    h = (dx1 * dy3 - dx3 * dy1) / den;
+  }
+  const a = p1.x - p0.x + g * p1.x, b = p3.x - p0.x + h * p3.x, d = p1.y - p0.y + g * p1.y, e = p3.y - p0.y + h * p3.y;
+  return (u, v) => {
+    const w = g * u + h * v + 1;
+    return { x: (a * u + b * v + p0.x) / w, y: (d * u + e * v + p0.y) / w };
+  };
+}
+const quadWeights = t => [2 * (t - 0.5) * (t - 1), -4 * t * (t - 1), 2 * t * (t - 0.5)];
+function gridMap(G) {
+  return (u, v) => {
+    const a = quadWeights(u), b = quadWeights(v);
+    let x = 0, y = 0;
+    for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) {
+      const w = a[i] * b[j];
+      x += w * G[j * 3 + i].x;
+      y += w * G[j * 3 + i].y;
+    }
+    return { x, y };
+  };
+}
+const layerMap = L => (L.grid ? gridMap(L.grid) : quadMap(L.corners));
+const activeLayer = () => Layers.list.find(L => L.id === Layers.active) || null;
+
+// Vẽ layer bằng lưới tam giác: mỗi tam giác chép ảnh layer qua một phép biến đổi affine. pad nới tam giác để không hở đường nối.
+function drawTriangle(g, img, s0, s1, s2, d0, d1, d2, pad) {
+  const cx = (d0.x + d1.x + d2.x) / 3, cy = (d0.y + d1.y + d2.y) / 3;
+  const grow = p => {
+    const l = Math.hypot(p.x - cx, p.y - cy) || 1;
+    return { x: p.x + (p.x - cx) / l * pad, y: p.y + (p.y - cy) / l * pad };
+  };
+  const [e0, e1, e2] = [grow(d0), grow(d1), grow(d2)];
+  const ux = s1.x - s0.x, uy = s1.y - s0.y, vx = s2.x - s0.x, vy = s2.y - s0.y;
+  const det = ux * vy - vx * uy;
+  if (Math.abs(det) < 1e-9) return;
+  const px = d1.x - d0.x, py = d1.y - d0.y, qx = d2.x - d0.x, qy = d2.y - d0.y;
+  const a = (px * vy - qx * uy) / det, c = (qx * ux - px * vx) / det;
+  const b = (py * vy - qy * uy) / det, d = (qy * ux - py * vx) / det;
+  g.save();
+  g.beginPath();
+  g.moveTo(e0.x, e0.y);
+  g.lineTo(e1.x, e1.y);
+  g.lineTo(e2.x, e2.y);
+  g.closePath();
+  g.clip();
+  g.transform(a, b, c, d, d0.x - a * s0.x - c * s0.y, d0.y - b * s0.x - d * s0.y);
+  // Chỉ chép phần ảnh quanh tam giác, đỡ tốn khi layer lớn.
+  const bx = Math.max(0, Math.floor(Math.min(s0.x, s1.x, s2.x)) - 2), by = Math.max(0, Math.floor(Math.min(s0.y, s1.y, s2.y)) - 2);
+  const bw = Math.min(img.width, Math.ceil(Math.max(s0.x, s1.x, s2.x)) + 2) - bx, bh = Math.min(img.height, Math.ceil(Math.max(s0.y, s1.y, s2.y)) + 2) - by;
+  if (bw > 0 && bh > 0) g.drawImage(img, bx, by, bw, bh, bx, by, bw, bh);
+  g.restore();
+}
+function drawLayer(g, L, n, pad) {
+  const map = layerMap(L), sw = L.src.width, sh = L.src.height;
+  const P = [];
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) P.push(map(i / n, j / n));
+  const S_ = (i, j) => ({ x: i / n * sw, y: j / n * sh });
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const d00 = P[j * (n + 1) + i], d10 = P[j * (n + 1) + i + 1], d01 = P[(j + 1) * (n + 1) + i], d11 = P[(j + 1) * (n + 1) + i + 1];
+    drawTriangle(g, L.src, S_(i, j), S_(i + 1, j), S_(i + 1, j + 1), d00, d10, d11, pad);
+    drawTriangle(g, L.src, S_(i, j), S_(i + 1, j + 1), S_(i, j + 1), d00, d11, d01, pad);
+  }
+}
+function layerOutline(L) {
+  const map = layerMap(L), pts = [];
+  for (let k = 0; k < 16; k++) pts.push(map(k / 16, 0));
+  for (let k = 0; k < 16; k++) pts.push(map(1, k / 16));
+  for (let k = 16; k > 0; k--) pts.push(map(k / 16, 1));
+  for (let k = 16; k > 0; k--) pts.push(map(0, k / 16));
+  return pts;
+}
+function insidePolygon(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+function layerCenter(L) {
+  const m = layerMap(L);
+  return m(0.5, 0.5);
+}
+function layerHandles(L) {
+  const m = layerMap(L), px = 1 / V.scale;
+  if (Layers.mode === 'warp') {
+    const pts = L.grid || [0, 0.5, 1].flatMap(v => [0, 0.5, 1].map(u => m(u, v)));
+    return pts.map((p, index) => ({ kind: 'grid', index, p }));
+  }
+  const corners = [m(0, 0), m(1, 0), m(1, 1), m(0, 1)].map((p, index) => ({ kind: 'corner', index, p }));
+  const top = m(0.5, 0), c = layerCenter(L), l = Math.hypot(top.x - c.x, top.y - c.y) || 1;
+  const rot = { kind: 'rotate', index: 0, p: { x: top.x + (top.x - c.x) / l * 28 * px, y: top.y + (top.y - c.y) / l * 28 * px }, from: top };
+  return [rot, ...corners];
+}
+function hitHandle(L, p) {
+  const r = 10 / V.scale;
+  return layerHandles(L).find(h => Math.hypot(h.p.x - p.x, h.p.y - p.y) <= r) || null;
+}
+function layerAt(p) {
+  for (let i = Layers.list.length - 1; i >= 0; i--) if (insidePolygon(p, layerOutline(Layers.list[i]))) return Layers.list[i];
+  return null;
+}
+function holeGray(L) {
+  if (!L._gray) {
+    const c = newCanvas(L.hole.width, L.hole.height), g = c.getContext('2d');
+    stampMask(g, L.hole, 3);
+    g.globalCompositeOperation = 'source-in';
+    g.fillStyle = PAD_GRAY;
+    g.fillRect(0, 0, c.width, c.height);
+    L._gray = c;
+  }
+  return L._gray;
+}
+function tintMask(mask, hex) {
+  const c = newCanvas(mask.width, mask.height), g = c.getContext('2d');
+  g.drawImage(mask, 0, 0);
+  g.globalCompositeOperation = 'source-in';
+  g.fillStyle = hex;
+  g.fillRect(0, 0, c.width, c.height);
+  return c;
+}
+const strokeTints = new WeakMap();
+function drawMaskStroke(g, s, b) {
+  if (s.erase) {
+    g.globalCompositeOperation = 'destination-out';
+    g.drawImage(s.mask, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    return;
+  }
+  const hex = PAINT[b.color].hex;
+  let t = strokeTints.get(s.mask);
+  if (!t || t.hex !== hex) {
+    t = { hex, canvas: tintMask(s.mask, hex) };
+    strokeTints.set(s.mask, t);
+  }
+  g.drawImage(t.canvas, 0, 0);
+}
+
+// Vẽ lên khung xem: vùng xám sẽ lấp, các layer, vùng chọn, khung chỉnh của layer đang chọn.
+let toolDrag = null;
+function drawOverlays(g) {
+  const selecting = S.tool === 'select';
+  if (!Layers.list.length && !selecting) return;
+  const px = 1 / V.scale;
+  g.save();
+  g.translate(S.pads.left, S.pads.top);
+  for (const L of Layers.list) if (L.hole) g.drawImage(holeGray(L), 0, 0);
+  for (const L of Layers.list) drawLayer(g, L, 12, px);
+  if (selecting) {
+    if (Sel.tint) {
+      g.globalAlpha = 0.45;
+      g.drawImage(Sel.tint, 0, 0);
+      g.globalAlpha = 1;
+    }
+    const box = toolDrag && toolDrag.kind === 'select' && toolDrag.moved ? normBox(toolDrag.start, toolDrag.at) : Sel.busy ? Sel.box : null;
+    if (box) {
+      g.lineWidth = 1.5 * px;
+      g.setLineDash([6 * px, 4 * px]);
+      g.strokeStyle = '#000';
+      g.strokeRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+      g.lineDashOffset = 5 * px;
+      g.strokeStyle = '#fff';
+      g.strokeRect(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+      g.setLineDash([]);
+    }
+    for (const p of Sel.points) {
+      g.beginPath();
+      g.arc(p.x, p.y, 6 * px, 0, Math.PI * 2);
+      g.fillStyle = p.neg ? '#FF4D4D' : '#3DDC84';
+      g.fill();
+      g.lineWidth = 1.5 * px;
+      g.strokeStyle = '#fff';
+      g.stroke();
+    }
+  }
+  const L = S.tool === 'layer' && activeLayer();
+  if (L) {
+    const outline = layerOutline(L);
+    const path = () => { g.beginPath(); outline.forEach((p, i) => (i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y))); g.closePath(); };
+    path();
+    g.lineWidth = 3 * px;
+    g.strokeStyle = 'rgba(0,0,0,.6)';
+    g.stroke();
+    g.lineWidth = 1.2 * px;
+    g.strokeStyle = '#fff';
+    g.stroke();
+    const m = layerMap(L);
+    if (Layers.mode === 'warp') {
+      g.lineWidth = 1 * px;
+      g.strokeStyle = 'rgba(255,255,255,.7)';
+      for (const t of [0.5]) {
+        g.beginPath();
+        for (let k = 0; k <= 16; k++) { const p = m(t, k / 16); if (k) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }
+        g.stroke();
+        g.beginPath();
+        for (let k = 0; k <= 16; k++) { const p = m(k / 16, t); if (k) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }
+        g.stroke();
+      }
+    }
+    for (const h of layerHandles(L)) {
+      if (h.kind === 'rotate') {
+        g.beginPath();
+        g.moveTo(h.from.x, h.from.y);
+        g.lineTo(h.p.x, h.p.y);
+        g.lineWidth = 1.2 * px;
+        g.strokeStyle = '#fff';
+        g.stroke();
+        g.beginPath();
+        g.arc(h.p.x, h.p.y, 6 * px, 0, Math.PI * 2);
+      } else if (h.kind === 'grid') {
+        g.beginPath();
+        g.arc(h.p.x, h.p.y, 5.5 * px, 0, Math.PI * 2);
+      } else {
+        g.beginPath();
+        g.rect(h.p.x - 5 * px, h.p.y - 5 * px, 10 * px, 10 * px);
+      }
+      g.fillStyle = '#fff';
+      g.fill();
+      g.lineWidth = 1.5 * px;
+      g.strokeStyle = '#111';
+      g.stroke();
+    }
+  }
+  g.restore();
+}
+
+function normBox(a, b) {
+  return { x0: Math.max(0, Math.min(a.x, b.x)), y0: Math.max(0, Math.min(a.y, b.y)), x1: Math.min(S.w, Math.max(a.x, b.x)), y1: Math.min(S.h, Math.max(a.y, b.y)) };
+}
+function clonePts(L) {
+  return { corners: L.corners.map(q => ({ ...q })), grid: L.grid && L.grid.map(q => ({ ...q })) };
+}
+function applyLayerDrag(d, p, shift) {
+  const L = d.layer, src = d.orig, dx = p.x - d.start.x, dy = p.y - d.start.y;
+  const pts = src.grid || src.corners;
+  const set = arr => { if (src.grid) L.grid = arr; else L.corners = arr; };
+  if (d.kind === 'move') {
+    set(pts.map(q => ({ x: q.x + dx, y: q.y + dy })));
+  } else if (d.kind === 'rotate' || (d.kind === 'corner' && shift)) {
+    const c = d.center;
+    if (d.kind === 'rotate') {
+      const a = Math.atan2(p.y - c.y, p.x - c.x) - Math.atan2(d.start.y - c.y, d.start.x - c.x);
+      const cos = Math.cos(a), sin = Math.sin(a);
+      set(pts.map(q => ({ x: c.x + (q.x - c.x) * cos - (q.y - c.y) * sin, y: c.y + (q.x - c.x) * sin + (q.y - c.y) * cos })));
+    } else {
+      const f = Math.max(0.05, Math.hypot(p.x - c.x, p.y - c.y) / Math.max(1e-6, Math.hypot(d.start.x - c.x, d.start.y - c.y)));
+      set(pts.map(q => ({ x: c.x + (q.x - c.x) * f, y: c.y + (q.y - c.y) * f })));
+    }
+  } else {
+    const index = d.kind === 'corner' && src.grid ? [0, 2, 8, 6][d.index] : d.index;
+    set(pts.map((q, i) => (i === index ? { x: q.x + dx, y: q.y + dy } : { ...q })));
+  }
+}
+function toolDown(e) {
+  const p = toImage(e);
+  view.setPointerCapture(e.pointerId);
+  if (S.tool === 'select') {
+    if (!Sel.busy) toolDrag = { kind: 'select', start: p, at: p, moved: false, shift: e.shiftKey };
+    return;
+  }
+  const L = activeLayer();
+  const hit = L && hitHandle(L, p);
+  const under = hit ? L : layerAt(p);
+  if (!under) {
+    Layers.active = null;
+    S.tool = null;
+    syncToolUi();
+    return;
+  }
+  if (under.id !== Layers.active) {
+    Layers.active = under.id;
+    renderLayerTiles();
+  }
+  toolDrag = { kind: hit ? hit.kind : 'move', index: hit ? hit.index : 0, start: p, layer: under, orig: clonePts(under), center: layerCenter(under) };
+  schedule();
+}
+function toolMove(e) {
+  if (!toolDrag) return;
+  const p = toImage(e);
+  if (toolDrag.kind === 'select') {
+    toolDrag.at = p;
+    toolDrag.moved = toolDrag.moved || Math.hypot(p.x - toolDrag.start.x, p.y - toolDrag.start.y) * V.scale > 4;
+  } else {
+    applyLayerDrag(toolDrag, p, e.shiftKey);
+  }
+  schedule();
+}
+function toolUp(e) {
+  const d = toolDrag;
+  toolDrag = null;
+  if (!d) return;
+  if (d.kind === 'select') {
+    const p = toImage(e);
+    if (d.moved) {
+      Sel.box = normBox(d.start, p);
+      Sel.points = [];
+    } else {
+      Sel.box = null;
+      Sel.points = [...Sel.points, { x: p.x, y: p.y, neg: d.shift }];
+    }
+    requestSelection();
+  } else {
+    renderPanel();
+  }
+  schedule();
+}
+
+// SAM 3.1: kéo khung thì tìm vật trong khung, bấm thì tìm theo điểm (Shift + bấm là điểm bỏ).
+function buildSamGraph({ image, box, points }) {
+  const graph = {
+    1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: SAM_CKPT } },
+    4: { class_type: 'LoadImage', inputs: { image } },
+    5: { class_type: 'SAM3_Detect', inputs: { model: ['1', 0], image: ['4', 0], threshold: 0.5, refine_iterations: 2, individual_masks: false } },
+    8: { class_type: 'MaskToImage', inputs: { mask: ['5', 0] } },
+    6: { class_type: 'PreviewImage', inputs: { images: ['8', 0] } },
+  };
+  const detect = graph[5].inputs;
+  if (box) {
+    graph[2] = { class_type: 'PrimitiveBoundingBox', inputs: box };
+    detect.bboxes = ['2', 0];
+  }
+  const pos = points.filter(p => !p.neg).map(p => ({ x: p.x, y: p.y }));
+  const neg = points.filter(p => p.neg).map(p => ({ x: p.x, y: p.y }));
+  if (pos.length) {
+    graph[3] = { class_type: 'PrimitiveString', inputs: { value: JSON.stringify(pos) } };
+    detect.positive_coords = ['3', 0];
+  }
+  if (neg.length) {
+    graph[7] = { class_type: 'PrimitiveString', inputs: { value: JSON.stringify(neg) } };
+    detect.negative_coords = ['7', 0];
+  }
+  return graph;
+}
+// Việc nhỏ chạy riêng, không dùng nút Gen: chờ kết quả của node 6.
+async function waitHelper(promptId) {
+  for (let i = 0; i < 600; i++) {
+    const res = await fetch(`/api/history/${promptId}`);
+    const entry = res.ok ? (await res.json())[promptId] : null;
+    if (entry) {
+      const status = entry.status || {};
+      if (status.status_str === 'error') {
+        const failed = (status.messages || []).find(m => m[0] === 'execution_error');
+        throw new Error(failed ? `${failed[1].node_type}: ${failed[1].exception_message}` : 'ComfyUI chạy lỗi.');
+      }
+      const images = ((entry.outputs || {})['6'] || {}).images;
+      if (images && images[0]) return images[0];
+      if (status.completed) throw new Error('ComfyUI chạy xong nhưng không trả về ảnh.');
+    }
+    await new Promise(resolve => setTimeout(resolve, 600));
+  }
+  throw new Error('Chờ ComfyUI quá lâu, hàng đợi đang dài.');
+}
+async function requireSam() {
+  if (Sel.ready) return;
+  const read = name => fetch(`/api/object_info/${name}`).then(r => (r.ok ? r.json() : {}), () => ({}));
+  const [detect, ckpt] = await Promise.all([read('SAM3_Detect'), read('CheckpointLoaderSimple')]);
+  if (!detect.SAM3_Detect) throw new Error('ComfyUI này chưa có node SAM3_Detect (cần ComfyUI 0.43).');
+  const names = ckpt.CheckpointLoaderSimple ? ckpt.CheckpointLoaderSimple.input.required.ckpt_name[0] : [];
+  if (!names.includes(SAM_CKPT)) throw new Error(`ComfyUI chưa có model ${SAM_CKPT}. Cloud Sync tải model trong nền, chờ tải xong rồi chọn lại.`);
+  Sel.ready = true;
+}
+function maskFromImage(img, w, h) {
+  const c = newCanvas(w, h), g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(img, 0, 0, w, h);
+  const px = g.getImageData(0, 0, w, h);
+  for (let i = 0; i < px.data.length; i += 4) {
+    const on = px.data[i] > 127;
+    px.data[i] = px.data[i + 1] = px.data[i + 2] = 255;
+    px.data[i + 3] = on ? 255 : 0;
+  }
+  g.putImageData(px, 0, 0);
+  return c;
+}
+function maskBounds(mask) {
+  const w = mask.width, h = mask.height;
+  const data = mask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (data[(y * w + x) * 4 + 3] > 127) {
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+// Bản xem trước không có ComfyUI: vùng chọn giả là hình elip trong khung, hoặc hình tròn quanh các điểm.
+function fakeSamMask() {
+  const c = newCanvas(S.w, S.h), g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  if (Sel.box) {
+    const b = Sel.box;
+    g.beginPath();
+    g.ellipse((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, Math.max(1, (b.x1 - b.x0) / 2 * 0.9), Math.max(1, (b.y1 - b.y0) / 2 * 0.9), 0, 0, Math.PI * 2);
+    g.fill();
+  }
+  const r = Math.min(S.w, S.h) * 0.08;
+  for (const p of Sel.points) {
+    g.globalCompositeOperation = p.neg ? 'destination-out' : 'source-over';
+    g.beginPath();
+    g.arc(p.x, p.y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  return c;
+}
+async function samMask() {
+  await requireSam();
+  if (Sel.upload.for !== S.base) {
+    const small = fitReference(S.base, SAM_UPLOAD_MP);
+    Sel.upload = { for: S.base, name: await uploadCanvas(small, `${Date.now().toString(36)}_sam.png`), k: small.width / S.w };
+  }
+  const k = Sel.upload.k;
+  const box = Sel.box && { x: Math.round(Sel.box.x0 * k), y: Math.round(Sel.box.y0 * k), width: Math.max(1, Math.round((Sel.box.x1 - Sel.box.x0) * k)), height: Math.max(1, Math.round((Sel.box.y1 - Sel.box.y0) * k)) };
+  const points = Sel.points.map(p => ({ x: Math.round(p.x * k), y: Math.round(p.y * k), neg: p.neg }));
+  const id = await queueGraph(buildSamGraph({ image: Sel.upload.name, box, points }));
+  const { img } = await loadOutput(await waitHelper(id));
+  return maskFromImage(img, S.w, S.h);
+}
+async function requestSelection() {
+  if (!S.base || (!Sel.box && !Sel.points.length)) return;
+  const ticket = ++Sel.ticket;
+  Sel.busy = true;
+  syncSelUi();
+  schedule();
+  try {
+    const mask = ON_COMFY ? await samMask() : fakeSamMask();
+    if (ticket !== Sel.ticket) return;
+    const bounds = maskBounds(mask);
+    Sel.mask = bounds ? mask : null;
+    Sel.tint = bounds ? tintMask(mask, SEL_COLOR) : null;
+    setStatus(bounds ? (ON_COMFY ? '' : 'Bản xem trước: vùng chọn là giả lập, trên ComfyUI là SAM 3.1 thật.') : 'Không tìm thấy vật, thử kéo khung khác hoặc bấm lên vật.');
+  } catch (e) {
+    if (ticket === Sel.ticket) setStatus(e.message || String(e));
+  } finally {
+    if (ticket === Sel.ticket) {
+      Sel.busy = false;
+      syncSelUi();
+      schedule();
+    }
+  }
+}
+function clearSelection() {
+  Sel.ticket++;
+  Object.assign(Sel, { box: null, points: [], mask: null, tint: null, busy: false });
+}
+// Xoá vật: vùng chọn thành vùng tô của một cọ Xoá mới, Gen chạy như cọ Xoá tô tay.
+function selectionToRemoveBrush() {
+  if (!Sel.mask) return;
+  const free = PALETTE.find(c => !S.brushes.some(b => b.color === c.id));
+  if (!free) {
+    setStatus('Đã đủ 6 cọ, xoá bớt một cọ rồi chọn lại.');
+    return;
+  }
+  pushHistory();
+  const b = { id: S.nextId++, color: free.id, type: 'remove', ref: null, refUrl: '', note: '', cover: 0 };
+  S.brushes.push(b);
+  S.strokes = [...S.strokes, { brush: b.id, erase: false, size: 0, points: [], mask: Sel.mask }];
+  clearSelection();
+  S.tool = null;
+  S.active = b.id;
+  renderTiles();
+  syncToolUi();
+  afterChange();
+  setStatus('Đã tô vùng xoá bằng cọ mới. Bấm Gen để xoá.');
+}
+// Tách thành layer: cắt điểm ảnh trong vùng chọn, chỗ cũ thành vùng xám để lượt Ghép lấp lại.
+function selectionToLayer() {
+  if (!Sel.mask) return;
+  const r = maskBounds(Sel.mask);
+  if (!r) return;
+  const src = newCanvas(r.w, r.h), g = src.getContext('2d');
+  g.drawImage(S.base, -r.x, -r.y);
+  g.globalCompositeOperation = 'destination-in';
+  g.drawImage(Sel.mask, -r.x, -r.y);
+  const corners = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }];
+  addLayer({ src, hole: Sel.mask, corners });
+  clearSelection();
+  setStatus('Kéo layer tới chỗ mới. Kéo góc để bẻ phối cảnh, Shift + kéo góc để đổi cỡ, kéo nút tròn để xoay.');
+}
+function addLayer({ src, hole, corners }) {
+  const L = { id: Layers.nextId++, src, hole, corners, grid: null, _gray: null };
+  Layers.list.push(L);
+  Layers.active = L.id;
+  S.tool = 'layer';
+  closePop();
+  renderLayerTiles();
+  syncToolUi();
+  renderPanel();
+}
+function addLayerFromFile(file) {
+  if (!S.base) {
+    setStatus('Thêm ảnh gốc trước khi thêm layer.');
+    return;
+  }
+  loadFile(file, img => {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const keep = Math.min(1, 2048 / Math.max(w, h));
+    const src = newCanvas(Math.round(w * keep), Math.round(h * keep));
+    src.getContext('2d').drawImage(img, 0, 0, src.width, src.height);
+    const s = Math.min(1, 0.5 * Math.min(S.w / w, S.h / h));
+    const cx = S.w / 2, cy = S.h / 2, hw = w * s / 2, hh = h * s / 2;
+    addLayer({ src, hole: null, corners: [{ x: cx - hw, y: cy - hh }, { x: cx + hw, y: cy - hh }, { x: cx + hw, y: cy + hh }, { x: cx - hw, y: cy + hh }] });
+    setStatus('Layer từ ảnh khác: bấm Tách nền nếu ảnh còn nền.');
+  });
+}
+function deleteLayer(id) {
+  Layers.list = Layers.list.filter(L => L.id !== id);
+  if (Layers.active === id) Layers.active = null;
+  if (S.tool === 'layer' && !activeLayer()) S.tool = null;
+  renderLayerTiles();
+  syncToolUi();
+  renderPanel();
+}
+function resetLayers() {
+  Layers.list = [];
+  Layers.active = null;
+  clearSelection();
+  Sel.upload = { for: null, name: '', k: 1 };
+  if (S.tool) S.tool = null;
+  renderLayerTiles();
+  syncToolUi();
+}
+function setLayerMode(mode) {
+  Layers.mode = mode;
+  const L = activeLayer();
+  if (mode === 'warp' && L && !L.grid) {
+    const m = quadMap(L.corners);
+    L.grid = [0, 0.5, 1].flatMap(v => [0, 0.5, 1].map(u => m(u, v)));
+  }
+  syncToolUi();
+}
+function flipLayer() {
+  const L = activeLayer();
+  if (!L) return;
+  const c = newCanvas(L.src.width, L.src.height), g = c.getContext('2d');
+  g.translate(c.width, 0);
+  g.scale(-1, 1);
+  g.drawImage(L.src, 0, 0);
+  L.src = c;
+  renderLayerTiles();
+  schedule();
+  renderPanel();
+}
+// Tách nền layer bằng BiRefNet, như template utility_birefnet_remove_background.
+async function cutoutLayer() {
+  const L = activeLayer();
+  if (!L || Layers.busy) return;
+  if (!ON_COMFY) {
+    setStatus('Bản xem trước: Tách nền chạy BiRefNet trên ComfyUI.');
+    return;
+  }
+  Layers.busy = true;
+  syncToolUi();
+  try {
+    const name = await uploadCanvas(L.src, `${Date.now().toString(36)}_layer.png`);
+    const id = await queueGraph({
+      1: { class_type: 'LoadBackgroundRemovalModel', inputs: { bg_removal_name: 'birefnet.safetensors' } },
+      4: { class_type: 'LoadImage', inputs: { image: name } },
+      3: { class_type: 'RemoveBackground', inputs: { bg_removal_model: ['1', 0], image: ['4', 0] } },
+      5: { class_type: 'MaskToImage', inputs: { mask: ['3', 0] } },
+      6: { class_type: 'PreviewImage', inputs: { images: ['5', 0] } },
+    });
+    const { img } = await loadOutput(await waitHelper(id));
+    const mask = maskFromImage(img, L.src.width, L.src.height);
+    const g = L.src.getContext('2d');
+    g.globalCompositeOperation = 'destination-in';
+    g.drawImage(mask, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    renderLayerTiles();
+    renderPanel();
+    setStatus('Đã tách nền layer.');
+  } catch (e) {
+    setStatus(e.message || String(e));
+  } finally {
+    Layers.busy = false;
+    syncToolUi();
+    schedule();
+  }
+}
+function renderLayerTiles() {
+  const wrap = $('layerTiles');
+  wrap.replaceChildren(...Layers.list.map((L, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'tilewrap';
+    const t = document.createElement('button');
+    t.type = 'button';
+    t.className = 'ltile';
+    t.title = `Layer ${i + 1}`;
+    t.setAttribute('aria-label', `Layer ${i + 1}`);
+    t.dataset.active = String(S.tool === 'layer' && Layers.active === L.id);
+    const cv = document.createElement('canvas');
+    const k = 38 / Math.max(L.src.width, L.src.height);
+    cv.width = Math.max(1, Math.round(L.src.width * k));
+    cv.height = Math.max(1, Math.round(L.src.height * k));
+    cv.getContext('2d').drawImage(L.src, 0, 0, cv.width, cv.height);
+    t.append(cv);
+    t.addEventListener('click', () => {
+      Layers.active = L.id;
+      S.tool = 'layer';
+      clearSelection();
+      closePop();
+      syncToolUi();
+    });
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'tilex';
+    x.title = 'Xoá layer này';
+    x.setAttribute('aria-label', `Xoá layer ${i + 1}`);
+    x.innerHTML = icon('close');
+    x.addEventListener('click', e => { e.stopPropagation(); deleteLayer(L.id); });
+    cell.append(t, x);
+    return cell;
+  }));
+}
+function syncSelUi() {
+  const on = S.tool === 'select';
+  $('selHint').hidden = !on || !!Sel.mask || Sel.busy;
+  $('selBar').hidden = !on || (!Sel.mask && !Sel.busy);
+  $('selText').textContent = Sel.busy ? 'Đang tìm vật bằng SAM 3.1...' : 'Đã chọn vật';
+  ['selRemove', 'selLayer'].forEach(id => { $(id).disabled = Sel.busy || !Sel.mask; });
+}
+function syncToolUi() {
+  $('selectTool').setAttribute('aria-pressed', String(S.tool === 'select'));
+  const L = S.tool === 'layer' && activeLayer();
+  $('layerBar').hidden = !L;
+  $('layerMode').querySelectorAll('.viewchip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.mode === Layers.mode)));
+  $('blendLora').setAttribute('aria-pressed', String(S.blendLora));
+  $('layerCut').disabled = Layers.busy;
+  $('layerCut').textContent = Layers.busy ? 'Đang tách nền...' : 'Tách nền';
+  document.querySelectorAll('.ltile').forEach((t, i) => { t.dataset.active = String(S.tool === 'layer' && Layers.list[i] && Layers.list[i].id === Layers.active); });
+  syncSelUi();
+  view.style.cursor = viewCursor();
+  if (S.tool) brushcur.hidden = true;
+  schedule();
+}
+function bindLayerTools() {
+  $('selectTool').addEventListener('click', () => {
+    if (!S.base) {
+      setStatus('Thêm ảnh gốc trước khi chọn vật.');
+      return;
+    }
+    S.tool = S.tool === 'select' ? null : 'select';
+    if (S.tool !== 'select') clearSelection();
+    Layers.active = null;
+    closePop();
+    renderLayerTiles();
+    syncToolUi();
+  });
+  $('selExit').addEventListener('click', () => { S.tool = null; clearSelection(); syncToolUi(); });
+  $('selRemove').addEventListener('click', selectionToRemoveBrush);
+  $('selLayer').addEventListener('click', selectionToLayer);
+  $('selClear').addEventListener('click', () => { clearSelection(); syncSelUi(); schedule(); });
+  $('layerFile').addEventListener('change', e => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) addLayerFromFile(file);
+  });
+  $('layerMode').addEventListener('click', e => {
+    const chip = e.target.closest('.viewchip');
+    if (chip) setLayerMode(chip.dataset.mode);
+  });
+  $('layerFlip').addEventListener('click', flipLayer);
+  $('layerCut').addEventListener('click', cutoutLayer);
+  $('blendLora').addEventListener('click', () => { S.blendLora = !S.blendLora; syncToolUi(); renderPanel(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && S.tool && !e.target.matches('input,textarea,select')) {
+      S.tool = null;
+      clearSelection();
+      syncToolUi();
+    }
+  });
+}
+
+// Lượt Ghép: ảnh có layer và vùng xám, mask là vùng lấp cộng vùng quanh layer, dán lại đúng vùng đó nên phần còn lại giữ nguyên từng điểm ảnh.
+function mergeSnapshot(pass) {
+  return {
+    text: promptFor(pass),
+    lora: S.blendLora,
+    layers: Layers.list.map(L => ({ src: L.src, hole: L.hole, _gray: L._gray, corners: L.corners.map(q => ({ ...q })), grid: L.grid && L.grid.map(q => ({ ...q })) })),
+  };
+}
+function composeMerge(current, job, pads) {
+  const out = newCanvas(current.width, current.height), g = out.getContext('2d');
+  g.drawImage(current, 0, 0);
+  g.translate(pads.left, pads.top);
+  for (const L of job.layers) if (L.hole) g.drawImage(holeGray(L), 0, 0);
+  for (const L of job.layers) drawLayer(g, L, 24, 0.6);
+  return out;
+}
+function mergeMasks(job, w, h, pads) {
+  const hole = newCanvas(w, h), foot = newCanvas(w, h), area = newCanvas(w, h);
+  const hg = hole.getContext('2d'), fg = foot.getContext('2d');
+  hg.translate(pads.left, pads.top);
+  fg.translate(pads.left, pads.top);
+  for (const L of job.layers) {
+    if (L.hole) stampMask(hg, L.hole, 4);
+    drawLayer(fg, L, 16, 0.6);
+  }
+  const ag = area.getContext('2d');
+  ag.drawImage(hole, 0, 0);
+  stampMask(ag, foot, Math.round(Math.max(16, 0.02 * Math.max(w, h))));
+  const marks = job.layers.some(L => L.hole) ? [{ mask: hole, hex: PAINT.red.hex }] : [];
+  marks.push({ mask: foot, hex: PAINT.blue.hex });
+  return { area, marks };
+}
+function paintMergeThumb(cv) {
+  cv.width = 144;
+  cv.height = Math.max(1, Math.round(H() * 144 / W()));
+  const g = cv.getContext('2d');
+  g.scale(144 / W(), 144 / W());
+  g.fillStyle = PAD_GRAY;
+  g.fillRect(0, 0, W(), H());
+  g.drawImage(S.base, S.pads.left, S.pads.top, S.w, S.h);
+  g.translate(S.pads.left, S.pads.top);
+  for (const L of Layers.list) if (L.hole) g.drawImage(holeGray(L), 0, 0);
+  for (const L of Layers.list) drawLayer(g, L, 8, 1);
+}
+async function requireBlendLora() {
+  const info = await fetch('/api/object_info/LoraLoaderModelOnly').then(r => (r.ok ? r.json() : {}), () => ({}));
+  if (!info.LoraLoaderModelOnly) return;
+  if (!info.LoraLoaderModelOnly.input.required.lora_name[0].includes(BLEND_LORA)) {
+    throw new Error(`ComfyUI chưa có LoRA ánh sáng ${BLEND_LORA}. Cloud Sync tải trong nền, chờ tải xong rồi Gen lại, hoặc tắt LoRA ánh sáng.`);
+  }
+}
 function loadFile(file, done) {
   const url = URL.createObjectURL(file);
   const img = new Image();
@@ -1415,6 +2238,7 @@ function setBase(img, sample, fromResult) {
   S.past = [];
   S.future = [];
   S.overrides = { ...S.overrides, expand: null, edit: null };
+  resetLayers();
   syncStage();
   afterChange();
   fit();
@@ -1471,6 +2295,7 @@ function clearBase() {
   S.strokes = []; S.past = []; S.future = []; S.scene = '';
   S.overrides = { ...S.overrides, expand: null, edit: null };
   S.isSample = false;
+  resetLayers();
   $('scene').value = '';
   S.env.forEach(slot => { slot.ref = null; slot.refUrl = ''; });
   syncEnv();
@@ -3324,6 +4149,11 @@ function switchTab(tab) {
   closePop();
   toggleEnv(false);
   stopCapture();
+  if (!edit && S.tool) {
+    S.tool = null;
+    clearSelection();
+  }
+  syncToolUi();
   $('viewer').hidden = true;
   brushcur.hidden = true;
   syncStage();
@@ -3880,8 +4710,10 @@ async function generate() {
   const expandText = expand && promptFor(expand);
   const envRefs = expand ? S.env.filter(s => s.ref).map(s => fitReference(s.ref, ENV_REF_MP)) : [];
   const step = edit && editStep(edit);
+  const merge = S.passes.find(p => p.kind === 'merge');
+  const mergeJob = merge && mergeSnapshot(merge);
   const megapixels = Number($('resolution').value);
-  const total = (expand ? 1 : 0) + (edit ? 1 : 0);
+  const total = (expand ? 1 : 0) + (merge ? 1 : 0) + (edit ? 1 : 0);
   const passLabel = (index, name) => (total > 1 ? `Lượt ${index}/${total}: ${name}` : name);
   const stamp = Date.now().toString(36);
   const strokesAtStart = S.strokes;
@@ -3899,6 +4731,29 @@ async function generate() {
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
       current = stitchOriginal(img, snap);
+    }
+    if (mergeJob) {
+      if (run.cancelled) throw new Error('Đã dừng.');
+      run.promptId = null;
+      startPass(passLabel(expand ? 2 : 1, merge.name));
+      if (mergeJob.lora) await requireBlendLora();
+      const plan = planShot(snap.w, snap.h, megapixels);
+      const comp = composeMerge(current, mergeJob, snap.pads);
+      const masks = mergeMasks(mergeJob, snap.w, snap.h, snap.pads);
+      const clean = cropCanvas(comp, plan);
+      const shot = await uploadCanvas(clean, `${stamp}_merge.png`);
+      const mask = await uploadCanvas(modelMask(masks.area, plan), `${stamp}_merge_mask.png`);
+      const outlined = await uploadCanvas(guideImage(clean, masks.marks, plan), `${stamp}_merge_outlined.png`);
+      const graph = buildInpaintPrompt({ shot, outlined, mask, refs: [], text: mergeJob.text, seed: randomSeed() });
+      if (mergeJob.lora) {
+        graph[15] = { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: BLEND_LORA, strength_model: 1 } };
+        graph[8].inputs.model = ['15', 0];
+      }
+      run.promptId = await queueGraph(graph);
+      advanceJob('queue');
+      renderJob();
+      const { img } = await loadOutput(await waitForImage(run.promptId));
+      current = pasteCrop(comp, img, plan, masks.area);
     }
     if (step) {
       if (run.cancelled) throw new Error('Đã dừng.');
@@ -4086,6 +4941,7 @@ function sampleScene() {
 }
 
 buildPop();
+bindLayerTools();
 buildSheetPanel();
 buildEnvBox();
 buildRotatePanel();
