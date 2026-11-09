@@ -737,7 +737,7 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-VSTONE_RUNTIME_PATCH_VER = 6
+VSTONE_RUNTIME_PATCH_VER = 7
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -1157,10 +1157,17 @@ def apply_comfy_runtime_fixes() -> str:
                 for vf in _ltx_virtual_files.get(folder_name, []):
                     if vf not in res:
                         res.append(vf)
+                for item in list(res):
+                    if "/" in item:
+                        bs_item = item.replace("/", "\\")
+                        if bs_item not in res:
+                            res.append(bs_item)
                 return res
 
             def _vstone_get_full_path(folder_name: str, filename: str):
                 p = orig_get_full_path(folder_name, filename)
+                if p is None and filename and "\\" in filename:
+                    p = orig_get_full_path(folder_name, filename.replace("\\", "/"))
                 if p is not None and os.path.exists(p):
                     if _is_valid_safetensors_file(p):
                         return p
@@ -1891,7 +1898,7 @@ PORTABLE_PACK_CUSTOM_NODES: list[dict[str, Any]] = [
     {"dir": "Comfyui_Minimax_h3_latent_Upscaler", "repo": "LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler", "branch": "main"},
     {"dir": "ComfyUI-SolAttn_triton", "repo": "kijai/ComfyUI-SolAttn_triton", "branch": "main"},
     {"dir": "ComfyUI-MiniMaxH3-Context-Loop", "repo": "ethanfel/ComfyUI-MiniMaxH3-Context-Loop", "branch": "main"},
-    {"dir": "ComfyUI-H3-Multishot", "repo": "jlucasmcrell/ComfyUI-H3-Multishot", "branch": "main"},
+    {"dir": "ComfyUI-H3-Multishot", "repo": "jlucasmcrell/ComfyUI-H3-Multishot", "branch": "master"},
     {"dir": "ComfyUI_MiniMax_H3_Extender", "repo": "tritant/ComfyUI_MiniMax_H3_Extender", "branch": "main"},
     {"dir": "ComfyUI-MAINodes", "repo": "matlowai/ComfyUI-MAINodes", "branch": "main"},
     {"dir": "ComfyUI-Spectrum-MiniMax-H3", "repo": "xmarre/ComfyUI-Spectrum-MiniMax-H3", "branch": "main"},
