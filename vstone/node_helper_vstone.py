@@ -4397,7 +4397,10 @@ svg{display:block}
 .floatbar .viewchip:disabled{opacity:.45;cursor:default}
 .selwrap{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:grid;justify-items:center;gap:6px;width:max-content;max-width:calc(100% - 20px)}
 .selwrap > .capture-hint,.selwrap > .floatbar{position:static;transform:none;max-width:100%}
-.selwrap > .capture-hint{flex-wrap:wrap;justify-content:center;white-space:normal}
+.selwrap > .capture-hint{flex-wrap:nowrap;justify-content:center;gap:6px;padding:5px 8px;white-space:nowrap}
+.selwrap .selname{flex:1 1 140px;min-width:0}
+.selwrap,.selwrap > *{pointer-events:none}
+.selwrap input,.selwrap button,.selwrap label{pointer-events:auto}
 .selname{width:200px;padding:3px 8px;font-size:12px;font-weight:400;color:var(--paper-ink);background:#fff;border:1px solid var(--paper-ink);border-radius:4px}
 .selsoft{display:flex;align-items:center;gap:6px;padding:0 4px;font-size:12px;color:var(--ink-2)}
 .selsoft input{width:110px;accent-color:var(--paper)}
@@ -4801,9 +4804,9 @@ a.btn{color:inherit;text-decoration:none}
       <div class="status" id="status" role="status"></div>
       <div class="selwrap" id="selWrap" hidden>
       <div class="capture-hint" id="selHint" hidden>
-        <span>Kéo khung quanh vật hoặc bấm lên vật. Shift + kéo để thêm vật, Shift + bấm để bỏ phần thừa.</span>
         <input class="field selname" id="selName" type="text" placeholder="Tìm theo tên (tiếng Anh)" title="Tên vật bằng tiếng Anh. Nhiều loại thì cách nhau bằng dấu phẩy, thêm :số sau tên để giới hạn số lượng" aria-label="Tìm vật theo tên">
         <button id="selFind" type="button">Tìm</button>
+        <button id="selHelp" type="button" title="Kéo khung quanh vật hoặc bấm lên vật. Shift + kéo để thêm vật, Shift + bấm để bỏ phần thừa. Gõ tên tiếng Anh rồi Enter để tìm mọi vật cùng loại." aria-label="Cách chọn vật">?</button>
         <button id="selExit" type="button">Xong</button>
       </div>
       <div class="floatbar" id="selBar" hidden>
@@ -5822,6 +5825,7 @@ view.addEventListener('pointerleave', () => { if (!live) brushcur.hidden = true;
 const SAM_CKPT = 'sam3.1_multiplex_fp16.safetensors';
 const SAM_UPLOAD_MP = 2;
 const SEL_COLOR = '#34D3FF';
+const SEL_HELP = 'Kéo khung quanh vật hoặc bấm lên vật. Shift + kéo để thêm vật, Shift + bấm để bỏ phần thừa. Gõ tên tiếng Anh rồi Enter để tìm mọi vật cùng loại.';
 // LoRA Qwen-image-2.1 光影溶图 của RunningHub (tác giả 浩的AI日常), thử nghiệm: trang của LoRA không ghi cách đưa ảnh vào.
 const BLEND_LORA = 'Qwenimag21_c2-st2000.safetensors';
 // Câu đầu của LoRA là prompt mẫu của tác giả, giữ nguyên. Các câu sau bảo Qwen đổi ánh sáng của vật theo cảnh,
@@ -6830,6 +6834,7 @@ function bindLayerTools() {
     }
     S.tool = S.tool === 'select' ? null : 'select';
     if (S.tool !== 'select') clearSelection();
+    else setStatus(SEL_HELP);
     Layers.active = null;
     closePop();
     renderLayerTiles();
@@ -6837,6 +6842,7 @@ function bindLayerTools() {
   });
   $('selExit').addEventListener('click', () => { S.tool = null; clearSelection(); syncToolUi(); });
   $('selFind').addEventListener('click', searchByName);
+  $('selHelp').addEventListener('click', () => setStatus(SEL_HELP));
   $('selName').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); searchByName(); } });
   $('selRemove').addEventListener('click', selectionToRemoveBrush);
   $('selLayer').addEventListener('click', () => selectionToLayer(false));
