@@ -356,6 +356,9 @@ import hashlib
 _LAST_SYNCED_HASH: str = ""
 
 DEFAULT_SYNC_WORKFLOWS = [
+    "workflows/H3_First_Last_Frame_Transition.json",
+    "workflows/minimax_h3/video_minimax_h3_first_last_frame_transition.json",
+    "workflows/05_MiniMax_H3_Loop_And_Native/05_H3_First_Last_Frame_Transition_Native.json",
     "workflows/video_wan_vace_outpainting.json",
     "workflows/wan_vace/video_wan_vace_outpainting.json",
     "workflows/ltx_2.5/LTX25_Cai_Dat_1_Click.json",
