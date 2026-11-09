@@ -1,8 +1,8 @@
 {
   "id": "b78dcd3b-5e6f-434a-bb19-vfxnomask001",
   "revision": 0,
-  "last_node_id": 65,
-  "last_link_id": 100,
+  "last_node_id": 70,
+  "last_link_id": 95,
   "nodes": [
     {
       "id": 1,
@@ -57,7 +57,8 @@
           "type": "STRING",
           "links": [
             2,
-            3
+            3,
+            80
           ]
         }
       ],
@@ -67,7 +68,7 @@
       "widgets_values": [
         "Replace the background and lighting to match the edited scene"
       ],
-      "title": "VFX Edit Instruction {a} (Mô tả rõ thay đổi trên First Frame)"
+      "title": "Yêu Cầu Sửa {a} (Gõ Tiếng Việt hoặc Tiếng Anh — AI Nhắc Bài Sẽ Tự Dịch Chuẩn)"
     },
     {
       "id": 3,
@@ -217,7 +218,8 @@
           "links": [
             8,
             9,
-            54
+            54,
+            83
           ]
         },
         {
@@ -1302,7 +1304,7 @@
           "name": "STRING",
           "type": "STRING",
           "links": [
-            52
+            91
           ]
         }
       ],
@@ -1380,7 +1382,7 @@
           "widget": {
             "name": "prompt"
           },
-          "link": 52
+          "link": 93
         },
         {
           "name": "width",
@@ -2047,7 +2049,8 @@
             38,
             69,
             73,
-            76
+            76,
+            81
           ]
         },
         {
@@ -2210,10 +2213,548 @@
       "outputs": [],
       "properties": {},
       "widgets_values": [
-        "## 🎯 TẠI SAO TRƯỚC ĐÂY VIDEO RA Y HỆT VIDEO GỐC & ĐÃ SỬA GÌ?\n\n1. **Khôi phục `Node #41 (ReplaceImagesInBatch, index=0)`:**\n   - Bản cũ bị thiếu node này, làm **Frame 0 gốc chưa sửa** bị truyền thẳng vào `MiniMaxH3AddGuide (Node #44)` đè chết tấm First Frame mới!\n   - Hiện tại **Node #41** đã tự động **thay thế Frame 0 của chuỗi video bằng tấm First Frame đã sửa** trước khi vào `AddGuide`.\n2. **Tăng LoRA `minimax_h3_vfx_edit_v1.0_r128_ffp (Node #34)` lên `1.0`** (thay vì `0.8`).\n3. **Thêm công tắc `Node #42 (Pure First-Frame Only?)` ở cột 4:**\n   - **`false` (Mặc định - V2V VFX Edit):** Giữ chuyển động của chuỗi video gốc nhưng **bắt buộc lấy Frame 0 mới** để lan truyền sang cả video. *(Lưu ý: Ở chế độ này, **Node #2** phải ghi rõ lệnh thay đổi gì so với video gốc, ví dụ: `Add sunglasses to the man`, `Replace the background with a snowy forest`)*.\n   - **`true` (Chỉ neo đúng First Frame - I2V):** Ngắt toàn bộ các frame `1..N` của video gốc khỏi `AddGuide`, chỉ truyền **duy nhất tấm First Frame mới** vào `AddGuide` khi bạn đổi toàn bộ bố cục mà không muốn bị frame gốc giữ lại!"
+        "## 🎯 ĐÃ TÍCH HỢP BỘ NHẮC BÀI TỰ ĐỘNG (`Qwen3-VL-4B` VLM AUTO-PROMPT)\n\n1. **Cơ chế Nhắc Bài Tự Động (`Node #60 -> #69` ở dưới Cột 3):**\n   - Tự động lấy **Ảnh 1 đã sửa** (đóng nhãn đỏ `Reference`) + **3 Frame của Video gốc** đưa vào mắt đọc **`Qwen3-VL-4B` (`Node #67 TextGenerate`)**.\n   - Bạn chỉ cần gõ yêu cầu ngắn gọn bằng **Tiếng Việt** hoặc Tiếng Anh vào **`Node #2`** (ví dụ: `xóa vật thể trên bàn`, `thay đổi bối cảnh theo ảnh tham chiếu`).\n   - Con `Qwen3-VL-4B` sẽ tự đối chiếu Ảnh 1 với Video gốc và viết ra câu lệnh chuẩn **Case B Blueprint (`vfx_edit: ... transforming the source video to match <Picture 1>...`)** hiển thị tại **`Node #68`** rồi nạp thẳng vào MiniMax H3!\n2. **Công tắc `Node #69 (Bật AI Nhắc Bài?)`:**\n   - **`true` (Mặc định):** Dùng bài văn nhắc bài chuẩn của `Qwen3-VL-4B`.\n   - **`false`:** Dùng mẫu câu ngắn ở `Node #38` (nếu không muốn chạy VLM).\n3. **Khôi phục `Node #41 (ReplaceImagesInBatch, index=0)` & LoRA `_ffp = 1.0`:**\n   - Tự động đè Ảnh 1 đã sửa vào Frame 0 của chuỗi video trước khi vào `AddGuide (#44)`."
       ],
       "color": "#2b4c3f",
       "bgcolor": "#1f362d"
+    },
+    {
+      "id": 60,
+      "type": "CLIPLoader",
+      "title": "Load AI Nhắc Bài (Qwen3-VL-4B VLM)",
+      "pos": [
+        1720,
+        1460
+      ],
+      "size": [
+        440,
+        110
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            87
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "qwen3-vl-4b-heretic_int8_dynamic_convrot.safetensors",
+        "ltxv",
+        "default"
+      ]
+    },
+    {
+      "id": 61,
+      "type": "AddLabel",
+      "title": "Đóng Nhãn Đỏ 'Reference' Lên Ảnh 1",
+      "pos": [
+        1720,
+        1620
+      ],
+      "size": [
+        210,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 81
+        },
+        {
+          "name": "caption",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            82
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "AddLabel"
+      },
+      "widgets_values": [
+        10,
+        2,
+        48,
+        22,
+        "red",
+        "black",
+        "FreeMono.ttf",
+        "Reference",
+        "down"
+      ]
+    },
+    {
+      "id": 62,
+      "type": "ImageResizeKJv2",
+      "title": "Chuẩn Hóa Ảnh 1 Cho VLM (512x512)",
+      "pos": [
+        1950,
+        1620
+      ],
+      "size": [
+        210,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 82
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            86
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageResizeKJv2"
+      },
+      "widgets_values": [
+        512,
+        512,
+        "lanczos",
+        "stretch",
+        "0, 0, 0",
+        "center",
+        32,
+        "cpu"
+      ]
+    },
+    {
+      "id": 63,
+      "type": "ImageResizeKJv2",
+      "title": "Chuẩn Hóa Video Gốc Cho VLM (512x512)",
+      "pos": [
+        1720,
+        1700
+      ],
+      "size": [
+        210,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 83
+        },
+        {
+          "name": "mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            84
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageResizeKJv2"
+      },
+      "widgets_values": [
+        512,
+        512,
+        "lanczos",
+        "stretch",
+        "0, 0, 0",
+        "center",
+        32,
+        "cpu"
+      ]
+    },
+    {
+      "id": 64,
+      "type": "GetImagesFromBatchIndexed",
+      "title": "Trích Frame Video Gốc (0, 1, 2)",
+      "pos": [
+        1950,
+        1700
+      ],
+      "size": [
+        210,
+        100
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 84
+        },
+        {
+          "name": "indexes",
+          "type": "STRING",
+          "widget": {
+            "name": "indexes"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            85
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetImagesFromBatchIndexed"
+      },
+      "widgets_values": [
+        "0, 1, 2"
+      ]
+    },
+    {
+      "id": 65,
+      "type": "InsertImagesToBatchIndexed",
+      "title": "Ghép [Ảnh 1 Reference + Video Gốc] Cho AI Nhìn",
+      "pos": [
+        1720,
+        1780
+      ],
+      "size": [
+        440,
+        100
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "original_images",
+          "type": "IMAGE",
+          "link": 85
+        },
+        {
+          "name": "images_to_insert",
+          "type": "IMAGE",
+          "link": 86
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            88
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "InsertImagesToBatchIndexed"
+      },
+      "widgets_values": [
+        "0",
+        "insert"
+      ]
+    },
+    {
+      "id": 66,
+      "type": "StringConcatenate",
+      "title": "Khuôn Mẫu Nhắc Bài Chuẩn FFP (Case B Blueprint)",
+      "pos": [
+        1720,
+        1860
+      ],
+      "size": [
+        440,
+        120
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "string_a",
+          "type": "STRING",
+          "widget": {
+            "name": "string_a"
+          },
+          "link": null
+        },
+        {
+          "name": "string_b",
+          "type": "STRING",
+          "widget": {
+            "name": "string_b"
+          },
+          "link": 80
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            89
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "StringConcatenate"
+      },
+      "widgets_values": [
+        "WHICH MODEL THIS PROMPT IS FOR — read before using it.\n\nThe FFP (First-Frame Propagation) checkpoint (minimax_h3_vfx_edit_v1.0_r128_ffp) IS ACTIVE.\nWhen the first image carries the red 'Reference' label showing an edited frame of this clip,\nALWAYS emit Case B (the BLUEPRINT clause referencing <Picture 1>).\nWhen there is no 'Reference' label on the first image, emit Case ZERO (no <Picture 1>).\n\nYou generate the final VFX edit prompt for MiniMax H3.\n\nINPUTS — images arrive in one ordered list, and the FIRST image is the deciding one:\n\n1. THE FIRST IMAGE — look at it before anything else.\n   - If it carries the word \"Reference\" (red label), it is the REFERENCE IMAGE, and the frames\n     after it are the source clip.\n   - If it carries no such label, THERE IS NO REFERENCE. Every image is a source frame.\n   This test is the only thing that decides whether <Picture 1> may appear in your output, so\n   apply it literally: no labelled first image means no <Picture 1> and no <Subject 1>, whatever\n   the user's words suggest and however much a reference would seem to help.\n2. SOURCE FRAMES — several frames of the unedited clip. Always present. They tell you WHERE\n   the edit applies and which visible subject the user means. The clip itself reaches the model\n   as an aligned latent guide: never mention it, <Video 1>, frames, or the workflow.\n3. WHICH KIND OF REFERENCE — when the labelled first image exists, classify it before writing.\n   A caller's own mark wins over your reading:\n     - marked \"Reference\", or described as a blueprint / edited frame / target look\n       -> BLUEPRINT\n     - marked \"Subject\", \"Object\", \"Insert\", or supplied as a cutout of one thing\n       -> INSERT SUBJECT\n   With only the red \"Reference\" label and nothing else, run these two tests in order.\n\n   TEST 1 — CONTENT, and it decides on its own whenever it is clear.\n     Does the image show THIS clip's scene — the same subject, the same framing, the same camera,\n     with the edit already applied? -> BLUEPRINT.\n     Does it show ONE thing on its own — a gun, a chair, a garment, a head, a person — that is\n     not part of this scene, typically isolated or on a plain background? -> INSERT SUBJECT.\n\n   TEST 2 — THE REQUEST'S SHAPE, only when test 1 is genuinely ambiguous.\n     \"Replace X with Y\", where Y is a countable thing -> INSERT SUBJECT. The user is naming the\n     object the image contains.\n     \"Change the place / the lighting / the time / the mood / the whole look\" -> BLUEPRINT. The\n     user is naming a scene-wide treatment, and the image is the finished look.\n\n   A phrase like \"using the reference image\" says only that an image exists. It never chooses the\n   case for you, and it must never be copied into the output.\n4. A MASK — optional, a black-and-white video or still. WHITE marks what must be PRESERVED;\n   black is free to change. You may be told a mask exists instead of being shown it.\n5. THE USER REQUEST — free text, any language, describing the desired edit.\n\nThis mirrors the training data exactly: across the 794 training captions, <Picture 1> appears in\nevery caption whose sample carries a reference image and in none of the others. A caption that\nnames a picture the model was not given is a combination it never saw.\n\nOUTPUT ONLY the final prompt: one English instruction, no analysis, markdown or quotes.\nAlways start exactly with:\n\nvfx_edit:\n\nSENTENCE ORDER\n\n  Case ZERO / Case B:  vfx_edit: <edit instruction + its preservation clause>[, <reference clause>][, and <mask clause>].\n  Case A:              vfx_edit: Replace <target> with <Subject 1>, <4-15 word description> shown in <Picture 1>, <preservation clause>[, and <mask clause>].\n\nThe edit instruction always comes first. Drop the \"and\" when only one clause follows. With\nneither a reference nor a mask, output the edit instruction alone.\n\nTHE PRESERVATION CLAUSE IS MANDATORY for every localized edit — one that changes a person, an\nobject, a body part, a surface or an added effect — even when the user never says \"preserve\",\nand even when a reference or a mask is supplied. Name what stays: pose, motion, framing,\nlighting, colors and unrelated background elements, plus anything else that matters in the shot.\nIts position differs by case: in Case A it closes the sentence, after <Picture 1>; in Cases ZERO\nand B it belongs to the instruction itself, before the reference and mask clauses. Both orders\ncome straight from the training captions.\n\nOmit it only when the request itself targets the background, environment, location, time of day,\nweather or scene lighting — there the edit is the whole frame, and a preservation clause would\ncontradict it. A reference or mask clause never replaces the preservation clause: they say where\nthe look comes from and which pixels are protected, not what survives the edit.\n\nPART 1 — THE EDIT INSTRUCTION\n\nPreserve the user's intent exactly. The user defines WHAT transformation or effect is wanted;\nthe source frames only tell you WHERE it applies. Do not invent a destination, effect, object,\naction or style the user did not request.\n\nUNIVERSAL SCOPE RULE — PRESERVE EVERYTHING OUTSIDE THE REQUESTED EDIT:\nDetermine the exact target, action and affected region. Apply the requested transformation fully\nand literally inside that scope. Preserve identity, appearance, pose or motion, colors, lighting,\nmaterials, textures, camera framing, perspective, composition, background and everything else\noutside it. If the request itself targets one of those, it is inside the scope and may change;\npreserve only its unaffected parts. Never let a preservation clause cancel, weaken or reinterpret\nthe requested edit.\n\nUse one imperative instruction, 6-40 words, and prefer the matching operation:\n\n  Transformation:      Turn the <target> into <requested result>.\n    \"transforme ele em um lobisomem\" -> Turn the man into a werewolf.\n\n  Applied effect:      Add <effect> to/around/across the <target>.\n    \"coloque fogo no cabelo dele\" -> Add fire effects to the man's hair.\n    When the effect targets the background, sky, ground or environment, that region is inside the\n    scope. Never write \"preserve the original background\" then change it; write \"preserve all\n    unrelated background elements\" and name the affected region.\n\n  Placement/interaction: keep the original subject and ADD or POSITION the requested element.\n    Never reinterpret a relationship as a transformation, and never replace one entity with the\n    other unless the user says replace, swap or turn into. State the final physical configuration\n    (seated astride, held in both hands, worn on the head, standing inside) and allow the minimum\n    pose, contact, occlusion and shadow change the relationship requires.\n    \"faça ela montada em um tigre\" -> Composite the woman seated astride the tiger, with her legs\n    on either side of its body and her body physically supported by it. Preserve her identity,\n    face, clothing, body proportions, camera framing, lighting, colors and original background;\n    change only the contact, occlusion and pose adjustments required for the riding position.\n\n  Replacement:         Replace the <target> with <requested result>.\n  Removal:             Remove <target> while preserving the surrounding scene.\n  Relight/color/time/weather: Relight / Change / Convert the <target or scene> as requested.\n  Camera or motion:    only when explicitly requested.\n\nInclude every requested component in the same instruction — impacts, debris, smoke, dust,\nsplashes, secondary motion — never drop a requested consequence. Output one instruction, never\nalternatives. For a localized edit, the preservation clause is mandatory even if the user does not\nask for it; omit it only when the request itself targets the background, environment, location,\ntime of day, weather or scene lighting.\n\nPART 2 — THE REFERENCE CLAUSE\n\nCase ZERO — NO REFERENCE. This is the default, and it applies whenever the first image is not\nlabelled \"Reference\" OR the user's request never points at a supplied image. A request may name a\nreplacement in words (\"por outra mulher\", \"por um homem barbudo\", \"por uma cadeira vermelha\")\nwithout any image existing: words are not a reference. In that case write the appearance INTO the\ninstruction and output no <Picture 1> and no <Subject 1> at all. The training data does exactly\nthis: the 100 \"noref\" captions carry the replacement's description inline and never name a token.\n\n  Request: \"Altere a cabeça da mulher no vídeo por outra mulher\". No image supplied.\n  WRONG -> vfx_edit: Replace the woman's original head with <Subject 1>, the smiling woman shown\n           in <Picture 1>, while preserving her body, hands, clothing and background.\n  RIGHT -> vfx_edit: Replace the woman's original head with the head of a different woman, while\n           preserving her body, hands, clothing, pose, motion, framing, lighting and background.\n\n  Request: \"troca a cadeira por uma cadeira vermelha futurista\". No image supplied.\n  RIGHT -> vfx_edit: Replace the original chair with a red futuristic chair, while preserving the\n           subject's motion and the room.\n\nNaming a picture that does not exist is worse than being vague: the model then waits for pixels\nit was never given, and the edit degrades. When the user wants a specific face, object or look\nand supplies nothing, say so in words and stop.\n\nCase A — INSERT SUBJECT (an object, garment, head or person to put into the scene).\nName it as <Subject 1> from <Picture 1> and describe it briefly, 4-15 words. This is the only\ncase where describing the image is correct, because the words and the pixels agree about a thing\nthat is not in the clip.\n\nREAD the description off the image: its type, colour, material and any distinctive trait you can\nactually see. Never invent an attribute the image does not show — no \"futuristic\", \"modern\" or\n\"elegant\" unless it is visibly so. If the user names the thing (\"uma arma\") and the image shows\nwhich one, the image wins on every detail; the user's word only says where it goes.\n\n  Request: \"trocar o violão por uma arma usando a imagem de referência\".\n  Reference: a cutout of a revolver -> INSERT SUBJECT, not a blueprint.\n  WRONG -> vfx_edit: Replace the acoustic guitar with a futuristic pistol, transforming the source\n           video to match <Picture 1>, a guide frame of this clip with the edit already applied.\n           (blueprint clause on an object reference, and an invented \"futuristic\")\n  RIGHT -> vfx_edit: Replace the acoustic guitar with <Subject 1>, the chrome revolver with a\n           wooden grip shown in <Picture 1>, while preserving the man's pose, hands, motion,\n           framing, lighting and background.\n\n  -> vfx_edit: Replace the original chair with <Subject 1>, the red futuristic chair shown in\n     <Picture 1>, while preserving the subject's motion and the room.\n  -> vfx_edit: Replace the man's original head with <Subject 1>, the bald Avatar Aang head shown\n     in <Picture 1>, while preserving his body, hands, clothing and background.\n\nCase B — BLUEPRINT (a frame of this clip with the edit already applied; the SwitchX-style\nreference carrying background, lighting, mood and costume).\nNEVER write <Subject 1>. NEVER describe its colors, materials, lighting, composition or contents.\nNEVER claim it lines up with any frame. Pick ONE clause below, verbatim, varying your choice:\n\n  transforming the source video to match <Picture 1>, a guide frame of this clip with the edit already applied\n  propagating across the whole clip the edit already visible in <Picture 1>, one frame of this same video\n  using <Picture 1>, a frame of this clip that already shows the finished result, as the reference for how the change should look\n  carrying the look of <Picture 1>, an already-edited frame of this clip, through the entire sequence\n  rewriting the source video so that every frame matches the edited frame shown in <Picture 1>\n  taking <Picture 1>, an edited frame of this clip, as the target appearance for the whole video\n\nThe clause names the OPERATION, not just the source of information: the source video is what gets\nrewritten, <Picture 1> is what it is rewritten to match. The model receives both as latents and\nmust know which one it obeys and which one it replaces.\n\nDescribing a blueprint is the one mistake that silently ruins the result: the model then generates\nfrom your words and ignores the image.\n\nPART 3 — THE MASK CLAUSE\n\nOnly when a mask was supplied. WHITE PRESERVES. Pick ONE, verbatim, varying your choice:\n\n  leaving the white regions of the mask unchanged\n  keeping the areas the mask marks in white exactly as they are\n  without altering anything inside the white part of the mask\n  preserving the white-masked regions untouched\n  restricting the change to the regions the mask leaves black\n\nThe mask usually protects a subject while the rest of the frame is rewritten, so do not soften the\nedit instruction because a mask exists: the two describe different regions.\n\nEXAMPLES\n\nRequest: \"troca o escritório por um ambiente de vidro e prismas com flares\".\nBlueprint: yes. Mask: yes (the camera and its strap are white).\n-> vfx_edit: Replace office background with abstract glass and prism environment, add vibrant light flares, and apply glossy color grading to enhance the product's premium aesthetic, transforming the source video to match <Picture 1>, a guide frame of this clip with the edit already applied, and leaving the white regions of the mask unchanged.\n\nRequest: \"troca a sala por uma cidade pós-apocalíptica com destroços em chamas\".\nBlueprint: yes. Mask: no.\n-> vfx_edit: Replace the living room background with a desolate, post-apocalyptic urban scene featuring burning debris, ruined cars and a dark, moonlit sky, propagating across the whole clip the edit already visible in <Picture 1>, one frame of this same video.\n\nRequest: \"deixa cinematográfico com fumaça dourada, mantendo a alça laranja e a tampa da lente\".\nBlueprint: no. Mask: yes.\n-> vfx_edit: Replace the desk scene with a warm cinematic render of the camera floating amid swirling golden smoke, keeping the orange strap and lens cap intact, restricting the change to the regions the mask leaves black.\n\nRequest: \"troca a cabeça dele pela do Aang\".\nInsert subject: yes. Mask: no.\n-> vfx_edit: Replace the man's original head with <Subject 1>, the bald Avatar Aang head shown in <Picture 1>, while preserving his body, hands, clothing and background.\n\nRequest: \"deixa de noite\".\nNo reference, no mask.\n-> vfx_edit: Change the scene from daytime to nighttime.\n\nFINAL CHECK (silently):\n1. Starts exactly with \"vfx_edit: \", one instruction, ends with a period.\n2. <Picture 1> appears if and only if the first image was labelled \"Reference\"; a mask clause\n   appears if and only if a mask was supplied. Mentioning either without supplying it, or\n   supplying without mentioning, is a combination the model was never trained on. When there is\n   no labelled first image, the output names no picture and no subject at all.\n3. Blueprint -> no <Subject 1>, no description of its contents, no claim of alignment. Insert\n   subject -> <Subject 1> plus a 4-15 word description.\n4. Reference and mask clauses are copied verbatim from the lists, never paraphrased or merged.\n5. No mention of the source video, <Video 1>, frames, the mask's colors beyond white and black,\n   or the workflow.\n6. Every explicit part of the user's request survives in the instruction.\n7. A localized edit ends with a preservation clause naming pose, motion, framing, lighting and\n   unrelated background elements — in Case A after <Picture 1>, otherwise inside the instruction.\n   It is missing only when the request itself targets the whole scene.\n8. In Case A, every adjective in the description is something visible in the image, never a word\n   borrowed from the user's request or invented to sound better.\n\nNow wait for the source frames, the optional reference image, the optional mask, and the user\nrequest.\n\n",
+        "",
+        "\n\nUSER REQUEST: "
+      ]
+    },
+    {
+      "id": 67,
+      "type": "TextGenerate",
+      "title": "BỘ NHẮC BÀI TỰ ĐỘNG (Qwen3-VL-4B Nhìn Ảnh 1 + Video Gốc)",
+      "pos": [
+        1720,
+        1960
+      ],
+      "size": [
+        440,
+        360
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 87
+        },
+        {
+          "name": "image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 88
+        },
+        {
+          "name": "video",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": null
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 89
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            90
+          ]
+        },
+        {
+          "name": "thinking",
+          "type": "STRING",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "",
+        4096,
+        "on",
+        0.7,
+        64,
+        1,
+        0.05,
+        1.05,
+        1,
+        0,
+        true,
+        true
+      ]
+    },
+    {
+      "id": 68,
+      "type": "PreviewAny",
+      "title": "Xem Câu Lệnh AI Nhắc Bài (VLM Prompt Preview)",
+      "pos": [
+        2340,
+        2000
+      ],
+      "size": [
+        460,
+        220
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 90
+        }
+      ],
+      "outputs": [
+        {
+          "name": "STRING",
+          "type": "STRING",
+          "links": [
+            92
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 69,
+      "type": "ComfySoftSwitchNode",
+      "title": "Bật AI Nhắc Bài? (True = Qwen3-VL-4B Tự Nhìn Ảnh Viết, False = Mẫu Ngắn #38)",
+      "pos": [
+        2340,
+        2260
+      ],
+      "size": [
+        460,
+        85
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "on_false",
+          "type": "STRING",
+          "link": 91
+        },
+        {
+          "name": "on_true",
+          "type": "STRING",
+          "link": 92
+        },
+        {
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "STRING",
+          "links": [
+            93
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfySoftSwitchNode"
+      },
+      "widgets_values": [
+        true
+      ]
     }
   ],
   "links": [
@@ -2570,14 +3111,6 @@
       "VAE"
     ],
     [
-      52,
-      38,
-      0,
-      40,
-      8,
-      "STRING"
-    ],
-    [
       53,
       40,
       0,
@@ -2784,6 +3317,118 @@
       44,
       4,
       "IMAGE"
+    ],
+    [
+      80,
+      2,
+      0,
+      66,
+      1,
+      "STRING"
+    ],
+    [
+      81,
+      27,
+      0,
+      61,
+      0,
+      "IMAGE"
+    ],
+    [
+      82,
+      61,
+      0,
+      62,
+      0,
+      "IMAGE"
+    ],
+    [
+      83,
+      5,
+      0,
+      63,
+      0,
+      "IMAGE"
+    ],
+    [
+      84,
+      63,
+      0,
+      64,
+      0,
+      "IMAGE"
+    ],
+    [
+      85,
+      64,
+      0,
+      65,
+      0,
+      "IMAGE"
+    ],
+    [
+      86,
+      62,
+      0,
+      65,
+      1,
+      "IMAGE"
+    ],
+    [
+      87,
+      60,
+      0,
+      67,
+      0,
+      "CLIP"
+    ],
+    [
+      88,
+      65,
+      0,
+      67,
+      1,
+      "IMAGE"
+    ],
+    [
+      89,
+      66,
+      0,
+      67,
+      4,
+      "STRING"
+    ],
+    [
+      90,
+      67,
+      0,
+      68,
+      0,
+      "STRING"
+    ],
+    [
+      91,
+      38,
+      0,
+      69,
+      0,
+      "STRING"
+    ],
+    [
+      92,
+      68,
+      0,
+      69,
+      1,
+      "STRING"
+    ],
+    [
+      93,
+      69,
+      0,
+      40,
+      8,
+      "STRING"
     ]
   ],
   "groups": [
