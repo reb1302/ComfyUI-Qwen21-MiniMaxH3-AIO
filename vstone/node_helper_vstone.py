@@ -738,7 +738,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-VSTONE_RUNTIME_PATCH_VER = 8
+# 9: SAM3_Detect chỉ mượn khung cũ của PointsEditor khi nhận đúng các điểm của PointsEditor đó.
+VSTONE_RUNTIME_PATCH_VER = 9
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -1472,6 +1473,8 @@ def apply_comfy_runtime_fixes() -> str:
                         cropped_image = torch.zeros(1, out_h, out_w, 3, dtype=torch.float32)
 
                     res_tuple = (json.dumps(pos_coordinates), json.dumps(neg_list), out_bboxes, mask_tensor, cropped_image)
+                    # SAM3_Detect chỉ mượn các khung trên khi nhận đúng các điểm của lần chạy PointsEditor này.
+                    setattr(sys, "_vstone_last_points_editor_coords", (res_tuple[0], res_tuple[1]))
                     if bg_image is None:
                         return res_tuple
                     frame0_np = (bg_image[0, :, :, :3].detach().cpu().clamp(0.0, 1.0).numpy() * 255.0).astype(_np.uint8)
@@ -1588,7 +1591,13 @@ def apply_comfy_runtime_fixes() -> str:
                             flat_boxes = _norm_box_list(bboxes)
                             if not flat_boxes:
                                 pe_fallback = getattr(sys, "_vstone_last_points_editor_boxes", None)
-                                if isinstance(pe_fallback, list) and len(pe_fallback) > 0 and (positive_coords is not None or negative_coords is not None):
+                                # Chỉ khi các điểm đến từ chính PointsEditor vừa chạy; điểm từ nơi khác (trang concept, workflow khác)
+                                # không được nhận khung cũ của PointsEditor, nếu không vùng chọn bị khoá vào khung của ảnh khác.
+                                pe_coords = getattr(sys, "_vstone_last_points_editor_coords", None)
+                                from_points_editor = pe_coords is not None and (positive_coords is not None or negative_coords is not None) \
+                                    and (positive_coords is None or positive_coords == pe_coords[0]) \
+                                    and (negative_coords is None or negative_coords == pe_coords[1])
+                                if isinstance(pe_fallback, list) and len(pe_fallback) > 0 and from_points_editor:
                                     flat_boxes = list(pe_fallback)
                             if flat_boxes:
                                 per_frame_boxes = [flat_boxes] * B
