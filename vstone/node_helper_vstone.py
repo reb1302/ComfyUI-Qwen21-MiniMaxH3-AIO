@@ -967,7 +967,30 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                     if wrp not in seen_wf_rp:
                         seen_wf_rp.add(wrp)
                         _atomic_write_bytes(dst_wf, wf_bytes, min_bytes=50)
+                if rel_wf.startswith("lighttrick/"):
+                    lt_root_wf = os.path.join(comfy_root, "lighttrick", "workflows", os.path.basename(rel_wf))
+                    _atomic_write_bytes(lt_root_wf, wf_bytes, min_bytes=50)
                 wf_count += 1
+            except Exception:
+                pass
+
+        # 3a-0. Đồng bộ thư mục lighttrick/ (scripts tải model + phụ thuộc cho H200)
+        for lt_file in (
+            "lighttrick/download_lighttrick_h200.sh",
+            "lighttrick/download_lighttrick_models.ps1",
+            "lighttrick/DOWNLOAD_LIGHTTRICK_ALL.bat",
+            "lighttrick/README.md",
+        ):
+            try:
+                lt_bytes = _http_get_bytes(f"{raw_ref_base}/{lt_file}?_t={ts}", timeout=15)
+                if lt_bytes and len(lt_bytes) > 50:
+                    lt_dst = os.path.join(comfy_root, lt_file)
+                    _atomic_write_bytes(lt_dst, lt_bytes, min_bytes=50)
+                    if lt_file.endswith(".sh") and os.name != "nt":
+                        try:
+                            os.chmod(lt_dst, 0o755)
+                        except Exception:
+                            pass
             except Exception:
                 pass
 
