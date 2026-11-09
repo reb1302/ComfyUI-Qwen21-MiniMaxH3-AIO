@@ -4381,6 +4381,10 @@ svg{display:block}
 .floatbar{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;width:max-content;max-width:calc(100% - 20px);padding:6px 8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px #00000080}
 .floatbar .viewchip{padding:3px 10px;font-size:12px}
 .floatbar .viewchip:disabled{opacity:.45;cursor:default}
+.selwrap{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:3;display:grid;justify-items:center;gap:6px;width:max-content;max-width:calc(100% - 20px)}
+.selwrap > .capture-hint,.selwrap > .floatbar{position:static;transform:none;max-width:100%}
+.selwrap > .capture-hint{flex-wrap:wrap;justify-content:center;white-space:normal}
+.selname{width:200px;padding:3px 8px;font-size:12px;font-weight:400;color:var(--paper-ink);background:#fff;border:1px solid var(--paper-ink);border-radius:4px}
 .selsoft{display:flex;align-items:center;gap:6px;padding:0 4px;font-size:12px;color:var(--ink-2)}
 .selsoft input{width:110px;accent-color:var(--paper)}
 .floatbar > span{padding:0 4px;font-size:12px;color:var(--ink-2)}
@@ -4781,8 +4785,11 @@ a.btn{color:inherit;text-decoration:none}
         <input class="sr" id="baseFile2" type="file" accept="image/*" aria-label="Chọn ảnh gốc">
       </label>
       <div class="status" id="status" role="status"></div>
+      <div class="selwrap" id="selWrap" hidden>
       <div class="capture-hint" id="selHint" hidden>
-        <span>Kéo khung quanh vật, hoặc bấm lên vật. Shift + bấm để bỏ phần thừa.</span>
+        <span>Kéo khung quanh vật hoặc bấm lên vật. Shift + kéo để thêm vật, Shift + bấm để bỏ phần thừa.</span>
+        <input class="field selname" id="selName" type="text" placeholder="Tìm theo tên (tiếng Anh)" title="Tên vật bằng tiếng Anh. Nhiều loại thì cách nhau bằng dấu phẩy, thêm :số sau tên để giới hạn số lượng" aria-label="Tìm vật theo tên">
+        <button id="selFind" type="button">Tìm</button>
         <button id="selExit" type="button">Xong</button>
       </div>
       <div class="floatbar" id="selBar" hidden>
@@ -4793,6 +4800,7 @@ a.btn{color:inherit;text-decoration:none}
         <button class="viewchip" type="button" id="selClear">Bỏ chọn</button>
         <label class="selsoft" title="Nới vùng chọn rộng ra, tính bằng điểm ảnh">Nới rộng<input id="selGrow" type="range" min="0" max="40" step="1" value="8" aria-label="Nới rộng vùng chọn"></label>
         <label class="selsoft" title="Độ mềm của viền vùng chọn, tính bằng điểm ảnh">Mềm viền<input id="selFeather" type="range" min="0" max="30" step="1" value="3" aria-label="Mềm viền vùng chọn"></label>
+      </div>
       </div>
       <div class="floatbar" id="layerBar" hidden>
         <div class="viewchips" id="layerMode" role="group" aria-label="Cách chỉnh layer">
@@ -5083,7 +5091,7 @@ const S = {
 };
 const V = { scale: 1, x: 0, y: 0 };
 // Vùng chọn của SAM 3.1 và các layer, toạ độ theo ảnh gốc (không tính vùng nới).
-const Sel = { box: null, points: [], mask: null, tint: null, raw: null, clean: null, smooth: 1, grow: 8, feather: 3, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
+const Sel = { box: null, points: [], hits: [], mask: null, tint: null, ring: null, raw: null, clean: null, smooth: 1, grow: 8, feather: 3, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
 const Layers = { list: [], active: null, mode: 'transform', nextId: 1, busy: false };
 const W = () => S.w + S.pads.left + S.pads.right;
 const H = () => S.h + S.pads.top + S.pads.bottom;
@@ -5807,10 +5815,10 @@ const BLEND_LORA = 'Qwenimag21_c2-st2000.safetensors';
 const MERGE_PROMPTS = {
   hole: { en: 'Fill the gray area inside the red outline in <image1> with the surrounding background, as if nothing was ever there.', vi: 'Lấp vùng xám trong viền đỏ trên <image1> bằng nền xung quanh, như chưa từng có gì ở đó.' },
   lora: { en: 'pengyu, Apply consistent lighting to the product or object, enhance specular highlights, front-back spatial relationship, add natural contact shadow, and blend it seamlessly into the background.', vi: 'pengyu (từ khoá của LoRA), prompt mẫu của tác giả: ánh sáng đồng bộ cho vật, tăng ánh phản chiếu, đúng quan hệ trước sau, thêm bóng tiếp xúc, hoà liền vào nền.' },
-  relight: { en: 'The object inside the blue outline in <image1> was pasted in and still has the lighting of another photo. Relight it to belong to this scene: match the light direction, color temperature, brightness, contrast and color grading of its surroundings in <image1>.', vi: 'Vật trong viền xanh trên <image1> được dán vào nên còn ánh sáng của ảnh khác. Chiếu sáng lại cho hợp cảnh: khớp hướng sáng, nhiệt độ màu, độ sáng, độ tương phản và tông màu của xung quanh trên <image1>.' },
+  relight: { en: 'The object inside the blue outline in <image1> was pasted in and still has the lighting of another photo. Relight it to belong to this scene: match the light direction, rim light, color temperature, brightness, contrast, colors and color grading of its surroundings in <image1>.', vi: 'Vật trong viền xanh trên <image1> được dán vào nên còn ánh sáng của ảnh khác. Chiếu sáng lại cho hợp cảnh: khớp hướng sáng, rim light, nhiệt độ màu, độ sáng, độ tương phản, màu sắc và tông màu của xung quanh trên <image1>.' },
   shadow: { en: 'Shade it from the same light sources as the scene, add the shadow it casts on the ground and nearby surfaces in that light direction, and the reflected light and color it picks up from the scene.', vi: 'Đổ khối theo đúng nguồn sáng của cảnh, thêm bóng nó đổ xuống nền và các mặt gần đó theo hướng sáng ấy, và ánh phản xạ, màu hắt từ cảnh lên nó.' },
   keepShape: { en: 'Keep its shape, pose, proportions and identity; change only its lighting, shading and color.', vi: 'Giữ dáng, tư thế, tỉ lệ và nhận diện của vật; chỉ đổi ánh sáng, đổ khối và màu.' },
-  edges: { en: 'Blend its edges into the background with no halo, seam or cut-out outline.', vi: 'Hoà mép vật vào nền, không quầng sáng, không đường nối, không viền cắt dán.' },
+  edges: { en: 'Clean up its cut-out edges: remove jagged or aliased edges and any leftover outline, fringe or halo of its old background, and blend the edges smoothly into the new background.', vi: 'Làm sạch mép cắt: khử răng cưa, xoá viền outline, viền hay quầng của nền cũ còn sót, hoà mép mượt vào nền mới.' },
   finish: { en: 'Remove the outlines.', vi: 'Xoá các viền đi.' },
 };
 function buildMergePass(layers, blendLora) {
@@ -5882,7 +5890,105 @@ function drawTriangle(g, img, s0, s1, s2, d0, d1, d2, pad) {
   if (bw > 0 && bh > 0) g.drawImage(img, bx, by, bw, bh, bx, by, bw, bh);
   g.restore();
 }
+// Vẽ layer bằng WebGL: các tam giác dùng chung đỉnh nên không có đường nối thành lưới như khi cắt từng tam giác trên canvas 2D.
+// Máy không có WebGL thì quay về cách vẽ từng tam giác.
+const LayerGL = { canvas: null, gl: null, prog: null, buf: null, textures: new Map(), failed: false };
+function layerGL() {
+  if (LayerGL.gl || LayerGL.failed) return LayerGL.gl;
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl', { premultipliedAlpha: true, preserveDrawingBuffer: true, antialias: true });
+  const shader = (type, source) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, source);
+    gl.compileShader(s);
+    return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null;
+  };
+  const vs = gl && shader(gl.VERTEX_SHADER, 'attribute vec2 p;attribute vec2 t;uniform vec2 size;varying vec2 vt;void main(){vt=t;vec2 c=p/size*2.0-1.0;gl_Position=vec4(c.x,-c.y,0.0,1.0);}');
+  const fs = gl && shader(gl.FRAGMENT_SHADER, 'precision mediump float;varying vec2 vt;uniform sampler2D img;void main(){gl_FragColor=texture2D(img,vt);}');
+  const prog = vs && fs && gl.createProgram();
+  if (prog) {
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+  }
+  if (!prog || !gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    LayerGL.failed = true;
+    return null;
+  }
+  Object.assign(LayerGL, { canvas, gl, prog, buf: gl.createBuffer() });
+  return gl;
+}
+function layerTexture(gl, L) {
+  let entry = LayerGL.textures.get(L.id);
+  if (entry && entry.src === L.src && entry.rev === L.rev) return entry.tex;
+  if (!entry) {
+    entry = { tex: gl.createTexture() };
+    LayerGL.textures.set(L.id, entry);
+  }
+  gl.bindTexture(gl.TEXTURE_2D, entry.tex);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, L.src);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  Object.assign(entry, { src: L.src, rev: L.rev });
+  return entry.tex;
+}
+// Vẽ layer vào khung bao của nó ở tỉ lệ scale, trả về canvas WebGL và vị trí theo toạ độ ảnh.
+function renderLayerGL(L, scale, n) {
+  const gl = layerGL();
+  if (!gl) return null;
+  const map = layerMap(L), P = [];
+  for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) P.push(map(i / n, j / n));
+  const x0 = Math.floor(Math.min(...P.map(p => p.x))) - 1, y0 = Math.floor(Math.min(...P.map(p => p.y))) - 1;
+  const x1 = Math.ceil(Math.max(...P.map(p => p.x))) + 1, y1 = Math.ceil(Math.max(...P.map(p => p.y))) + 1;
+  const max = gl.getParameter(gl.MAX_VIEWPORT_DIMS);
+  const k = Math.min(scale, (max[0] - 2) / (x1 - x0), (max[1] - 2) / (y1 - y0));
+  const w = Math.max(1, Math.ceil((x1 - x0) * k)), h = Math.max(1, Math.ceil((y1 - y0) * k));
+  LayerGL.canvas.width = w;
+  LayerGL.canvas.height = h;
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0, 0, 0, 0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(LayerGL.prog);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, layerTexture(gl, L));
+  const v = new Float32Array(n * n * 6 * 4);
+  let o = 0;
+  const put = (i, j) => {
+    const p = P[j * (n + 1) + i];
+    v[o++] = (p.x - x0) * k;
+    v[o++] = (p.y - y0) * k;
+    v[o++] = i / n;
+    v[o++] = j / n;
+  };
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    put(i, j); put(i + 1, j); put(i + 1, j + 1);
+    put(i, j); put(i + 1, j + 1); put(i, j + 1);
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, LayerGL.buf);
+  gl.bufferData(gl.ARRAY_BUFFER, v, gl.DYNAMIC_DRAW);
+  const pLoc = gl.getAttribLocation(LayerGL.prog, 'p'), tLoc = gl.getAttribLocation(LayerGL.prog, 't');
+  gl.enableVertexAttribArray(pLoc);
+  gl.vertexAttribPointer(pLoc, 2, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(tLoc);
+  gl.vertexAttribPointer(tLoc, 2, gl.FLOAT, false, 16, 8);
+  gl.uniform2f(gl.getUniformLocation(LayerGL.prog, 'size'), w, h);
+  gl.uniform1i(gl.getUniformLocation(LayerGL.prog, 'img'), 0);
+  gl.drawArrays(gl.TRIANGLES, 0, n * n * 6);
+  return { canvas: LayerGL.canvas, x: x0, y: y0, w: w / k, h: h / k };
+}
 function drawLayer(g, L, n, pad) {
+  const t = g.getTransform();
+  const out = renderLayerGL(L, Math.min(4, Math.max(0.02, Math.hypot(t.a, t.b))), 32);
+  if (out) {
+    g.drawImage(out.canvas, out.x, out.y, out.w, out.h);
+    return;
+  }
+  drawLayerTriangles(g, L, n, pad);
+}
+function drawLayerTriangles(g, L, n, pad) {
   const map = layerMap(L), sw = L.src.width, sh = L.src.height;
   const P = [];
   for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) P.push(map(i / n, j / n));
@@ -5984,6 +6090,7 @@ function drawOverlays(g) {
       g.drawImage(Sel.tint, 0, 0);
       g.globalAlpha = 1;
     }
+    if (Sel.ring) g.drawImage(Sel.ring, 0, 0);
     const box = toolDrag && toolDrag.kind === 'select' && toolDrag.moved ? normBox(toolDrag.start, toolDrag.at) : Sel.busy ? Sel.box : null;
     if (box) {
       g.lineWidth = 1.5 * px;
@@ -6124,13 +6231,28 @@ function toolUp(e) {
   if (d.kind === 'select') {
     const p = toImage(e);
     if (d.moved) {
-      Sel.box = normBox(d.start, p);
-      Sel.points = [];
+      // Kéo khung: chọn lại từ đầu. Shift + kéo: thêm một vật vào vùng chọn.
+      const hit = { kind: 'box', box: normBox(d.start, p) };
+      if (d.shift) {
+        Sel.hits = [...Sel.hits, hit];
+      } else {
+        Sel.hits = [hit];
+        Sel.points = [];
+      }
+      requestSelection(hit);
     } else {
-      Sel.box = null;
-      Sel.points = [...Sel.points, { x: p.x, y: p.y, neg: d.shift }];
+      // Bấm: lấy thêm phần còn thiếu. Shift + bấm: bỏ phần thừa.
+      let hit = Sel.hits.find(h => h.kind === 'points');
+      if (!hit && !d.shift) {
+        hit = { kind: 'points', points: [] };
+        Sel.hits = [...Sel.hits, hit];
+      }
+      if (hit) {
+        hit.points = [...hit.points, { x: p.x, y: p.y, neg: d.shift }];
+        Sel.points = hit.points;
+        requestSelection(hit);
+      }
     }
-    requestSelection();
   } else {
     renderPanel();
   }
@@ -6138,7 +6260,7 @@ function toolUp(e) {
 }
 
 // SAM 3.1: kéo khung thì tìm vật trong khung, bấm thì tìm theo điểm (Shift + bấm là điểm bỏ).
-function buildSamGraph({ image, box, points }) {
+function buildSamGraph({ image, box, points, text }) {
   const graph = {
     1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: SAM_CKPT } },
     4: { class_type: 'LoadImage', inputs: { image } },
@@ -6160,6 +6282,10 @@ function buildSamGraph({ image, box, points }) {
   if (neg.length) {
     graph[7] = { class_type: 'PrimitiveString', inputs: { value: JSON.stringify(neg) } };
     detect.negative_coords = ['7', 0];
+  }
+  if (text) {
+    graph[9] = { class_type: 'CLIPTextEncode', inputs: { clip: ['1', 1], text } };
+    detect.conditioning = ['9', 0];
   }
   return graph;
 }
@@ -6195,7 +6321,7 @@ async function requireSam() {
 // dựng lại đường viền trơn quanh mức 0,5, rồi làm mềm viền theo thanh Mềm viền.
 // Dọn mask của SAM ở cỡ ảnh đã gửi lên: bỏ các mảnh rời nhỏ và lấp các lỗ nhỏ bên trong.
 // Mảnh hoặc lỗ dưới 4% mảnh lớn nhất (tối thiểu 48 điểm ảnh) bị coi là hạt lấm tấm.
-function cleanSamMask(raw) {
+function cleanSamMask(raw, rel = 0.04) {
   const w = raw.naturalWidth || raw.width, h = raw.naturalHeight || raw.height;
   const c = newCanvas(w, h), g = c.getContext('2d', { willReadFrequently: true });
   g.drawImage(raw, 0, 0);
@@ -6230,7 +6356,7 @@ function cleanSamMask(raw) {
   }
   let largest = 0;
   for (const a of areas) if (a > largest) largest = a;
-  const small = Math.max(48, largest * 0.04);
+  const small = Math.max(48, largest * rel);
   for (let i = 0; i < n; i++) {
     const a = areas[label[i]];
     const keep = a > 0 ? a >= small : !edges[label[i]] && -a < small;
@@ -6240,13 +6366,14 @@ function cleanSamMask(raw) {
   g.putImageData(px, 0, 0);
   return c;
 }
-function samSoftMask(raw, w, h, smooth, grow, feather) {
-  const a = newCanvas(w, h), g = a.getContext('2d', { willReadFrequently: true });
-  g.imageSmoothingQuality = 'high';
-  g.filter = `blur(${Math.max(0.6, smooth * 0.75).toFixed(2)}px)`;
-  g.drawImage(raw, 0, 0, w, h);
+// Mọi bước làm trên cỡ của mask SAM (tối đa khoảng 2 MP) cho nhanh, rồi phóng về cỡ ảnh gốc có nội suy nên viền vẫn trơn.
+function samSoftMask(raw, w, h, grow, feather) {
+  const rw = raw.naturalWidth || raw.width, rh = raw.naturalHeight || raw.height, k = rw / w;
+  const a = newCanvas(rw, rh), g = a.getContext('2d', { willReadFrequently: true });
+  g.filter = 'blur(0.75px)';
+  g.drawImage(raw, 0, 0);
   g.filter = 'none';
-  const px = g.getImageData(0, 0, w, h), d = px.data;
+  const px = g.getImageData(0, 0, rw, rh), d = px.data;
   for (let i = 0; i < d.length; i += 4) {
     const v = (d[i] / 255) * (d[i + 3] / 255);
     const t = Math.min(1, Math.max(0, (v - 0.3) / 0.4));
@@ -6254,18 +6381,36 @@ function samSoftMask(raw, w, h, smooth, grow, feather) {
     d[i + 3] = Math.round(t * t * (3 - 2 * t) * 255);
   }
   g.putImageData(px, 0, 0);
-  let shape = a;
+  let core = a;
   if (grow > 0) {
-    shape = newCanvas(w, h);
-    stampMask(shape.getContext('2d'), a, grow);
+    const grown = newCanvas(rw, rh);
+    dilate(grown.getContext('2d'), a, grow * k);
+    core = newCanvas(rw, rh);
+    const cg = core.getContext('2d');
+    cg.filter = 'blur(0.6px)';
+    cg.drawImage(grown, 0, 0);
   }
-  // Ghép nhiều bản dịch chuyển làm mép cứng lại, nên khi đã nới thì luôn làm mềm ít nhất 0,8 điểm ảnh.
-  const soften = Math.max(feather, grow > 0 ? 0.8 : 0);
-  if (soften <= 0) return shape;
-  const b = newCanvas(w, h), bg = b.getContext('2d');
-  bg.filter = `blur(${soften}px)`;
-  bg.drawImage(shape, 0, 0);
-  return b;
+  // Mềm ra phía ngoài: quầng mờ nằm ngoài vùng chọn, bên trong vật và phần đã nới vẫn đặc.
+  let soft = core;
+  if (feather > 0) {
+    const halo = newCanvas(rw, rh);
+    dilate(halo.getContext('2d'), core, feather * k);
+    soft = newCanvas(rw, rh);
+    const sg = soft.getContext('2d');
+    sg.filter = `blur(${feather * k / 2}px)`;
+    sg.drawImage(halo, 0, 0);
+    sg.filter = 'none';
+    sg.drawImage(core, 0, 0);
+  }
+  const up = c => {
+    const o = newCanvas(w, h), og = o.getContext('2d');
+    og.imageSmoothingQuality = 'high';
+    og.drawImage(c, 0, 0, w, h);
+    return o;
+  };
+  const out = up(soft);
+  out.core = soft === core ? out : up(core);
+  return out;
 }
 // Mask của BiRefNet đã có viền mềm, giữ nguyên độ mềm đó làm kênh trong suốt.
 function alphaFromImage(img, w, h) {
@@ -6282,10 +6427,11 @@ function alphaFromImage(img, w, h) {
   return c;
 }
 function applySelSoftness() {
-  const mask = samSoftMask(Sel.clean, S.w, S.h, Sel.smooth, Sel.grow, Sel.feather);
+  const mask = samSoftMask(Sel.clean, S.w, S.h, Sel.grow, Sel.feather);
   const bounds = maskBounds(mask);
   Sel.mask = bounds ? mask : null;
   Sel.tint = bounds ? tintMask(mask, SEL_COLOR) : null;
+  Sel.ring = bounds ? selectionOutline(mask.core || mask) : null;
   return bounds;
 }
 function maskBounds(mask) {
@@ -6302,63 +6448,117 @@ function maskBounds(mask) {
   }
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
-// Bản xem trước không có ComfyUI: vùng chọn giả là hình elip trong khung, hoặc hình tròn quanh các điểm.
-function fakeSamMask() {
+// Vùng chọn là hợp của nhiều lần chọn: mỗi khung là một vật, các điểm bấm là một vật, mỗi lần tìm theo tên có thể ra nhiều vật.
+// Bản xem trước không có ComfyUI: khung ra hình elip, điểm ra hình tròn, tìm theo tên ra hai vật giả.
+function fakeHitMask(hit) {
   const c = newCanvas(S.w, S.h), g = c.getContext('2d');
   g.fillStyle = '#fff';
-  if (Sel.box) {
-    const b = Sel.box;
+  if (hit.kind === 'box') {
+    const b = hit.box;
     g.beginPath();
     g.ellipse((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, Math.max(1, (b.x1 - b.x0) / 2 * 0.9), Math.max(1, (b.y1 - b.y0) / 2 * 0.9), 0, 0, Math.PI * 2);
     g.fill();
-  }
-  const r = Math.min(S.w, S.h) * 0.08;
-  for (const p of Sel.points) {
-    g.globalCompositeOperation = p.neg ? 'destination-out' : 'source-over';
-    g.beginPath();
-    g.arc(p.x, p.y, r, 0, Math.PI * 2);
-    g.fill();
+  } else if (hit.kind === 'points') {
+    const r = Math.min(S.w, S.h) * 0.08;
+    for (const p of hit.points) {
+      g.globalCompositeOperation = p.neg ? 'destination-out' : 'source-over';
+      g.beginPath();
+      g.arc(p.x, p.y, r, 0, Math.PI * 2);
+      g.fill();
+    }
+  } else {
+    for (const [fx, fy] of [[0.3, 0.55], [0.7, 0.5]]) {
+      g.beginPath();
+      g.ellipse(S.w * fx, S.h * fy, S.w * 0.07, S.h * 0.18, 0, 0, Math.PI * 2);
+      g.fill();
+    }
   }
   return c;
 }
-async function samMask() {
+async function samHitMask(hit) {
   await requireSam();
   if (Sel.upload.for !== S.base) {
     const small = fitReference(S.base, SAM_UPLOAD_MP);
     Sel.upload = { for: S.base, name: await uploadCanvas(small, `${Date.now().toString(36)}_sam.png`), k: small.width / S.w };
   }
   const k = Sel.upload.k;
-  const box = Sel.box && { x: Math.round(Sel.box.x0 * k), y: Math.round(Sel.box.y0 * k), width: Math.max(1, Math.round((Sel.box.x1 - Sel.box.x0) * k)), height: Math.max(1, Math.round((Sel.box.y1 - Sel.box.y0) * k)) };
-  const points = Sel.points.map(p => ({ x: Math.round(p.x * k), y: Math.round(p.y * k), neg: p.neg }));
-  const id = await queueGraph(buildSamGraph({ image: Sel.upload.name, box, points }));
+  const b = hit.kind === 'box' && hit.box;
+  const box = b && { x: Math.round(b.x0 * k), y: Math.round(b.y0 * k), width: Math.max(1, Math.round((b.x1 - b.x0) * k)), height: Math.max(1, Math.round((b.y1 - b.y0) * k)) };
+  const points = hit.kind === 'points' ? hit.points.map(p => ({ x: Math.round(p.x * k), y: Math.round(p.y * k), neg: p.neg })) : [];
+  const id = await queueGraph(buildSamGraph({ image: Sel.upload.name, box, points, text: hit.kind === 'text' ? hit.text : '' }));
   const { img } = await loadOutput(await waitHelper(id));
   return { raw: img, smooth: Math.max(1, 1 / k) };
 }
-async function requestSelection() {
-  if (!S.base || (!Sel.box && !Sel.points.length)) return;
+async function requestSelection(hit) {
+  if (!S.base || !hit) return;
   const ticket = ++Sel.ticket;
   Sel.busy = true;
+  Sel.box = hit.kind === 'box' ? hit.box : null;
   syncSelUi();
   schedule();
   try {
-    const hit = ON_COMFY ? await samMask() : { raw: fakeSamMask(), smooth: 1 };
+    const got = ON_COMFY ? await samHitMask(hit) : { raw: fakeHitMask(hit), smooth: 1 };
     if (ticket !== Sel.ticket) return;
-    Object.assign(Sel, { raw: hit.raw, clean: cleanSamMask(hit.raw), smooth: hit.smooth });
-    const bounds = applySelSoftness();
-    setStatus(bounds ? (ON_COMFY ? '' : 'Bản xem trước: vùng chọn là giả lập, trên ComfyUI là SAM 3.1 thật.') : 'Không tìm thấy vật, thử kéo khung khác hoặc bấm lên vật.');
+    // Tìm theo tên thường ra nhiều vật to nhỏ khác nhau, nên chỉ bỏ những mảnh thật nhỏ.
+    hit.clean = cleanSamMask(got.raw, hit.kind === 'text' ? 0.005 : 0.04);
+    hit.smooth = got.smooth;
+    Sel.raw = got.raw;
+    rebuildSelection();
   } catch (e) {
     if (ticket === Sel.ticket) setStatus(e.message || String(e));
   } finally {
     if (ticket === Sel.ticket) {
       Sel.busy = false;
+      Sel.box = null;
       syncSelUi();
       schedule();
     }
   }
 }
+function rebuildSelection() {
+  const parts = Sel.hits.filter(h => h.clean);
+  if (!parts.length) return null;
+  const c = newCanvas(parts[0].clean.width, parts[0].clean.height), g = c.getContext('2d');
+  for (const h of parts) g.drawImage(h.clean, 0, 0);
+  Sel.clean = c;
+  Sel.smooth = parts[0].smooth;
+  const bounds = applySelSoftness();
+  setStatus(bounds ? (ON_COMFY ? '' : 'Bản xem trước: vùng chọn là giả lập, trên ComfyUI là SAM 3.1 thật.') : 'Không tìm thấy vật, thử kéo khung khác, bấm lên vật hoặc tìm theo tên khác.');
+  return bounds;
+}
+function searchByName() {
+  const name = $('selName').value.trim();
+  if (!name || Sel.busy || !S.base) return;
+  const hit = { kind: 'text', text: name };
+  Sel.hits = [...Sel.hits, hit];
+  requestSelection(hit);
+}
+// Nới vùng bằng các bản dịch chuyển quanh một vòng tròn. Số bản tăng theo bán kính, để ảnh lớn kéo thanh vẫn nhanh.
+function dilate(g, mask, radius) {
+  g.drawImage(mask, 0, 0);
+  const steps = Math.min(24, Math.max(8, Math.round(radius * 1.2)));
+  for (const part of radius > 6 ? [1, 0.5] : [1]) {
+    for (let i = 0; i < steps; i++) {
+      const t = i / steps * Math.PI * 2;
+      g.drawImage(mask, Math.cos(t) * radius * part, Math.sin(t) * radius * part);
+    }
+  }
+}
+// Đường viền trắng quanh phần đặc của vùng chọn (sau khi nới), để thấy vùng chọn tới đâu. Quầng mềm nằm ngoài đường này.
+function selectionOutline(core) {
+  const w = core.width, h = core.height;
+  const ring = newCanvas(w, h), rg = ring.getContext('2d');
+  dilate(rg, core, Math.max(1.5, 1.5 / V.scale));
+  rg.globalCompositeOperation = 'destination-out';
+  rg.drawImage(core, 0, 0);
+  rg.globalCompositeOperation = 'source-in';
+  rg.fillStyle = '#fff';
+  rg.fillRect(0, 0, w, h);
+  return ring;
+}
 function clearSelection() {
   Sel.ticket++;
-  Object.assign(Sel, { box: null, points: [], mask: null, tint: null, raw: null, clean: null, busy: false });
+  Object.assign(Sel, { box: null, points: [], hits: [], mask: null, tint: null, ring: null, raw: null, clean: null, busy: false });
 }
 // Xoá vật: vùng chọn thành vùng tô của một cọ Xoá mới, Gen chạy như cọ Xoá tô tay.
 function selectionToRemoveBrush() {
@@ -6483,6 +6683,7 @@ async function cutoutLayer() {
     g.globalCompositeOperation = 'destination-in';
     g.drawImage(mask, 0, 0);
     g.globalCompositeOperation = 'source-over';
+    L.rev = (L.rev || 0) + 1;
     renderLayerTiles();
     renderPanel();
     setStatus('Đã tách nền layer.');
@@ -6531,8 +6732,10 @@ function renderLayerTiles() {
 }
 function syncSelUi() {
   const on = S.tool === 'select';
-  $('selHint').hidden = !on || !!Sel.mask || Sel.busy;
+  $('selWrap').hidden = !on;
+  $('selHint').hidden = !on;
   $('selBar').hidden = !on || (!Sel.mask && !Sel.busy);
+  $('selFind').disabled = Sel.busy;
   $('selText').textContent = Sel.busy ? 'Đang tìm vật bằng SAM 3.1...' : 'Đã chọn vật';
   ['selRemove', 'selLayer', 'selCopy'].forEach(id => { $(id).disabled = Sel.busy || !Sel.mask; });
   $('selFeather').disabled = $('selGrow').disabled = Sel.busy || !Sel.raw;
@@ -6619,6 +6822,8 @@ function bindLayerTools() {
     syncToolUi();
   });
   $('selExit').addEventListener('click', () => { S.tool = null; clearSelection(); syncToolUi(); });
+  $('selFind').addEventListener('click', searchByName);
+  $('selName').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); searchByName(); } });
   $('selRemove').addEventListener('click', selectionToRemoveBrush);
   $('selLayer').addEventListener('click', () => selectionToLayer(false));
   $('selCopy').addEventListener('click', () => selectionToLayer(true));
