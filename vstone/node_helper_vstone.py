@@ -4397,7 +4397,8 @@ a.btn{color:inherit;text-decoration:none}
         <button class="viewchip" type="button" id="selLayer" title="Cắt vật ra thành layer, chỗ cũ thành xám để lượt Ghép lấp lại">Tách thành layer</button>
         <button class="viewchip" type="button" id="selCopy" title="Chép vật thành layer, vật vẫn ở chỗ cũ">Chép thành layer</button>
         <button class="viewchip" type="button" id="selClear">Bỏ chọn</button>
-        <label class="selsoft" title="Độ mềm của viền vùng chọn, tính bằng điểm ảnh">Mềm viền<input id="selFeather" type="range" min="0" max="30" step="1" value="6" aria-label="Mềm viền vùng chọn"></label>
+        <label class="selsoft" title="Nới vùng chọn rộng ra, tính bằng điểm ảnh">Nới rộng<input id="selGrow" type="range" min="0" max="40" step="1" value="8" aria-label="Nới rộng vùng chọn"></label>
+        <label class="selsoft" title="Độ mềm của viền vùng chọn, tính bằng điểm ảnh">Mềm viền<input id="selFeather" type="range" min="0" max="30" step="1" value="3" aria-label="Mềm viền vùng chọn"></label>
       </div>
       <div class="floatbar" id="layerBar" hidden>
         <div class="viewchips" id="layerMode" role="group" aria-label="Cách chỉnh layer">
@@ -4688,7 +4689,7 @@ const S = {
 };
 const V = { scale: 1, x: 0, y: 0 };
 // Vùng chọn của SAM 3.1 và các layer, toạ độ theo ảnh gốc (không tính vùng nới).
-const Sel = { box: null, points: [], mask: null, tint: null, raw: null, smooth: 1, feather: 6, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
+const Sel = { box: null, points: [], mask: null, tint: null, raw: null, clean: null, smooth: 1, grow: 8, feather: 3, busy: false, ticket: 0, upload: { for: null, name: '', k: 1 }, ready: false };
 const Layers = { list: [], active: null, mode: 'transform', nextId: 1, busy: false };
 const W = () => S.w + S.pads.left + S.pads.right;
 const H = () => S.h + S.pads.top + S.pads.bottom;
@@ -5798,7 +5799,54 @@ async function requireSam() {
 }
 // Mask của SAM là trắng đen ở cỡ ảnh đã thu nhỏ. Phóng về cỡ ảnh gốc có nội suy và làm mờ nhẹ cho viền hết răng cưa,
 // dựng lại đường viền trơn quanh mức 0,5, rồi làm mềm viền theo thanh Mềm viền.
-function samSoftMask(raw, w, h, smooth, feather) {
+// Dọn mask của SAM ở cỡ ảnh đã gửi lên: bỏ các mảnh rời nhỏ và lấp các lỗ nhỏ bên trong.
+// Mảnh hoặc lỗ dưới 4% mảnh lớn nhất (tối thiểu 48 điểm ảnh) bị coi là hạt lấm tấm.
+function cleanSamMask(raw) {
+  const w = raw.naturalWidth || raw.width, h = raw.naturalHeight || raw.height;
+  const c = newCanvas(w, h), g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(raw, 0, 0);
+  const px = g.getImageData(0, 0, w, h), d = px.data, n = w * h;
+  const on = new Uint8Array(n);
+  for (let i = 0; i < n; i++) on[i] = d[i * 4] * d[i * 4 + 3] > 127 * 255 ? 1 : 0;
+  const label = new Int32Array(n).fill(-1), stack = new Int32Array(n), areas = [], edges = [];
+  // Gán nhãn các vùng liền nhau (8 hướng cho vật, 4 hướng cho nền) bằng ngăn xếp, không đệ quy.
+  for (let s = 0; s < n; s++) {
+    if (label[s] !== -1) continue;
+    const value = on[s], id = areas.length;
+    let top = 0, area = 0, edge = false;
+    stack[top++] = s;
+    label[s] = id;
+    while (top) {
+      const p = stack[--top], x = p % w, y = (p - x) / w;
+      area++;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) edge = true;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if ((!dx && !dy) || (!value && dx && dy)) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const q = ny * w + nx;
+        if (label[q] === -1 && on[q] === value) {
+          label[q] = id;
+          stack[top++] = q;
+        }
+      }
+    }
+    areas.push(value ? area : -area);
+    edges.push(edge);
+  }
+  let largest = 0;
+  for (const a of areas) if (a > largest) largest = a;
+  const small = Math.max(48, largest * 0.04);
+  for (let i = 0; i < n; i++) {
+    const a = areas[label[i]];
+    const keep = a > 0 ? a >= small : !edges[label[i]] && -a < small;
+    d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 255;
+    d[i * 4 + 3] = keep ? 255 : 0;
+  }
+  g.putImageData(px, 0, 0);
+  return c;
+}
+function samSoftMask(raw, w, h, smooth, grow, feather) {
   const a = newCanvas(w, h), g = a.getContext('2d', { willReadFrequently: true });
   g.imageSmoothingQuality = 'high';
   g.filter = `blur(${Math.max(0.6, smooth * 0.75).toFixed(2)}px)`;
@@ -5812,10 +5860,17 @@ function samSoftMask(raw, w, h, smooth, feather) {
     d[i + 3] = Math.round(t * t * (3 - 2 * t) * 255);
   }
   g.putImageData(px, 0, 0);
-  if (feather <= 0) return a;
+  let shape = a;
+  if (grow > 0) {
+    shape = newCanvas(w, h);
+    stampMask(shape.getContext('2d'), a, grow);
+  }
+  // Ghép nhiều bản dịch chuyển làm mép cứng lại, nên khi đã nới thì luôn làm mềm ít nhất 0,8 điểm ảnh.
+  const soften = Math.max(feather, grow > 0 ? 0.8 : 0);
+  if (soften <= 0) return shape;
   const b = newCanvas(w, h), bg = b.getContext('2d');
-  bg.filter = `blur(${feather}px)`;
-  bg.drawImage(a, 0, 0);
+  bg.filter = `blur(${soften}px)`;
+  bg.drawImage(shape, 0, 0);
   return b;
 }
 // Mask của BiRefNet đã có viền mềm, giữ nguyên độ mềm đó làm kênh trong suốt.
@@ -5833,7 +5888,7 @@ function alphaFromImage(img, w, h) {
   return c;
 }
 function applySelSoftness() {
-  const mask = samSoftMask(Sel.raw, S.w, S.h, Sel.smooth, Sel.feather);
+  const mask = samSoftMask(Sel.clean, S.w, S.h, Sel.smooth, Sel.grow, Sel.feather);
   const bounds = maskBounds(mask);
   Sel.mask = bounds ? mask : null;
   Sel.tint = bounds ? tintMask(mask, SEL_COLOR) : null;
@@ -5894,7 +5949,7 @@ async function requestSelection() {
   try {
     const hit = ON_COMFY ? await samMask() : { raw: fakeSamMask(), smooth: 1 };
     if (ticket !== Sel.ticket) return;
-    Object.assign(Sel, { raw: hit.raw, smooth: hit.smooth });
+    Object.assign(Sel, { raw: hit.raw, clean: cleanSamMask(hit.raw), smooth: hit.smooth });
     const bounds = applySelSoftness();
     setStatus(bounds ? (ON_COMFY ? '' : 'Bản xem trước: vùng chọn là giả lập, trên ComfyUI là SAM 3.1 thật.') : 'Không tìm thấy vật, thử kéo khung khác hoặc bấm lên vật.');
   } catch (e) {
@@ -5909,7 +5964,7 @@ async function requestSelection() {
 }
 function clearSelection() {
   Sel.ticket++;
-  Object.assign(Sel, { box: null, points: [], mask: null, tint: null, raw: null, busy: false });
+  Object.assign(Sel, { box: null, points: [], mask: null, tint: null, raw: null, clean: null, busy: false });
 }
 // Xoá vật: vùng chọn thành vùng tô của một cọ Xoá mới, Gen chạy như cọ Xoá tô tay.
 function selectionToRemoveBrush() {
@@ -6086,7 +6141,7 @@ function syncSelUi() {
   $('selBar').hidden = !on || (!Sel.mask && !Sel.busy);
   $('selText').textContent = Sel.busy ? 'Đang tìm vật bằng SAM 3.1...' : 'Đã chọn vật';
   ['selRemove', 'selLayer', 'selCopy'].forEach(id => { $(id).disabled = Sel.busy || !Sel.mask; });
-  $('selFeather').disabled = Sel.busy || !Sel.raw;
+  $('selFeather').disabled = $('selGrow').disabled = Sel.busy || !Sel.raw;
 }
 function syncToolUi() {
   $('selectTool').setAttribute('aria-pressed', String(S.tool === 'select'));
@@ -6185,15 +6240,16 @@ function bindLayerTools() {
   $('layerToUp').addEventListener('click', () => sendLayer('upscale'));
   $('selClear').addEventListener('click', () => { clearSelection(); syncSelUi(); schedule(); });
   let softFrame = 0;
-  $('selFeather').addEventListener('input', e => {
-    Sel.feather = Number(e.target.value);
-    if (!Sel.raw || softFrame) return;
+  const reshape = () => {
+    if (!Sel.clean || softFrame) return;
     softFrame = requestAnimationFrame(() => {
       softFrame = 0;
       applySelSoftness();
       schedule();
     });
-  });
+  };
+  $('selFeather').addEventListener('input', e => { Sel.feather = Number(e.target.value); reshape(); });
+  $('selGrow').addEventListener('input', e => { Sel.grow = Number(e.target.value); reshape(); });
   $('layerFile').addEventListener('change', e => {
     const file = e.target.files[0];
     e.target.value = '';
