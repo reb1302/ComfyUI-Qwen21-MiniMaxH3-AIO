@@ -65,8 +65,9 @@
         "Node name for S&R": "PrimitiveStringMultiline"
       },
       "widgets_values": [
-        ""
-      ]
+        "Apply the visual changes from <Picture 1>"
+      ],
+      "title": "VFX Edit Instruction {a} (Add / Change / Replace / Remove)"
     },
     {
       "id": 3,
@@ -583,8 +584,9 @@
         "Node name for S&R": "StringFormat"
       },
       "widgets_values": [
-        "Remove {a} from <image1>, preserve the original scene, pose, lighting, and background unchanged."
-      ]
+        "{a} in <image1>, preserve the original scene, pose, lighting, and background unchanged."
+      ],
+      "title": "1st Frame Edit Prompt Template (Qwen 2.1)"
     },
     {
       "id": 18,
@@ -940,8 +942,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            37,
-            38
+            37
           ]
         },
         {
@@ -960,7 +961,7 @@
       "type": "PreviewImage",
       "pos": [
         1120,
-        1315
+        1410
       ],
       "size": [
         420,
@@ -973,14 +974,15 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 37
+          "link": 69
         }
       ],
       "outputs": [],
       "properties": {
         "Node name for S&R": "PreviewImage"
       },
-      "widgets_values": []
+      "widgets_values": [],
+      "title": "Preview Guide First Frame (<Picture 1>)"
     },
     {
       "id": 30,
@@ -1306,8 +1308,9 @@
         "Node name for S&R": "StringFormat"
       },
       "widgets_values": [
-        "vfx_edit: Remove {a} while preserving pose, motion, framing, lighting, colors and unrelated background elements, transforming the source video to match <Picture 1>, a guide frame of this clip with the edit already applied."
-      ]
+        "vfx_edit: {a} while preserving pose, motion, framing, lighting, colors and unrelated background elements, transforming the source video to match <Picture 1>, a guide frame of this clip with the edit already applied."
+      ],
+      "title": "Video FFP Guide Prompt Template (MiniMax-H3)"
     },
     {
       "id": 40,
@@ -1900,6 +1903,120 @@
         "auto",
         "auto"
       ]
+    },
+    {
+      "id": 7,
+      "type": "LoadImage",
+      "title": "Custom First Frame (Ctrl+B to Enable when using External Guide Frame)",
+      "pos": [
+        80,
+        1580
+      ],
+      "size": [
+        380,
+        320
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            68
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "example.png",
+        "image"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "ComfySoftSwitchNode",
+      "title": "First Frame Guide Switch (False = Qwen 2.1 Auto-Edit, True = Custom LoadImage)",
+      "pos": [
+        1120,
+        1290
+      ],
+      "size": [
+        420,
+        85
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "on_false",
+          "type": "IMAGE",
+          "link": 37
+        },
+        {
+          "name": "on_true",
+          "type": "IMAGE",
+          "link": 68
+        },
+        {
+          "name": "switch",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "type": "IMAGE",
+          "links": [
+            38,
+            69
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ComfySoftSwitchNode"
+      },
+      "widgets_values": [
+        false
+      ]
+    },
+    {
+      "id": 9,
+      "type": "MarkdownNote",
+      "title": "HƯỚNG DẪN FIRST-FRAME GUIDE (FFP - ĐA NĂNG)",
+      "pos": [
+        -430,
+        80
+      ],
+      "size": [
+        460,
+        520
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## 🎯 HƯỚNG DẪN SỬ DỤNG FIRST-FRAME GUIDE (FFP)\n\nWorkflow này **đã mở khóa hoàn toàn** (không còn hardcode Remove). Nhiệm vụ của nó là lấy **First Frame (<Picture 1>)** làm chuẩn để **Guide (lan truyền)** sang toàn bộ các frame của video.\n\n---\n\n### Cách 1: Dùng Qwen 2.1 tự sửa First Frame rồi Guide cả Video (Mặc định)\n1. Để công tắc **Node #8 (First Frame Guide Switch) = \false**.\n2. Nhập bất kỳ lệnh VFX nào vào **Node #2 (VFX Edit Instruction {a})**:\n   - **Thêm hiệu ứng / vật thể:** Add glowing fire on the sword / Add sunglasses to the person\n   - **Đổi trang phục / màu sắc / bối cảnh:** Change the jacket to red leather\n   - **Xóa vật thể:** Remove the boom microphone\n\n---\n\n### Cách 2: Đưa sẵn ảnh First Frame đã sửa từ bên ngoài vào để Guide cả Video\n1. Bấm **Ctrl + B** vào **Node #7 (Custom First Frame)** ở cuối cột 1 để bật node và tải ảnh First Frame của bạn lên.\n2. Bật công tắc **Node #8 (First Frame Guide Switch) = \true** *(Hệ thống sẽ tự động bỏ qua toàn bộ cụm Qwen 2.1 để tiết kiệm VRAM & thời gian)*.\n3. Ở **Node #2**, để nguyên câu mặc định: Apply the visual changes from <Picture 1> (hoặc mô tả ngắn thay đổi trên ảnh First Frame)."
+      ],
+      "color": "#2b4c3f",
+      "bgcolor": "#1f362d"
     }
   ],
   "links": [
@@ -2160,22 +2277,6 @@
       "IMAGE"
     ],
     [
-      37,
-      25,
-      0,
-      26,
-      0,
-      "IMAGE"
-    ],
-    [
-      38,
-      25,
-      0,
-      40,
-      3,
-      "IMAGE"
-    ],
-    [
       40,
       30,
       0,
@@ -2398,6 +2499,38 @@
       53,
       0,
       "VIDEO"
+    ],
+    [
+      37,
+      25,
+      0,
+      8,
+      0,
+      "IMAGE"
+    ],
+    [
+      38,
+      8,
+      0,
+      40,
+      3,
+      "IMAGE"
+    ],
+    [
+      68,
+      7,
+      0,
+      8,
+      1,
+      "IMAGE"
+    ],
+    [
+      69,
+      8,
+      0,
+      26,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -2408,7 +2541,7 @@
         40,
         -10,
         460,
-        1560
+        1940
       ],
       "color": "#3f789e",
       "font_size": 24,
@@ -2421,7 +2554,7 @@
         600,
         -10,
         980,
-        1665
+        1760
       ],
       "color": "#8a5a44",
       "font_size": 24,
