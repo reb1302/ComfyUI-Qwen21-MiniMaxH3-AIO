@@ -172,6 +172,7 @@ svg{display:block}
 .upview.comparing.panning{cursor:grabbing}
 .uptools{position:absolute;right:8px;top:8px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
 .uptools .viewchip{padding:3px 10px;font-size:12px;background:var(--well)}
+.uptools a.viewchip{color:inherit;text-decoration:none}
 .upview .rotnote{top:auto;bottom:8px}
 .rotslider{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2)}
 .rotslider input{width:220px;accent-color:var(--paper)}
@@ -448,6 +449,7 @@ a.btn{color:inherit;text-decoration:none}
             <button class="viewchip" id="upFit" type="button" title="Cả ảnh vừa khung">Vừa khung</button>
             <button class="viewchip" id="upOne" type="button" title="Xem đúng từng điểm ảnh của kết quả">100%</button>
             <button class="viewchip" id="upOpen" type="button" title="Mở ảnh kết quả để tải về hoặc sửa tiếp">Xem ảnh</button>
+            <a class="viewchip" id="upSave" download="upscale.png" title="Tải ảnh upscale về máy">Tải về</a>
           </div>
           <div class="rotnote" id="upNote" hidden>Giả lập để xem giao diện, chưa phải ảnh upscale thật</div>
         </div>
@@ -5005,6 +5007,8 @@ function zoomUpAt(box, px, py, zoom) {
 }
 function showUpscaleResult(ref, img, url) {
   Object.assign(Up, { result: img, resultUrl: url, resultFor: ref });
+  $('upSave').href = url;
+  $('upSave').download = `upscale_${img.naturalWidth || img.width}x${img.naturalHeight || img.height}.png`;
   Object.assign(UpView, { zoom: 1, split: 0.5, cx: (img.naturalWidth || img.width) / 2, cy: (img.naturalHeight || img.height) / 2, drag: null });
   drawUpscale();
 }
@@ -5071,8 +5075,10 @@ function drawUpscale() {
 function bindUpscaleCompare() {
   const view = $('upView');
   const at = e => { const r = view.getBoundingClientRect(); return { r, x: e.clientX - r.left, y: e.clientY - r.top }; };
+  // Nút trên khung (Vừa khung, 100%, Xem ảnh, Tải về) không phải vùng so sánh: không bắt chuột ở đó, nếu không click bị nuốt.
+  const onTools = e => !!e.target.closest('.uptools');
   view.addEventListener('pointerdown', e => {
-    if (!upResult() || e.button !== 0) return;
+    if (!upResult() || e.button !== 0 || onTools(e)) return;
     const p = at(e);
     UpView.drag = { x: p.x, y: p.y, cx: UpView.cx, cy: UpView.cy, slide: UpView.zoom <= 1.001 };
     if (UpView.drag.slide) UpView.split = Math.min(1, Math.max(0, p.x / p.r.width));
@@ -5082,7 +5088,7 @@ function bindUpscaleCompare() {
   });
   view.addEventListener('pointermove', e => {
     const res = upResult();
-    if (!res) return;
+    if (!res || (!UpView.drag && onTools(e))) return;
     const p = at(e);
     if (UpView.drag && !UpView.drag.slide) {
       const scale = upLayout(p.r, res).scale;
@@ -5099,14 +5105,14 @@ function bindUpscaleCompare() {
   view.addEventListener('pointerup', end);
   view.addEventListener('pointercancel', end);
   view.addEventListener('wheel', e => {
-    if (!upResult()) return;
+    if (!upResult() || onTools(e)) return;
     e.preventDefault();
     const p = at(e);
     zoomUpAt(p.r, p.x, p.y, UpView.zoom * Math.exp(-e.deltaY * 0.0015));
   }, { passive: false });
   view.addEventListener('dblclick', e => {
     const res = upResult();
-    if (!res) return;
+    if (!res || onTools(e)) return;
     const p = at(e);
     zoomUpAt(p.r, p.x, p.y, UpView.zoom > 1.001 ? 1 : upOneToOne(p.r, res));
   });
