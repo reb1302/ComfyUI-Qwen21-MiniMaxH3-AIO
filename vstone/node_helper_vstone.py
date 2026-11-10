@@ -806,14 +806,30 @@ def _mount_mockin_routes_and_web_live(web_dir: str) -> None:
             for r in root_res:
                 app.router._resources.remove(r)
 
-            existing_routes = {(r.method, getattr(r.resource, "canonical", "")) for r in app.router.routes()}
+            route_map = {}
+            for rt in app.router.routes():
+                canon = getattr(rt.resource, "canonical", "")
+                if canon:
+                    route_map[(rt.method, canon)] = rt
+
             to_add = []
             for r in routes:
                 if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
-                    if (r.method, r.path) not in existing_routes:
+                    if (r.method, r.path) in route_map:
+                        try:
+                            route_map[(r.method, r.path)]._handler = r.handler
+                        except Exception:
+                            pass
+                    else:
                         to_add.append(r)
-                    if (r.method, "/api" + r.path) not in existing_routes:
-                        to_add.append(web.RouteDef(r.method, "/api" + r.path, r.handler, r.kwargs.copy()))
+                    api_p = "/api" + r.path
+                    if (r.method, api_p) in route_map:
+                        try:
+                            route_map[(r.method, api_p)]._handler = r.handler
+                        except Exception:
+                            pass
+                    else:
+                        to_add.append(web.RouteDef(r.method, api_p, r.handler, r.kwargs.copy()))
             if to_add:
                 app.add_routes(to_add)
 
@@ -1268,8 +1284,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 12: Auto-sync & hot-load ComfyUI-Mockin-Node (R2 Cloud Drive + Timeline Director + Live HTTP/JS Routes) on H200
-VSTONE_RUNTIME_PATCH_VER = 12
+# 13: ComfyUI-Mockin-Node v2 (IPv4-first R2 + Laptop 1:1 Direct Folder Sync Bridge + Same-origin stream)
+VSTONE_RUNTIME_PATCH_VER = 13
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704

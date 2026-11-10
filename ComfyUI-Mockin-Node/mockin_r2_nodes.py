@@ -1,8 +1,13 @@
+import asyncio
 import base64
+import concurrent.futures
+import http.client
 import json
 import mimetypes
 import os
 import shutil
+import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -32,6 +37,60 @@ CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mockin_c
 DEFAULT_R2_API_BASE = "https://api.mockin.app/api/room"
 DEFAULT_R2_CODE = "9999"
 DEFAULT_ROOM_ID = "R-6ZZP"
+BRIDGE_ROOM_ID = "R-LAPTOP-BRIDGE"
+BRIDGE_NOTE_CMD = "laptop_cmd"
+BRIDGE_NOTE_RES = "laptop_res"
+
+
+class _IPv4HTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        last_err = None
+        try:
+            infos = socket.getaddrinfo(self.host, self.port, socket.AF_INET, socket.SOCK_STREAM)
+        except Exception:
+            infos = []
+        for res in infos:
+            af, socktype, proto, _, sa = res
+            sock = None
+            try:
+                sock = socket.socket(af, socktype, proto)
+                if self.timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(self.timeout)
+                sock.connect(sa)
+                self.sock = sock
+                return
+            except OSError as e:
+                last_err = e
+                if sock is not None:
+                    sock.close()
+        if last_err:
+            raise last_err
+        super().connect()
+
+
+class _IPv4HTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        _IPv4HTTPConnection.connect(self)
+        server_hostname = self._tunnel_host if self._tunnel_host else self.host
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=server_hostname)
+
+
+class _IPv4HTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_IPv4HTTPConnection, req)
+
+
+class _IPv4HTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_IPv4HTTPSConnection, req, context=self._context)
+
+
+_R2_IPV4_OPENER = urllib.request.build_opener(_IPv4HTTPHandler(), _IPv4HTTPSHandler())
+
+
+def _r2_urlopen(req, timeout: int = 60):
+    return _R2_IPV4_OPENER.open(req, timeout=timeout)
+
 
 LOCAL_DIR_PRESETS = [
     "ComfyUI/",
@@ -49,7 +108,6 @@ LOCAL_DIR_PRESETS = [
     "ComfyUI/custom_nodes",
     "Custom Path",
 ]
-
 
 INVALID_ROOM_IDS = {
     "",
@@ -89,7 +147,7 @@ def load_r2_config() -> dict:
                 if c and not c.upper().startswith("R-") and c not in INVALID_ROOM_IDS and not c.startswith("http"):
                     cfg["r2_code"] = c
                 r = str(saved.get("default_room_id") or "").strip()
-                if r and r not in INVALID_ROOM_IDS and not r.startswith("http") and "/" not in r:
+                if r and r not in INVALID_ROOM_IDS and r != BRIDGE_ROOM_ID and not r.startswith("http") and "/" not in r:
                     cfg["default_room_id"] = r
                 p = str(saved.get("project_path") or "").strip()
                 if p:
@@ -115,7 +173,7 @@ def save_r2_config(updates: dict):
             continue
         if k == "r2_code" and (val.upper().startswith("R-") or val in INVALID_ROOM_IDS or val.startswith("http")):
             continue
-        if k == "default_room_id" and (val in INVALID_ROOM_IDS or val.startswith("http") or "/" in val):
+        if k == "default_room_id" and (val in INVALID_ROOM_IDS or val == BRIDGE_ROOM_ID or val.startswith("http") or "/" in val):
             continue
         full_cfg[k] = val
     try:
@@ -149,20 +207,6 @@ def resolve_local_dir(preset: str, custom_path: str = "", remote_subpath: str = 
     return os.path.abspath(base_dir)
 
 
-INVALID_ROOM_IDS = {
-    "",
-    "9999",
-    "read_file_or_note",
-    "sync_pull_to_local",
-    "sync_push_from_local",
-    "copy_on_r2",
-    "move_on_r2",
-    "mkdir_on_r2",
-    "list_fs",
-    "manifest_folder",
-}
-
-
 def sanitize_r2_params(api_base: str = "", code: str = "", room_id: str = "") -> tuple:
     cfg = load_r2_config()
     b = str(api_base or "").strip().rstrip("/")
@@ -173,7 +217,6 @@ def sanitize_r2_params(api_base: str = "", code: str = "", room_id: str = "") ->
         c = cfg.get("r2_code", DEFAULT_R2_CODE)
     r = str(room_id or "").strip()
     if r in INVALID_ROOM_IDS or r.startswith("http") or r.startswith("ComfyUI/") or "/" in r:
-        # Check if code accidentally held the room_id (e.g. "R-6ZZP") from a shifted widget array
         raw_c = str(code or "").strip()
         if raw_c.upper().startswith("R-") and raw_c not in INVALID_ROOM_IDS:
             r = raw_c
@@ -192,7 +235,6 @@ def build_r2_url(api_base: str, endpoint_path: str, query: dict = None) -> str:
             ep = ep[len("/api/room"):]
         if not ep.startswith("/"):
             ep = "/" + ep
-        # Sanitize first path segment if it was a shifted action name like /read_file_or_note
         parts = ep.lstrip("/").split("/")
         if parts and parts[0] in INVALID_ROOM_IDS:
             _, _, fallback_room = sanitize_r2_params(api_base, "", "")
@@ -217,13 +259,13 @@ def r2_api_request(
     json_body: dict = None,
     raw_body: bytes = None,
     content_type: str = None,
-    timeout: int = 60,
+    timeout: int = 45,
 ) -> dict:
     api_base, code, _ = sanitize_r2_params(api_base, code, "")
     url = build_r2_url(api_base, endpoint_path, query)
     headers = {
         "X-Room-Code": code,
-        "User-Agent": "ComfyUI-Mockin-R2/1.0",
+        "User-Agent": "ComfyUI-Mockin-R2/2.0",
     }
     data_bytes = None
     if raw_body is not None:
@@ -237,13 +279,15 @@ def r2_api_request(
     t0 = time.time()
     try:
         req = urllib.request.Request(url, data=data_bytes, headers=headers, method=method.upper())
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _r2_urlopen(req, timeout=timeout) as resp:
             elapsed_ms = round((time.time() - t0) * 1000, 1)
             raw = resp.read()
             ctype = resp.headers.get("Content-Type", "")
             text = raw.decode("utf-8", errors="replace")
             try:
                 parsed = json.loads(text)
+                if isinstance(parsed, dict) and isinstance(parsed.get("rooms"), list):
+                    parsed["rooms"] = [rm for rm in parsed["rooms"] if rm.get("room_id") != BRIDGE_ROOM_ID]
             except Exception:
                 parsed = None
             return {
@@ -288,6 +332,28 @@ def r2_api_request(
         }
 
 
+def r2_fetch_file_bytes(
+    room_id: str,
+    remote_path: str,
+    api_base: str = DEFAULT_R2_API_BASE,
+    code: str = DEFAULT_R2_CODE,
+) -> tuple:
+    api_base, code, room_id = sanitize_r2_params(api_base, code, room_id)
+    dl_url = build_r2_url(api_base, f"/{room_id}/fs/download", {"path": remote_path.lstrip("/")})
+    req = urllib.request.Request(
+        dl_url,
+        headers={
+            "X-Room-Code": str(code or DEFAULT_R2_CODE).strip(),
+            "User-Agent": "ComfyUI-Mockin-R2/2.0",
+        },
+        method="GET",
+    )
+    with _r2_urlopen(req, timeout=300) as resp:
+        data = resp.read()
+        ctype = resp.headers.get("Content-Type") or mimetypes.guess_type(remote_path)[0] or "application/octet-stream"
+        return data, ctype
+
+
 def r2_download_single_file(
     room_id: str,
     remote_path: str,
@@ -299,19 +365,21 @@ def r2_download_single_file(
     os.makedirs(os.path.dirname(os.path.abspath(local_dest_path)), exist_ok=True)
     t0 = time.time()
     if direct_url:
-        req = urllib.request.Request(direct_url, headers={"User-Agent": "ComfyUI-Mockin-R2/1.0"}, method="GET")
+        req = urllib.request.Request(direct_url, headers={"User-Agent": "ComfyUI-Mockin-R2/2.0"}, method="GET")
     else:
         dl_url = build_r2_url(api_base, f"/{room_id}/fs/download", {"path": remote_path.lstrip("/")})
         req = urllib.request.Request(
             dl_url,
             headers={
                 "X-Room-Code": str(code or DEFAULT_R2_CODE).strip(),
-                "User-Agent": "ComfyUI-Mockin-R2/1.0",
+                "User-Agent": "ComfyUI-Mockin-R2/2.0",
             },
             method="GET",
         )
-    with urllib.request.urlopen(req, timeout=300) as resp, open(local_dest_path, "wb") as out_f:
+    part_path = local_dest_path + ".part"
+    with _r2_urlopen(req, timeout=300) as resp, open(part_path, "wb") as out_f:
         shutil.copyfileobj(resp, out_f, length=1024 * 1024)
+    os.replace(part_path, local_dest_path)
     size_bytes = os.path.getsize(local_dest_path)
     return {
         "ok": True,
@@ -320,6 +388,27 @@ def r2_download_single_file(
         "size": size_bytes,
         "elapsed_ms": round((time.time() - t0) * 1000, 1),
     }
+
+
+def trigger_laptop_bridge_async(payload: dict):
+    """Non-blocking relay to Laptop Bridge so workflow runs on H200 can also auto-sync to Laptop."""
+    def _send():
+        try:
+            cmd_id = f"cmd_{int(time.time() * 1000)}"
+            cmd_obj = {**payload, "cmd_id": cmd_id}
+            r2_api_request(
+                "POST",
+                f"/{BRIDGE_ROOM_ID}/notes",
+                json_body={
+                    "id": BRIDGE_NOTE_CMD,
+                    "title": "laptop_cmd",
+                    "text": json.dumps(cmd_obj, ensure_ascii=False),
+                },
+                timeout=15,
+            )
+        except Exception:
+            pass
+    threading.Thread(target=_send, daemon=True).start()
 
 
 def r2_sync_download(
@@ -337,23 +426,23 @@ def r2_sync_download(
     os.makedirs(local_target_dir, exist_ok=True)
 
     is_folder = mode == "folder"
-    if mode == "auto":
-        if not remote_clean:
-            is_folder = True
-        else:
-            manifest_check = r2_api_request(
-                "GET",
-                f"/{room_id}/fs/manifest",
-                api_base=api_base,
-                code=code,
-                query={"path": remote_clean},
-            )
-            if manifest_check["ok"] and isinstance(manifest_check["data"], dict):
-                files_list = manifest_check["data"].get("files", [])
-                if len(files_list) > 1 or (len(files_list) == 1 and files_list[0].get("path") != remote_clean):
-                    is_folder = True
-                elif len(files_list) == 1 and files_list[0].get("path") == remote_clean:
-                    is_folder = False
+    manifest_files = []
+    if mode in ("auto", "folder"):
+        manifest_check = r2_api_request(
+            "GET",
+            f"/{room_id}/fs/manifest",
+            api_base=api_base,
+            code=code,
+            query={"path": remote_clean},
+        )
+        if manifest_check["ok"] and isinstance(manifest_check["data"], dict):
+            manifest_files = manifest_check["data"].get("files", [])
+            if not remote_clean:
+                is_folder = True
+            elif len(manifest_files) > 1 or (len(manifest_files) == 1 and manifest_files[0].get("path") != remote_clean):
+                is_folder = True
+            elif len(manifest_files) == 1 and manifest_files[0].get("path") == remote_clean:
+                is_folder = False
 
     downloaded = []
     skipped = []
@@ -362,11 +451,12 @@ def r2_sync_download(
     if not is_folder and remote_clean:
         rel_dest = remote_clean if preserve_subpath else os.path.basename(remote_clean)
         dest_file = os.path.join(local_target_dir, rel_dest.replace("/", os.sep))
+        direct_url = manifest_files[0].get("direct_download_url", "") if manifest_files else ""
         if skip_existing and os.path.exists(dest_file) and os.path.getsize(dest_file) > 0:
             skipped.append({"remote_path": remote_clean, "local_path": dest_file, "size": os.path.getsize(dest_file)})
         else:
             try:
-                info = r2_download_single_file(room_id, remote_clean, dest_file, api_base=api_base, code=code)
+                info = r2_download_single_file(room_id, remote_clean, dest_file, api_base=api_base, code=code, direct_url=direct_url)
                 downloaded.append(info)
             except Exception as e:
                 errors.append({"remote_path": remote_clean, "error": str(e)})
@@ -383,29 +473,31 @@ def r2_sync_download(
             "errors": errors,
         }
 
-    manifest_res = r2_api_request(
-        "GET",
-        f"/{room_id}/fs/manifest",
-        api_base=api_base,
-        code=code,
-        query={"path": remote_clean},
-    )
-    if not manifest_res["ok"] or not isinstance(manifest_res["data"], dict):
-        return {
-            "ok": False,
-            "mode": "folder",
-            "room_id": room_id,
-            "remote_path": remote_clean,
-            "local_path": local_target_dir,
-            "error": manifest_res.get("error", "Failed to fetch folder manifest"),
-            "downloaded_count": 0,
-            "skipped_count": 0,
-            "downloaded": [],
-            "skipped": [],
-            "errors": [manifest_res.get("error", "Manifest error")],
-        }
+    if not manifest_files:
+        manifest_res = r2_api_request(
+            "GET",
+            f"/{room_id}/fs/manifest",
+            api_base=api_base,
+            code=code,
+            query={"path": remote_clean},
+        )
+        if not manifest_res["ok"] or not isinstance(manifest_res["data"], dict):
+            return {
+                "ok": False,
+                "mode": "folder",
+                "room_id": room_id,
+                "remote_path": remote_clean,
+                "local_path": local_target_dir,
+                "error": manifest_res.get("error", "Failed to fetch folder manifest"),
+                "downloaded_count": 0,
+                "skipped_count": 0,
+                "downloaded": [],
+                "skipped": [],
+                "errors": [manifest_res.get("error", "Manifest error")],
+            }
+        manifest_files = manifest_res["data"].get("files", [])
 
-    manifest_files = manifest_res["data"].get("files", [])
+    to_download = []
     for f_item in manifest_files:
         f_remote = f_item.get("path", "")
         f_rel = f_item.get("relative_path") or f_item.get("name") or os.path.basename(f_remote)
@@ -418,18 +510,28 @@ def r2_sync_download(
             if (expected_size > 0 and local_sz == expected_size) or (expected_size == 0 and local_sz > 0):
                 skipped.append({"remote_path": f_remote, "local_path": dest_file, "size": local_sz})
                 continue
-        try:
-            info = r2_download_single_file(
-                room_id,
-                f_remote,
-                dest_file,
-                api_base=api_base,
-                code=code,
-                direct_url=f_item.get("direct_download_url", ""),
-            )
-            downloaded.append(info)
-        except Exception as e:
-            errors.append({"remote_path": f_remote, "error": str(e)})
+        to_download.append((f_remote, dest_file, f_item.get("direct_download_url", "")))
+
+    if to_download:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            f_map = {
+                pool.submit(
+                    r2_download_single_file,
+                    room_id,
+                    f_rem,
+                    dst_f,
+                    api_base,
+                    code,
+                    d_url,
+                ): f_rem
+                for (f_rem, dst_f, d_url) in to_download
+            }
+            for fut in concurrent.futures.as_completed(f_map):
+                f_rem = f_map[fut]
+                try:
+                    downloaded.append(fut.result())
+                except Exception as e:
+                    errors.append({"remote_path": f_rem, "error": str(e)})
 
     return {
         "ok": len(errors) == 0,
@@ -473,6 +575,8 @@ def r2_sync_upload(
     else:
         for root, _, files in os.walk(src):
             for fn in files:
+                if fn.endswith(".part"):
+                    continue
                 full_p = os.path.join(root, fn)
                 rel_p = os.path.relpath(full_p, src).replace("\\", "/")
                 ctype = mimetypes.guess_type(full_p)[0] or "application/octet-stream"
@@ -526,11 +630,11 @@ def r2_sync_upload(
                 headers={
                     "Content-Type": ctype,
                     "Content-Length": str(len(file_bytes)),
-                    "User-Agent": "ComfyUI-Mockin-R2/1.0",
+                    "User-Agent": "ComfyUI-Mockin-R2/2.0",
                 },
                 method="PUT",
             )
-            with urllib.request.urlopen(put_req, timeout=600) as _:
+            with _r2_urlopen(put_req, timeout=600) as _:
                 pass
             uploaded_items.append(u_info)
         except Exception as e:
@@ -578,6 +682,12 @@ def load_image_tensor_from_path(path: str):
 try:
     if server is not None and getattr(getattr(server, "PromptServer", None), "instance", None) is not None:
         routes = server.PromptServer.instance.routes
+        # Clean up any prior /mockin/r2 routes in PromptServer.instance.routes before registering fresh handlers
+        if hasattr(routes, "_items") and isinstance(routes._items, list):
+            routes._items[:] = [
+                it for it in routes._items
+                if not (hasattr(it, "path") and str(getattr(it, "path", "")).startswith("/mockin/r2"))
+            ]
 
         @routes.get("/mockin/r2/config")
         async def get_r2_cfg_route(request):
@@ -606,7 +716,8 @@ try:
                     "r2_code": code,
                     "default_room_id": data.get("room_id"),
                 })
-            res = r2_api_request(
+            res = await asyncio.to_thread(
+                r2_api_request,
                 method=method,
                 endpoint_path=endpoint_path,
                 api_base=api_base,
@@ -616,6 +727,142 @@ try:
             )
             res.pop("raw_bytes", None)
             return web.json_response(res)
+
+        @routes.get("/mockin/r2/stream_file")
+        async def get_r2_stream_file_route(request):
+            cfg = load_r2_config()
+            api_base = request.query.get("api_base") or cfg["r2_api_base"]
+            code = request.query.get("code") or cfg["r2_code"]
+            room_id = (request.query.get("room_id") or cfg["default_room_id"]).strip()
+            remote_path = (request.query.get("path") or "").strip().lstrip("/")
+            inline = request.query.get("inline", "0") == "1"
+            if not remote_path:
+                return web.json_response({"ok": False, "error": "Missing path"}, status=400)
+            try:
+                file_bytes, ctype = await asyncio.to_thread(
+                    r2_fetch_file_bytes,
+                    room_id=room_id,
+                    remote_path=remote_path,
+                    api_base=api_base,
+                    code=code,
+                )
+                fname = os.path.basename(remote_path) or "download.bin"
+                disp_type = "inline" if inline else "attachment"
+                headers = {
+                    "Content-Disposition": f'{disp_type}; filename="{fname}"',
+                    "Cache-Control": "no-cache",
+                }
+                return web.Response(body=file_bytes, content_type=ctype.split(";")[0], headers=headers)
+            except Exception as e:
+                return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+        @routes.post("/mockin/r2/upload_blob")
+        async def post_r2_upload_blob_route(request):
+            upload_url = request.headers.get("X-Upload-Url", "").strip()
+            ctype = request.headers.get("X-Upload-Content-Type", "application/octet-stream").strip()
+            raw_bytes = await request.read()
+            if not upload_url:
+                return web.json_response({"ok": False, "error": "Missing X-Upload-Url"}, status=400)
+
+            def _do_put():
+                put_req = urllib.request.Request(
+                    upload_url,
+                    data=raw_bytes,
+                    headers={
+                        "Content-Type": ctype,
+                        "Content-Length": str(len(raw_bytes)),
+                        "User-Agent": "ComfyUI-Mockin-R2/2.0",
+                    },
+                    method="PUT",
+                )
+                with _r2_urlopen(put_req, timeout=600) as _:
+                    pass
+
+            try:
+                await asyncio.to_thread(_do_put)
+                return web.json_response({"ok": True, "size": len(raw_bytes)})
+            except Exception as e:
+                return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+        @routes.post("/mockin/r2/laptop_cmd")
+        async def post_r2_laptop_cmd_route(request):
+            data = await request.json()
+            cfg = load_r2_config()
+            api_base = data.get("api_base") or cfg["r2_api_base"]
+            code = data.get("code") or cfg["r2_code"]
+            action = str(data.get("action") or "get_status").strip()
+
+            if action == "get_status":
+                rm_res = await asyncio.to_thread(
+                    r2_api_request,
+                    "GET",
+                    f"/{BRIDGE_ROOM_ID}",
+                    api_base=api_base,
+                    code=code,
+                    timeout=10,
+                )
+                if rm_res.get("ok") and isinstance(rm_res.get("data"), dict):
+                    rm_data = rm_res["data"]
+                    notes = rm_data.get("notes") or []
+                    res_note = next((n for n in notes if isinstance(n, dict) and n.get("id") == BRIDGE_NOTE_RES), None)
+                    for candidate in [res_note.get("text") if res_note else "", rm_data.get("text") or ""]:
+                        s = str(candidate or "").strip()
+                        if s.startswith("{"):
+                            try:
+                                parsed = json.loads(s)
+                                if parsed.get("laptop_path"):
+                                    return web.json_response({
+                                        "ok": True,
+                                        "laptop_path": parsed["laptop_path"],
+                                        "label": parsed.get("label") or os.path.basename(parsed["laptop_path"].rstrip("\\/")),
+                                    })
+                            except Exception:
+                                pass
+
+            cmd_id = f"cmd_{int(time.time() * 1000)}_{os.urandom(2).hex()}"
+            cmd_payload = {**data, "action": action, "cmd_id": cmd_id}
+            send_res = await asyncio.to_thread(
+                r2_api_request,
+                "POST",
+                f"/{BRIDGE_ROOM_ID}/notes",
+                api_base=api_base,
+                code=code,
+                json_body={
+                    "id": BRIDGE_NOTE_CMD,
+                    "title": "laptop_cmd",
+                    "text": json.dumps(cmd_payload, ensure_ascii=False),
+                },
+                timeout=15,
+            )
+            if not send_res.get("ok"):
+                return web.json_response({"ok": False, "error": send_res.get("error", "Bridge relay error")})
+
+            max_wait = 180.0 if action in ("pick_folder", "sync_pull", "sync_push") else 8.0
+            deadline = time.time() + max_wait
+            while time.time() < deadline:
+                await asyncio.sleep(0.45)
+                poll_res = await asyncio.to_thread(
+                    r2_api_request,
+                    "GET",
+                    f"/{BRIDGE_ROOM_ID}",
+                    api_base=api_base,
+                    code=code,
+                    timeout=10,
+                )
+                if poll_res.get("ok") and isinstance(poll_res.get("data"), dict):
+                    notes = poll_res["data"].get("notes") or []
+                    res_note = next((n for n in notes if isinstance(n, dict) and n.get("id") == BRIDGE_NOTE_RES), None)
+                    if res_note:
+                        raw_txt = str(res_note.get("text") or "").strip()
+                        if raw_txt.startswith("{"):
+                            try:
+                                parsed = json.loads(raw_txt)
+                                if str(parsed.get("cmd_id") or "") == cmd_id:
+                                    return web.json_response(parsed)
+                            except Exception:
+                                pass
+
+            return web.json_response({"ok": False, "error": "Laptop Bridge timeout"})
 
         @routes.post("/mockin/r2/read_file")
         async def post_r2_read_file_route(request):
@@ -636,7 +883,14 @@ try:
             local_file = os.path.join(target_dir, os.path.basename(remote_path))
 
             try:
-                dl_info = r2_download_single_file(room_id, remote_path, local_file, api_base=api_base, code=code)
+                dl_info = await asyncio.to_thread(
+                    r2_download_single_file,
+                    room_id,
+                    remote_path,
+                    local_file,
+                    api_base=api_base,
+                    code=code,
+                )
                 ext = os.path.splitext(local_file)[1].lower()
                 text_exts = {
                     ".txt", ".md", ".json", ".yaml", ".yml", ".py", ".js", ".csv",
@@ -694,7 +948,8 @@ try:
                 preserve_subpath = True
 
             target_dir = resolve_local_dir(preset, custom_dir)
-            res = r2_sync_download(
+            res = await asyncio.to_thread(
+                r2_sync_download,
                 room_id=room_id,
                 remote_path=remote_path,
                 local_target_dir=target_dir,
@@ -719,7 +974,8 @@ try:
             if preset != "Custom Path":
                 local_path = resolve_local_dir(preset, local_path)
 
-            res = r2_sync_upload(
+            res = await asyncio.to_thread(
+                r2_sync_upload,
                 room_id=room_id,
                 local_source_path=local_path,
                 remote_base_dir=remote_base_dir,
@@ -878,6 +1134,15 @@ class MockinR2CloudDriveNode:
                 file_content = selected_content or quick_note
 
         elif action_on_run == "sync_pull_to_local":
+            trigger_laptop_bridge_async({
+                "action": "sync_pull",
+                "api_base": api_base,
+                "code": room_code,
+                "room_id": room_id,
+                "remote_path": remote_clean,
+                "mode": "auto",
+                "skip_existing": True,
+            })
             sync_res = r2_sync_download(
                 room_id=room_id,
                 remote_path=remote_clean,
@@ -1092,6 +1357,16 @@ class MockinR2SyncDownloadNode:
         room_code,
     ):
         api_base, room_code, room_id = sanitize_r2_params(api_base, room_code, room_id)
+        trigger_laptop_bridge_async({
+            "action": "sync_pull",
+            "api_base": api_base,
+            "code": room_code,
+            "room_id": room_id,
+            "remote_path": remote_path,
+            "mode": download_mode,
+            "skip_existing": skip_existing,
+            "preserve_subpath": preserve_remote_subpath,
+        })
         target_dir = resolve_local_dir(target_local_preset, custom_local_dir)
         res = r2_sync_download(
             room_id=room_id,

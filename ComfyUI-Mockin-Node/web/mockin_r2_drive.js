@@ -4,10 +4,13 @@ import { api } from "../../scripts/api.js";
 const DEFAULT_API_BASE = "https://api.mockin.app/api/room";
 const DEFAULT_ROOM_CODE = "9999";
 const DEFAULT_ROOM_ID = "R-6ZZP";
+const BRIDGE_ROOM_ID = "R-LAPTOP-BRIDGE";
+const LAPTOP_BRIDGE_URL = "http://127.0.0.1:18189";
 
 const INVALID_ROOM_IDS = new Set([
     "",
     "9999",
+    BRIDGE_ROOM_ID,
     "read_file_or_note",
     "sync_pull_to_local",
     "sync_push_from_local",
@@ -206,6 +209,29 @@ async function directR2Request(apiBase, code, roomId, method, endpointPath, quer
     const norm = normalizeR2Params(apiBase, code, roomId);
     const ep = String(endpointPath || "/list").replace(/\{room_id\}/g, encodeURIComponent(norm.roomId));
     const cleanEp = ep.startsWith("/") ? ep : `/${ep}`;
+
+    // Always prefer backend proxy first so H200 IPv4 connection handles it reliably without browser CORS/IPv6 issues
+    try {
+        const r = await api.fetchApi("/mockin/r2/proxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                api_base: norm.apiBase,
+                code: norm.code,
+                room_id: norm.roomId,
+                method,
+                endpoint_path: cleanEp,
+                query,
+                body,
+                save_config: true,
+            }),
+        });
+        if (r.ok) {
+            const j = await r.json();
+            if (j && j.ok) return j;
+        }
+    } catch (_) {}
+
     const qs = new URLSearchParams();
     Object.entries(query || {}).forEach(([k, v]) => {
         if (v !== undefined && v !== null && String(v) !== "") qs.set(k, String(v));
@@ -223,27 +249,12 @@ async function directR2Request(apiBase, code, roomId, method, endpointPath, quer
         const resp = await fetch(url, opts);
         const elapsed = Math.round(performance.now() - t0);
         const data = await resp.json().catch(() => ({}));
-        return { ok: resp.ok, status: resp.status, elapsed_ms: elapsed, data };
-    } catch (_) {
-        try {
-            const r = await api.fetchApi("/mockin/r2/proxy", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    api_base: norm.apiBase,
-                    code: norm.code,
-                    room_id: norm.roomId,
-                    method,
-                    endpoint_path: cleanEp,
-                    query,
-                    body,
-                    save_config: true,
-                }),
-            });
-            return await r.json();
-        } catch (err) {
-            return { ok: false, status: 0, error: String(err), data: {} };
+        if (data && Array.isArray(data.rooms)) {
+            data.rooms = data.rooms.filter((rm) => rm.room_id !== BRIDGE_ROOM_ID);
         }
+        return { ok: resp.ok, status: resp.status, elapsed_ms: elapsed, data };
+    } catch (err) {
+        return { ok: false, status: 0, error: String(err), data: {} };
     }
 }
 
@@ -268,8 +279,8 @@ async function directR2FileRead(apiBase, code, roomId, remotePath, saveLocal = t
     } catch (_) {}
 
     try {
-        const dlUrl = `${norm.apiBase}/${encodeURIComponent(norm.roomId)}/fs/download?path=${encodeURIComponent(remotePath)}&code=${encodeURIComponent(norm.code)}`;
-        const r = await fetch(dlUrl);
+        const streamUrl = `/mockin/r2/stream_file?room_id=${encodeURIComponent(norm.roomId)}&path=${encodeURIComponent(remotePath)}&code=${encodeURIComponent(norm.code)}`;
+        const r = await api.fetchApi(streamUrl);
         if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
         const blob = await r.blob();
         const ext = remotePath.split(".").pop()?.toLowerCase() || "";
@@ -313,12 +324,32 @@ async function uploadBrowserFileEntries(apiBase, code, roomId, baseDir, fileEntr
         const uInfo = uploads[i];
         if (!uInfo?.upload_url) continue;
         if (onProgress) onProgress(`Uploading ${i + 1}/${fileEntries.length}: ${uInfo.name || file.name}`);
-        const putResp = await fetch(uInfo.upload_url, {
-            method: "PUT",
-            headers: { "Content-Type": uInfo.content_type || "application/octet-stream" },
-            body: file,
-        });
-        if (putResp.ok) confirmed.push(uInfo);
+        let uploadedOk = false;
+        try {
+            const putResp = await fetch(uInfo.upload_url, {
+                method: "PUT",
+                headers: { "Content-Type": uInfo.content_type || "application/octet-stream" },
+                body: file,
+            });
+            uploadedOk = putResp.ok;
+        } catch (_) {
+            uploadedOk = false;
+        }
+        if (!uploadedOk) {
+            try {
+                const fallbackResp = await api.fetchApi("/mockin/r2/upload_blob", {
+                    method: "POST",
+                    headers: {
+                        "X-Upload-Url": uInfo.upload_url,
+                        "X-Upload-Content-Type": uInfo.content_type || "application/octet-stream",
+                    },
+                    body: file,
+                });
+                const fbData = await fallbackResp.json().catch(() => ({}));
+                uploadedOk = Boolean(fbData.ok);
+            } catch (_) {}
+        }
+        if (uploadedOk) confirmed.push(uInfo);
     }
 
     if (confirmed.length > 0) {
@@ -330,73 +361,219 @@ async function uploadBrowserFileEntries(apiBase, code, roomId, baseDir, fileEntr
     return { ok: confirmed.length > 0, count: confirmed.length };
 }
 
+// ============================================================================
+// LAPTOP SYNC BRIDGE & PROJECT STATE
+// ============================================================================
 const ACTIVE_PROJECT = {
-    mode: "server", // "server" | "device"
-    label: "ComfyUI (1:1)",
+    mode: "laptop", // "laptop" | "device" | "server"
+    label: "Mockin_Sync (Laptop)",
+    laptopPath: "",
     serverPath: "",
     dirHandle: null,
 };
 
-async function pullFolderToLaptopBrowser(apiBase, code, roomId, remoteFolderPath, onStatus, existingDirHandle = null) {
-    const norm = normalizeR2Params(apiBase, code, roomId);
-    if (onStatus) onStatus("Fetching manifest...");
-    const res = await directR2Request(norm.apiBase, norm.code, norm.roomId, "GET", `/${encodeURIComponent(norm.roomId)}/fs/manifest`, {
-        path: remoteFolderPath || "",
-    });
-    const files = res?.data?.files || [];
-    if (files.length === 0) {
-        if (onStatus) onStatus("Empty folder");
-        return;
-    }
-
-    if (window.showDirectoryPicker || existingDirHandle) {
+const _projectListeners = new Set();
+function notifyProjectChanged() {
+    _projectListeners.forEach((fn) => {
         try {
-            const dirHandle = existingDirHandle || (await window.showDirectoryPicker({ mode: "readwrite" }));
-            let count = 0;
-            for (const f of files) {
-                const rel = (f.relative_path || f.name || f.path).replace(/^\/+/, "");
-                const parts = rel.split("/").filter(Boolean);
-                const fileName = parts.pop();
-                let curr = dirHandle;
-                for (const p of parts) {
-                    curr = await curr.getDirectoryHandle(p, { create: true });
-                }
-                if (onStatus) onStatus(`Syncing ${count + 1}/${files.length}: ${fileName}`);
-                const dlUrl =
-                    f.direct_download_url ||
-                    `${norm.apiBase}/${encodeURIComponent(norm.roomId)}/fs/download?path=${encodeURIComponent(f.path)}&code=${encodeURIComponent(norm.code)}`;
-                const r = await fetch(dlUrl);
-                const blob = await r.blob();
-                const fh = await curr.getFileHandle(fileName, { create: true });
-                const wr = await fh.createWritable();
-                await wr.write(blob);
-                await wr.close();
-                count++;
-            }
-            if (onStatus) onStatus(`Synced ${count} files -> ${dirHandle.name}`);
-            return;
-        } catch (e) {
-            if (e?.name === "AbortError") {
-                if (onStatus) onStatus("Ready");
-                return;
-            }
-        }
-    }
+            fn();
+        } catch (_) {}
+    });
+}
 
-    for (const f of files) {
-        const dlUrl =
-            f.direct_download_url ||
-            `${norm.apiBase}/${encodeURIComponent(norm.roomId)}/fs/download?path=${encodeURIComponent(f.path)}&code=${encodeURIComponent(norm.code)}`;
+async function callLaptopBridge(action, payload = {}) {
+    // 1. Try direct localhost Laptop Bridge first (fastest when browser allows loopback)
+    try {
+        const ctrl = new AbortController();
+        const timeoutMs = action === "get_status" ? 1000 : 180000;
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+        const resp = await fetch(`${LAPTOP_BRIDGE_URL}/${action}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, ...payload }),
+            signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data) return data;
+        }
+    } catch (_) {}
+
+    // 2. Fallback: Relay through H200 /mockin/r2/laptop_cmd -> R-LAPTOP-BRIDGE -> Laptop daemon
+    try {
+        const r = await api.fetchApi("/mockin/r2/laptop_cmd", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action, ...payload }),
+        });
+        if (r.ok) {
+            return await r.json();
+        }
+    } catch (_) {}
+
+    return { ok: false, error: "Laptop bridge unreachable" };
+}
+
+let _laptopInitStarted = false;
+async function ensureLaptopProjectInitialized() {
+    if (_laptopInitStarted) return;
+    _laptopInitStarted = true;
+    const st = await callLaptopBridge("get_status");
+    if (st && st.ok && st.laptop_path) {
+        ACTIVE_PROJECT.mode = "laptop";
+        ACTIVE_PROJECT.laptopPath = st.laptop_path;
+        ACTIVE_PROJECT.label = `${st.label || st.laptop_path.split(/[\\/]/).pop()} (Laptop)`;
+        notifyProjectChanged();
+    }
+}
+
+async function downloadSingleFileViaTunnel(apiBase, code, roomId, remotePath, fileName, onStatus) {
+    const norm = normalizeR2Params(apiBase, code, roomId);
+    if (onStatus) onStatus(`Downloading ${fileName || remotePath}...`);
+    try {
+        const streamUrl = `/mockin/r2/stream_file?api_base=${encodeURIComponent(norm.apiBase)}&code=${encodeURIComponent(norm.code)}&room_id=${encodeURIComponent(norm.roomId)}&path=${encodeURIComponent(remotePath)}`;
+        const resp = await api.fetchApi(streamUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = dlUrl;
-        a.download = f.name || "file";
-        a.target = "_blank";
+        a.href = blobUrl;
+        a.download = fileName || remotePath.split("/").pop() || "file";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        await new Promise((r) => setTimeout(r, 250));
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+        if (onStatus) onStatus(`Saved ${fileName || remotePath}`);
+        return true;
+    } catch (e) {
+        if (onStatus) onStatus(`Error: ${e.message || e}`);
+        return false;
+    }
+}
+
+async function syncOrSaveToLaptop(apiBase, code, roomId, remotePath, mode = "auto", skipExisting = true, onStatus = null) {
+    const norm = normalizeR2Params(apiBase, code, roomId);
+    if (onStatus) onStatus("Syncing to Laptop...");
+
+    // 1. Primary: 1:1 Direct Folder Sync via Laptop Bridge (no zip, preserves exact folder structure!)
+    const bridgeRes = await callLaptopBridge("sync_pull", {
+        api_base: norm.apiBase,
+        code: norm.code,
+        room_id: norm.roomId,
+        remote_path: remotePath || "",
+        mode,
+        skip_existing: skipExisting,
+        laptop_path: ACTIVE_PROJECT.laptopPath || "",
+    });
+    if (bridgeRes && bridgeRes.ok) {
+        if (bridgeRes.laptop_path) {
+            ACTIVE_PROJECT.laptopPath = bridgeRes.laptop_path;
+            ACTIVE_PROJECT.label = `${bridgeRes.label || bridgeRes.laptop_path.split(/[\\/]/).pop()} (Laptop)`;
+        }
+        const dlCount = bridgeRes.downloaded_count ?? 0;
+        const skCount = bridgeRes.skipped_count ?? 0;
+        if (onStatus) {
+            onStatus(
+                mode === "file"
+                    ? `Saved -> ${ACTIVE_PROJECT.label}`
+                    : `Synced -> Laptop (${dlCount} new, ${skCount} ok)`
+            );
+        }
+        return bridgeRes;
+    }
+
+    // 2. Secondary: If user picked a browser FileSystemDirectoryHandle on localhost/https
+    if (ACTIVE_PROJECT.mode === "device" && ACTIVE_PROJECT.dirHandle) {
+        const mfRes = await directR2Request(norm.apiBase, norm.code, norm.roomId, "GET", `/${encodeURIComponent(norm.roomId)}/fs/manifest`, {
+            path: remotePath || "",
+        });
+        const files = mfRes?.data?.files || [];
+        let count = 0;
+        for (const f of files) {
+            const rel = (f.relative_path || f.name || f.path).replace(/^\/+/, "");
+            const parts = rel.split("/").filter(Boolean);
+            const fName = parts.pop();
+            let curr = ACTIVE_PROJECT.dirHandle;
+            for (const p of parts) {
+                curr = await curr.getDirectoryHandle(p, { create: true });
+            }
+            if (onStatus) onStatus(`Syncing ${count + 1}/${files.length}: ${fName}`);
+            const streamUrl = `/mockin/r2/stream_file?api_base=${encodeURIComponent(norm.apiBase)}&code=${encodeURIComponent(norm.code)}&room_id=${encodeURIComponent(norm.roomId)}&path=${encodeURIComponent(f.path)}`;
+            const r = await api.fetchApi(streamUrl);
+            const blob = await r.blob();
+            const fh = await curr.getFileHandle(fName, { create: true });
+            const wr = await fh.createWritable();
+            await wr.write(blob);
+            await wr.close();
+            count++;
+        }
+        if (onStatus) onStatus(`Synced ${count} files -> ${ACTIVE_PROJECT.dirHandle.name}`);
+        return { ok: true, downloaded_count: count, skipped_count: 0 };
+    }
+
+    // 3. Fallback: Same-origin tunnel stream download (never hits external r2.cloudflarestorage.com in browser)
+    if (mode === "file" && remotePath) {
+        const ok = await downloadSingleFileViaTunnel(norm.apiBase, norm.code, norm.roomId, remotePath, remotePath.split("/").pop(), onStatus);
+        return { ok, downloaded_count: ok ? 1 : 0, skipped_count: 0 };
+    }
+
+    const mfRes = await directR2Request(norm.apiBase, norm.code, norm.roomId, "GET", `/${encodeURIComponent(norm.roomId)}/fs/manifest`, {
+        path: remotePath || "",
+    });
+    const files = mfRes?.data?.files || [];
+    for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        await downloadSingleFileViaTunnel(norm.apiBase, norm.code, norm.roomId, f.path, f.name || f.path.split("/").pop(), (m) => {
+            if (onStatus) onStatus(`[${i + 1}/${files.length}] ${m}`);
+        });
     }
     if (onStatus) onStatus(`Downloaded ${files.length} files`);
+    return { ok: true, downloaded_count: files.length, skipped_count: 0 };
+}
+
+async function pickFolderOnLaptopFlow(onStatus) {
+    if (onStatus) onStatus("Opening Laptop Folder Picker...");
+    const res = await callLaptopBridge("pick_folder");
+    if (res && res.ok && res.laptop_path) {
+        ACTIVE_PROJECT.mode = "laptop";
+        ACTIVE_PROJECT.laptopPath = res.laptop_path;
+        ACTIVE_PROJECT.dirHandle = null;
+        ACTIVE_PROJECT.label = `${res.label || res.laptop_path.split(/[\\/]/).pop()} (Laptop)`;
+        if (onStatus) onStatus(`Project: ${res.laptop_path}`);
+        notifyProjectChanged();
+        return true;
+    }
+    if (res && res.cancelled) {
+        if (onStatus) onStatus("Ready");
+        return false;
+    }
+    if (window.showDirectoryPicker) {
+        try {
+            const dh = await window.showDirectoryPicker({ mode: "readwrite" });
+            ACTIVE_PROJECT.mode = "device";
+            ACTIVE_PROJECT.dirHandle = dh;
+            ACTIVE_PROJECT.label = `${dh.name} (Laptop)`;
+            if (onStatus) onStatus(`Project: ${dh.name}`);
+            notifyProjectChanged();
+            return true;
+        } catch (_) {
+            if (onStatus) onStatus("Ready");
+            return false;
+        }
+    }
+    const manual = prompt("Nhập đường dẫn thư mục trên Laptop (Máy con):", ACTIVE_PROJECT.laptopPath || "C:\\Users\\EXT-013\\Downloads\\Mockin_Sync");
+    if (manual && manual.trim()) {
+        const setRes = await callLaptopBridge("set_folder", { laptop_path: manual.trim() });
+        ACTIVE_PROJECT.mode = "laptop";
+        ACTIVE_PROJECT.laptopPath = setRes?.laptop_path || manual.trim();
+        ACTIVE_PROJECT.label = `${ACTIVE_PROJECT.laptopPath.split(/[\\/]/).pop()} (Laptop)`;
+        if (onStatus) onStatus(`Project: ${ACTIVE_PROJECT.laptopPath}`);
+        notifyProjectChanged();
+        return true;
+    }
+    if (onStatus) onStatus("Ready");
+    return false;
 }
 
 // ============================================================================
@@ -414,6 +591,7 @@ function setupMainDriveNode(node) {
 
     sanitizeNodeWidgets(node);
     hideAllNativeWidgets(node);
+    ensureLaptopProjectInitialized();
 
     let activeTab = "files";
     let currentPath = "";
@@ -517,7 +695,7 @@ function setupMainDriveNode(node) {
             proxyReq("GET", `/${c.roomId}/fs`, { path: currentPath, recursive: "false" }),
         ]);
         if (rList.ok && Array.isArray(rList.data?.rooms)) {
-            rooms = rList.data.rooms;
+            rooms = rList.data.rooms.filter((rm) => rm.room_id && rm.room_id !== BRIDGE_ROOM_ID);
         }
         if (rFs.ok && rFs.data) {
             folders = rFs.data.folders || [];
@@ -589,7 +767,7 @@ function setupMainDriveNode(node) {
             border: 1px solid #2e2e36;
             border-radius: 6px;
             padding: 4px;
-            min-width: 136px;
+            min-width: 148px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.65);
             display: flex;
             flex-direction: column;
@@ -598,7 +776,7 @@ function setupMainDriveNode(node) {
             font-size: 11px;
         `;
         const rect = anchorEl.getBoundingClientRect();
-        menu.style.left = `${Math.min(window.innerWidth - 150, rect.left)}px`;
+        menu.style.left = `${Math.min(window.innerWidth - 160, rect.left)}px`;
         menu.style.top = `${rect.bottom + 4}px`;
 
         const addMenuRow = (label, color, fn) => {
@@ -626,8 +804,22 @@ function setupMainDriveNode(node) {
 
         if (isFolder) {
             addMenuRow("Open", "#f4f4f5", () => loadRoomsAndFS(item.path));
-            addMenuRow("Sync to Server", "#38bdf8", async () => {
-                statusMsg = `Syncing ${item.name}...`;
+            addMenuRow("Sync to Laptop (1:1)", "#38bdf8", async () => {
+                await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, item.path, "folder", true, (m) => {
+                    statusOk = true;
+                    statusMsg = m;
+                    render();
+                });
+            });
+            addMenuRow("Save to Laptop", "#f4f4f5", async () => {
+                await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, item.path, "folder", false, (m) => {
+                    statusOk = true;
+                    statusMsg = m;
+                    render();
+                });
+            });
+            addMenuRow("Sync to H200 Server", "#a1a1aa", async () => {
+                statusMsg = `Syncing ${item.name} -> H200...`;
                 render();
                 const r = await api.fetchApi("/mockin/r2/download_sync", {
                     method: "POST",
@@ -643,26 +835,25 @@ function setupMainDriveNode(node) {
                     }),
                 });
                 const d = await r.json();
-                statusMsg = d.ok ? `Synced ${d.downloaded_count} files` : "Sync error";
+                statusOk = Boolean(d.ok);
+                statusMsg = d.ok ? `H200: ${d.downloaded_count} synced` : "Sync error";
                 render();
             });
-            addMenuRow("Save to Laptop", "#f4f4f5", () =>
-                pullFolderToLaptopBrowser(c.apiBase, c.code, c.roomId, item.path, (m) => {
-                    statusMsg = m;
-                    render();
-                })
-            );
         } else {
             addMenuRow("Preview / Read", "#38bdf8", () => inspectFile(item));
-            addMenuRow("Save to Laptop", "#f4f4f5", () => {
-                const url = `${c.apiBase}/${encodeURIComponent(c.roomId)}/fs/download?path=${encodeURIComponent(item.path)}&code=${encodeURIComponent(c.code)}`;
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = item.name || "file";
-                a.target = "_blank";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+            addMenuRow("Save to Laptop", "#f4f4f5", async () => {
+                await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, item.path, "file", false, (m) => {
+                    statusOk = true;
+                    statusMsg = m;
+                    render();
+                });
+            });
+            addMenuRow("Browser Download", "#a1a1aa", async () => {
+                await downloadSingleFileViaTunnel(c.apiBase, c.code, c.roomId, item.path, item.name || "file", (m) => {
+                    statusOk = true;
+                    statusMsg = m;
+                    render();
+                });
             });
         }
 
@@ -776,7 +967,9 @@ function setupMainDriveNode(node) {
             font-weight: 600;
             cursor: pointer;
         `;
-        const roomIds = Array.from(new Set([c.roomId, ...rooms.map((r) => r.room_id).filter(Boolean)]));
+        const roomIds = Array.from(
+            new Set([c.roomId, ...rooms.map((r) => r.room_id).filter((id) => id && id !== BRIDGE_ROOM_ID)])
+        );
         roomIds.forEach((rid) => {
             const opt = document.createElement("option");
             opt.value = rid;
@@ -994,7 +1187,7 @@ function setupMainDriveNode(node) {
                 await loadRoomsAndFS(currentPath);
             })
         );
-        toolWrap.appendChild(makeToolBtn(ICONS.sync, "Sync", () => loadRoomsAndFS(currentPath)));
+        toolWrap.appendChild(makeToolBtn(ICONS.sync, "Refresh", () => loadRoomsAndFS(currentPath)));
 
         const moreBtn = document.createElement("button");
         moreBtn.innerHTML = ICONS.dots;
@@ -1161,7 +1354,11 @@ function setupMainDriveNode(node) {
                 const ext = (fl.name || fl.path).split(".").pop()?.toLowerCase() || "";
                 if (["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) {
                     const img = document.createElement("img");
-                    img.src = `${c.apiBase}/${encodeURIComponent(c.roomId)}/fs/download?path=${encodeURIComponent(fl.path)}&code=${encodeURIComponent(c.code)}`;
+                    img.src = `/api/mockin/r2/stream_file?room_id=${encodeURIComponent(c.roomId)}&path=${encodeURIComponent(fl.path)}&code=${encodeURIComponent(c.code)}&inline=1`;
+                    img.onerror = () => {
+                        img.onerror = null;
+                        img.src = `${c.apiBase}/${encodeURIComponent(c.roomId)}/fs/download?path=${encodeURIComponent(fl.path)}&code=${encodeURIComponent(c.code)}`;
+                    };
                     img.style.cssText = "width:100%; height:100%; object-fit:cover;";
                     thumb.appendChild(img);
                 } else {
@@ -1502,8 +1699,16 @@ function setupMainDriveNode(node) {
         `;
 
         const projWrap = document.createElement("div");
-        projWrap.style.cssText = "display:flex; align-items:center; gap:6px; font-size:11px; color:#71717a; overflow:hidden; white-space:nowrap;";
+        projWrap.title = ACTIVE_PROJECT.laptopPath
+            ? `Click to open Laptop folder: ${ACTIVE_PROJECT.laptopPath}`
+            : "Click Set Project to choose folder";
+        projWrap.style.cssText = "display:flex; align-items:center; gap:6px; font-size:11px; color:#71717a; overflow:hidden; white-space:nowrap; cursor:pointer;";
         projWrap.innerHTML = `<span>Project:</span><span style="color:#e4e4e7; font-weight:500;">${ACTIVE_PROJECT.label}</span>`;
+        projWrap.onclick = () => {
+            if (ACTIVE_PROJECT.mode === "laptop") {
+                callLaptopBridge("open_explorer");
+            }
+        };
         footer.appendChild(projWrap);
 
         const footBtns = document.createElement("div");
@@ -1511,7 +1716,7 @@ function setupMainDriveNode(node) {
 
         const setProjBtn = document.createElement("button");
         setProjBtn.textContent = "Set Project";
-        setProjBtn.title = "Choose local folder on this device (Laptop/PC) or set ComfyUI Server project root";
+        setProjBtn.title = "Choose local folder on Laptop (Máy con) or ComfyUI Server";
         setProjBtn.style.cssText = `
             background: #1e1e24;
             color: #d4d4d8;
@@ -1533,7 +1738,7 @@ function setupMainDriveNode(node) {
                 border: 1px solid #2e2e36;
                 border-radius: 6px;
                 padding: 4px;
-                min-width: 190px;
+                min-width: 210px;
                 box-shadow: 0 8px 24px rgba(0,0,0,0.65);
                 display: flex;
                 flex-direction: column;
@@ -1542,13 +1747,13 @@ function setupMainDriveNode(node) {
                 font-size: 11px;
             `;
             const rect = setProjBtn.getBoundingClientRect();
-            menu.style.left = `${Math.max(10, rect.right - 190)}px`;
-            menu.style.top = `${Math.max(10, rect.top - 96)}px`;
+            menu.style.left = `${Math.max(10, rect.right - 210)}px`;
+            menu.style.top = `${Math.max(10, rect.top - 150)}px`;
 
-            const addOpt = (label, fn) => {
+            const addOpt = (label, color, fn) => {
                 const b = document.createElement("button");
                 b.textContent = label;
-                b.style.cssText = "background:transparent; color:#f4f4f5; border:none; border-radius:4px; padding:6px 8px; text-align:left; cursor:pointer; font-size:11px;";
+                b.style.cssText = `background:transparent; color:${color}; border:none; border-radius:4px; padding:6px 8px; text-align:left; cursor:pointer; font-size:11px;`;
                 b.onmouseenter = () => (b.style.background = "#27272f");
                 b.onmouseleave = () => (b.style.background = "transparent");
                 b.onclick = async (ev) => {
@@ -1559,48 +1764,53 @@ function setupMainDriveNode(node) {
                 menu.appendChild(b);
             };
 
-            addOpt("Pick Folder on This Device (Laptop)", async () => {
-                if (!window.showDirectoryPicker) {
-                    alert("Browser does not support folder picker; use Chrome/Edge.");
-                    return;
-                }
-                try {
-                    const dh = await window.showDirectoryPicker({ mode: "readwrite" });
-                    ACTIVE_PROJECT.mode = "device";
-                    ACTIVE_PROJECT.dirHandle = dh;
-                    ACTIVE_PROJECT.label = `${dh.name} (Device)`;
-                    statusMsg = `Project: ${dh.name}`;
+            addOpt("📁 Pick Folder on This Device (Laptop)", "#38bdf8", async () => {
+                await pickFolderOnLaptopFlow((m) => {
+                    statusOk = true;
+                    statusMsg = m;
                     render();
-                } catch (_) {}
+                });
             });
 
-            addOpt("ComfyUI Root (Auto 1:1 Server)", async () => {
-                ACTIVE_PROJECT.mode = "server";
-                ACTIVE_PROJECT.dirHandle = null;
-                ACTIVE_PROJECT.serverPath = "";
-                ACTIVE_PROJECT.label = "ComfyUI (1:1)";
-                setW("target_local_preset", "ComfyUI/");
-                setW("dest_or_target_path", "");
-                statusMsg = "Project: ComfyUI (1:1)";
+            addOpt("⌨️ Enter Laptop Folder Path...", "#f4f4f5", async () => {
+                const p = prompt("Laptop Folder Path:", ACTIVE_PROJECT.laptopPath || "C:\\Users\\EXT-013\\Downloads\\Mockin_Sync");
+                if (!p || !p.trim()) return;
+                const st = await callLaptopBridge("set_folder", { laptop_path: p.trim() });
+                ACTIVE_PROJECT.mode = "laptop";
+                ACTIVE_PROJECT.laptopPath = st?.laptop_path || p.trim();
+                ACTIVE_PROJECT.label = `${ACTIVE_PROJECT.laptopPath.split(/[\\/]/).pop()} (Laptop)`;
+                statusOk = true;
+                statusMsg = `Laptop: ${ACTIVE_PROJECT.laptopPath}`;
                 render();
             });
 
-            addOpt("Custom Server Project Path...", async () => {
-                const p = prompt("Server Project Folder Path (blank = ComfyUI root):", ACTIVE_PROJECT.serverPath || "");
-                if (p === null) return;
+            addOpt("📂 Open Laptop Folder in Explorer", "#f4f4f5", async () => {
+                await callLaptopBridge("open_explorer");
+            });
+
+            addOpt("⬆️ Push Laptop Folder -> R2", "#4ade80", async () => {
+                statusMsg = "Pushing Laptop -> R2...";
+                render();
+                const upRes = await callLaptopBridge("sync_push", {
+                    api_base: c.apiBase,
+                    code: c.code,
+                    room_id: c.roomId,
+                    remote_base_dir: currentPath || "",
+                    laptop_path: ACTIVE_PROJECT.laptopPath || "",
+                });
+                statusOk = Boolean(upRes?.ok);
+                statusMsg = upRes?.ok ? `Pushed ${upRes.uploaded_count} files -> R2` : upRes?.error || "Push error";
+                await loadRoomsAndFS(currentPath);
+            });
+
+            addOpt("🖥️ ComfyUI Root (H200 Server 1:1)", "#a1a1aa", async () => {
                 ACTIVE_PROJECT.mode = "server";
                 ACTIVE_PROJECT.dirHandle = null;
-                ACTIVE_PROJECT.serverPath = p.trim();
-                ACTIVE_PROJECT.label = p.trim() ? p.trim().split(/[\\/]/).pop() : "ComfyUI (1:1)";
+                ACTIVE_PROJECT.serverPath = "";
+                ACTIVE_PROJECT.label = "ComfyUI (H200 1:1)";
                 setW("target_local_preset", "ComfyUI/");
-                setW("dest_or_target_path", p.trim());
-                await api
-                    .fetchApi("/mockin/r2/config", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ project_path: p.trim() }),
-                    })
-                    .catch(() => {});
+                setW("dest_or_target_path", "");
+                statusMsg = "Project: ComfyUI (H200 1:1)";
                 render();
             });
 
@@ -1611,7 +1821,7 @@ function setupMainDriveNode(node) {
 
         const syncBtn = document.createElement("button");
         syncBtn.textContent = "Sync";
-        syncBtn.title = "Sync current/selected path with active Project";
+        syncBtn.title = "Sync current/selected path 1:1 with active Project (Laptop or H200)";
         syncBtn.style.cssText = `
             background: #38bdf8;
             color: #09090b;
@@ -1632,21 +1842,21 @@ function setupMainDriveNode(node) {
                 return;
             }
             const target = selectedItem ? selectedItem.path : currentPath;
-            if (ACTIVE_PROJECT.mode === "device" && ACTIVE_PROJECT.dirHandle) {
-                await pullFolderToLaptopBrowser(
-                    c.apiBase,
-                    c.code,
-                    c.roomId,
-                    target,
-                    (m) => {
-                        statusMsg = m;
-                        render();
-                    },
-                    ACTIVE_PROJECT.dirHandle
-                );
+            const mode = selectedItem && !selectedItem.isFolder ? "file" : "folder";
+
+            if (ACTIVE_PROJECT.mode !== "server") {
+                const res = await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, target, mode, true, (m) => {
+                    statusOk = true;
+                    statusMsg = m;
+                    render();
+                });
+                if (res) {
+                    setW("selected_content", JSON.stringify(res, null, 2));
+                }
                 return;
             }
-            statusMsg = "Syncing...";
+
+            statusMsg = "Syncing -> H200...";
             render();
             try {
                 const r = await api.fetchApi("/mockin/r2/download_sync", {
@@ -1657,7 +1867,7 @@ function setupMainDriveNode(node) {
                         code: c.code,
                         room_id: c.roomId,
                         remote_path: target,
-                        mode: selectedItem && !selectedItem.isFolder ? "file" : "folder",
+                        mode,
                         skip_existing: true,
                         preserve_subpath: true,
                         target_preset: "ComfyUI/",
@@ -1667,17 +1877,15 @@ function setupMainDriveNode(node) {
                 const d = await r.json();
                 if (d && d.ok) {
                     statusOk = true;
-                    statusMsg = `Synced (${d.downloaded_count} new, ${d.skipped_count || 0} ok)`;
+                    statusMsg = `H200 Synced (${d.downloaded_count} new, ${d.skipped_count || 0} ok)`;
                     setW("selected_content", JSON.stringify(d, null, 2));
                     render();
                     return;
                 }
             } catch (_) {}
-            await pullFolderToLaptopBrowser(c.apiBase, c.code, c.roomId, target, (m) => {
-                statusOk = true;
-                statusMsg = m;
-                render();
-            });
+            statusOk = false;
+            statusMsg = "H200 Sync failed";
+            render();
         };
 
         footBtns.appendChild(setProjBtn);
@@ -1686,6 +1894,7 @@ function setupMainDriveNode(node) {
         root.appendChild(footer);
     }
 
+    _projectListeners.add(render);
     render();
 
     const domWidget = node.addDOMWidget("mockin_r2_drive_minimal", "custom", root, {
@@ -1736,6 +1945,7 @@ function setupCompactCompanionNode(node, nodeKind) {
 
     sanitizeNodeWidgets(node);
     hideAllNativeWidgets(node);
+    ensureLaptopProjectInitialized();
 
     let statusText = "Idle";
     let statusDot = "#71717a";
@@ -1806,41 +2016,34 @@ function setupCompactCompanionNode(node, nodeKind) {
             bSet.textContent = "Set Project";
             bSet.style.cssText = "background:#1e1e24; color:#d4d4d8; border:1px solid #2e2e38; border-radius:5px; padding:3px 7px; font-size:10px; cursor:pointer;";
             bSet.onclick = async () => {
-                if (window.showDirectoryPicker) {
-                    try {
-                        const dh = await window.showDirectoryPicker({ mode: "readwrite" });
-                        ACTIVE_PROJECT.mode = "device";
-                        ACTIVE_PROJECT.dirHandle = dh;
-                        ACTIVE_PROJECT.label = `${dh.name} (Device)`;
-                        statusText = dh.name;
-                        statusDot = "#38bdf8";
-                        renderCompanion();
-                    } catch (_) {}
-                }
+                await pickFolderOnLaptopFlow((m) => {
+                    statusText = ACTIVE_PROJECT.label;
+                    statusDot = "#38bdf8";
+                    renderCompanion();
+                });
             };
 
             const bPull = document.createElement("button");
             bPull.textContent = "Sync";
             bPull.style.cssText = "background:#38bdf8; color:#09090b; font-weight:600; border:none; border-radius:5px; padding:3px 9px; font-size:10px; cursor:pointer;";
             bPull.onclick = async () => {
-                if (ACTIVE_PROJECT.mode === "device" && ACTIVE_PROJECT.dirHandle) {
-                    await pullFolderToLaptopBrowser(
-                        apiBase,
-                        code,
-                        roomId,
-                        getW("remote_path")?.value || "",
-                        (m) => {
-                            statusText = m;
-                            statusDot = "#4ade80";
-                            renderCompanion();
-                        },
-                        ACTIVE_PROJECT.dirHandle
-                    );
-                    return;
-                }
                 statusText = "Syncing...";
                 statusDot = "#38bdf8";
                 renderCompanion();
+                const targetRem = getW("remote_path")?.value || "";
+                if (ACTIVE_PROJECT.mode !== "server") {
+                    const res = await syncOrSaveToLaptop(apiBase, code, roomId, targetRem, "auto", true, (m) => {
+                        statusText = m;
+                        statusDot = "#4ade80";
+                        renderCompanion();
+                    });
+                    if (!res?.ok) {
+                        statusDot = "#f87171";
+                        statusText = "Sync error";
+                        renderCompanion();
+                    }
+                    return;
+                }
                 try {
                     const r = await api.fetchApi("/mockin/r2/download_sync", {
                         method: "POST",
@@ -1849,7 +2052,7 @@ function setupCompactCompanionNode(node, nodeKind) {
                             api_base: apiBase,
                             code,
                             room_id: roomId,
-                            remote_path: getW("remote_path")?.value || "",
+                            remote_path: targetRem,
                             target_preset: "ComfyUI/",
                             custom_local_dir: ACTIVE_PROJECT.serverPath || "",
                             preserve_subpath: true,
@@ -1858,43 +2061,9 @@ function setupCompactCompanionNode(node, nodeKind) {
                         }),
                     });
                     const d = await r.json();
-                    if (d.ok) {
-                        statusDot = "#4ade80";
-                        statusText = `${d.downloaded_count} synced`;
-                    } else if (window.showDirectoryPicker) {
-                        await pullFolderToLaptopBrowser(
-                            apiBase,
-                            code,
-                            roomId,
-                            getW("remote_path")?.value || "",
-                            (m) => {
-                                statusText = m;
-                                statusDot = "#4ade80";
-                                renderCompanion();
-                            },
-                            ACTIVE_PROJECT.dirHandle
-                        );
-                        return;
-                    } else {
-                        statusDot = "#f87171";
-                        statusText = "Error";
-                    }
+                    statusDot = d.ok ? "#4ade80" : "#f87171";
+                    statusText = d.ok ? `${d.downloaded_count} synced` : "Error";
                 } catch (_) {
-                    if (window.showDirectoryPicker) {
-                        await pullFolderToLaptopBrowser(
-                            apiBase,
-                            code,
-                            roomId,
-                            getW("remote_path")?.value || "",
-                            (m) => {
-                                statusText = m;
-                                statusDot = "#4ade80";
-                                renderCompanion();
-                            },
-                            ACTIVE_PROJECT.dirHandle
-                        );
-                        return;
-                    }
                     statusDot = "#f87171";
                     statusText = "Error";
                 }
@@ -1921,6 +2090,24 @@ function setupCompactCompanionNode(node, nodeKind) {
                 statusText = "Pushing...";
                 statusDot = "#38bdf8";
                 renderCompanion();
+                const locVal = (getW("local_file_or_folder_path")?.value || "").trim();
+                const remVal = (getW("remote_base_dir")?.value || "comfy_uploads").trim();
+                // If path looks like a Windows Laptop path (e.g. C:\...) or blank with Laptop active project, try Laptop push first
+                if (locVal.includes(":\\") || (!locVal && ACTIVE_PROJECT.mode === "laptop")) {
+                    const lpRes = await callLaptopBridge("sync_push", {
+                        api_base: apiBase,
+                        code,
+                        room_id: roomId,
+                        remote_base_dir: remVal,
+                        laptop_path: locVal || ACTIVE_PROJECT.laptopPath,
+                    });
+                    if (lpRes && lpRes.ok) {
+                        statusDot = "#4ade80";
+                        statusText = `${lpRes.uploaded_count} pushed (Laptop)`;
+                        renderCompanion();
+                        return;
+                    }
+                }
                 const r = await api.fetchApi("/mockin/r2/upload_local", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -1929,8 +2116,8 @@ function setupCompactCompanionNode(node, nodeKind) {
                         code,
                         room_id: roomId,
                         source_preset: getW("source_local_preset")?.value || "ComfyUI/output",
-                        local_path: getW("local_file_or_folder_path")?.value || "",
-                        remote_base_dir: getW("remote_base_dir")?.value || "comfy_uploads",
+                        local_path: locVal,
+                        remote_base_dir: remVal,
                     }),
                 });
                 const d = await r.json();
