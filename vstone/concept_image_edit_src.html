@@ -2666,16 +2666,18 @@ async function requireBlendLora() {
 // với cài đặt tác giả khuyên: strength 1, 25 bước, CFG 1, euler simple, latent của encoder.
 const MOGE_MODEL = 'moge_3_vitl_fp16.safetensors';
 const CONSISTENCY_LORA = 'qwen-image-2.1-consistency.safetensors';
+// Như IC-Light chọn hướng đèn: sampler bắt đầu từ ảnh đã tính sáng (VAE encode) thay vì latent trống, denoise 0.9 như lowres_denoise của IC-Light.
+const RELIGHT_DENOISE = 0.9;
 const LIGHT_MAX = 3;
 const LIGHT_PREVIEW_PX = 1600;
 const LIGHT_DEFAULT = { color: '#FFB46B', power: 1.2, soft: 0.4, height: 0.5, range: 1.2 };
 const LIGHT_MODES = { post: 'Hậu kỳ', ref: 'Ảnh mẫu', prompt: 'Chỉ prompt' };
 const RELIGHT = {
-  post: { en: '<image1> is a rough lighting preview of <image2>. Re-render it as a finished picture that keeps the new lighting of <image1>: the same light directions, light colors, bright areas and dark areas.', vi: '<image1> là bản xem nhanh ánh sáng của <image2>. Vẽ lại thành ảnh hoàn chỉnh, giữ ánh sáng mới của <image1>: cùng hướng đèn, màu đèn, vùng sáng và vùng tối.' },
-  postReal: { en: 'Make the light look real: natural shading, cast and contact shadows, specular highlights, rim light and bounce light. Restore the details, textures and true material colors from <image2>, and remove any flat or patchy shading left by the preview.', vi: 'Làm ánh sáng thật: đổ khối tự nhiên, bóng đổ và bóng tiếp xúc, điểm bắt sáng, rim light, ánh hắt. Lấy lại chi tiết, chất liệu và màu thật từ <image2>, bỏ các mảng sáng tối phẳng hoặc loang của bản xem nhanh.' },
+  post: { en: '<image1> shows the new lighting of <image2>. Keep the lighting of <image1> exactly: the same light directions, light colors, bright areas and dark areas. Do not bring back the old lighting of <image2>.', vi: '<image1> là ánh sáng mới của <image2>. Giữ đúng ánh sáng của <image1>: cùng hướng đèn, màu đèn, vùng sáng và vùng tối. Không lấy lại ánh sáng cũ của <image2>.' },
+  postReal: { en: 'Make the light look real: natural shading, cast and contact shadows, specular highlights, rim light and bounce light, keeping the contrast between lit and dark areas as strong as in <image1>. Take only details and textures from <image2>, not its lighting, shadows or color cast.', vi: 'Làm ánh sáng thật: đổ khối tự nhiên, bóng đổ và bóng tiếp xúc, điểm bắt sáng, rim light, ánh hắt, giữ độ tương phản sáng tối mạnh như <image1>. Chỉ lấy chi tiết và chất liệu từ <image2>, không lấy ánh sáng, bóng hay ám màu của nó.' },
   postKeep: { en: 'Keep the composition, people, poses and every object exactly as in <image2>.', vi: 'Giữ bố cục, người, tư thế và mọi đồ vật đúng như <image2>.' },
-  ref: { en: 'Relight <image1> to match the lighting of <image2>: the same light directions, light colors, brightness distribution, shadows, highlights and rim light.', vi: 'Đổi ánh sáng <image1> theo ánh sáng của <image2>: cùng hướng đèn, màu đèn, phân bố sáng tối, bóng đổ, điểm bắt sáng và rim light.' },
-  prompt: { en: 'Relight <image1>.', vi: 'Đổi ánh sáng <image1>.' },
+  ref: { en: 'Remove the original lighting of <image1> and relight <image1> to match the lighting of <image2>: the same light directions, light colors, brightness distribution, shadows, highlights and rim light.', vi: 'Bỏ ánh sáng cũ của <image1> và đổi ánh sáng <image1> theo ánh sáng của <image2>: cùng hướng đèn, màu đèn, phân bố sáng tối, bóng đổ, điểm bắt sáng và rim light.' },
+  prompt: { en: 'Remove the original lighting of <image1> and relight it.', vi: 'Bỏ ánh sáng cũ của <image1> và đổi ánh sáng.' },
   real: { en: 'Render natural shading, cast shadows, highlights, rim light and bounce light for this lighting.', vi: 'Vẽ đổ khối, bóng đổ, điểm bắt sáng, rim light và ánh hắt tự nhiên theo ánh sáng này.' },
   keep: { en: 'Change only the lighting, shading and colors of light; keep the composition, people, poses, objects, materials and details unchanged.', vi: 'Chỉ đổi ánh sáng, đổ khối và màu ánh sáng; giữ nguyên bố cục, người, tư thế, đồ vật, chất liệu và chi tiết.' },
   region: { en: 'Relight only the selected subject; keep the rest of the picture as it is.', vi: 'Chỉ đổi sáng phần đã chọn, phần còn lại giữ nguyên.' },
@@ -2698,15 +2700,28 @@ function lightWords(L) {
   const soft = L.soft >= 0.6 ? ['soft diffused', 'mềm, tán rộng'] : L.soft <= 0.2 ? ['hard', 'gắt'] : ['', ''];
   const h = L.u < 0.35 ? ['left', 'bên trái'] : L.u > 0.65 ? ['right', 'bên phải'] : null;
   const v = L.v < 0.35 ? ['upper', 'phía trên'] : L.v > 0.65 ? ['lower', 'phía dưới'] : null;
-  let dir;
-  if (L.height >= 0.9 || (!h && !v)) dir = ['from the front', 'từ phía trước'];
-  else if (h && v) dir = [`from the ${v[0]} ${h[0]}`, `từ ${v[1]} ${h[1]}`];
-  else if (h) dir = [`from the ${h[0]}`, `từ ${h[1]}`];
-  else dir = [v[0] === 'upper' ? 'from above' : 'from below', `từ ${v[1]}`];
+  // Nói rõ phía được chiếu và hướng bóng đổ: Qwen theo hướng cụ thể tốt hơn chữ tả không khí.
+  const oh = h && (h[0] === 'left' ? ['right', 'bên phải'] : ['left', 'bên trái']);
+  const ov = v && (v[0] === 'upper' ? ['lower', 'phía dưới'] : ['upper', 'phía trên']);
+  const side = (a, b, i) => [a, b].filter(Boolean).map(s => s[i]).join(' ');
+  let dir, cast;
+  if (L.height >= 0.9 || (!h && !v)) {
+    dir = ['from the front', 'từ phía trước'];
+    cast = ['lighting people and objects head-on, with shadows falling behind them', 'chiếu thẳng vào người và đồ vật, bóng đổ ra phía sau'];
+  } else if (h) {
+    dir = [`from the ${side(v, h, 0)}`, `từ ${side(v, h, 1)}`];
+    cast = [`lighting the ${side(v, h, 0)} side of every person and object and casting shadows toward the ${side(ov, oh, 0)}`, `chiếu sáng ${side(v, h, 1)} của mọi người và đồ vật, bóng đổ về ${side(ov, oh, 1)}`];
+  } else if (v[0] === 'upper') {
+    dir = ['from above', 'từ phía trên'];
+    cast = ['lighting the top of every person and object and casting shadows downward', 'chiếu sáng phía trên của mọi người và đồ vật, bóng đổ xuống dưới'];
+  } else {
+    dir = ['from below', 'từ phía dưới'];
+    cast = ['lighting the underside of every person and object and casting shadows upward', 'chiếu sáng phía dưới của mọi người và đồ vật, bóng đổ lên trên'];
+  }
   const grazing = L.height <= 0.2 ? [', grazing the surfaces', ', chiếu xiên sát bề mặt'] : ['', ''];
   return {
-    en: `a ${[power[0], soft[0], color[0]].filter(Boolean).join(' ')} light ${dir[0]}${grazing[0]}`,
-    vi: `đèn ${[color[1], power[1], soft[1]].filter(Boolean).join(', ')} ${dir[1]}${grazing[1]}`,
+    en: `a ${[power[0], soft[0], color[0]].filter(Boolean).join(' ')} light ${dir[0]}${grazing[0]}, ${cast[0]}`,
+    vi: `đèn ${[color[1], power[1], soft[1]].filter(Boolean).join(', ')} ${dir[1]}${grazing[1]}, ${cast[1]}`,
   };
 }
 function ambientWords(light) {
@@ -5739,7 +5754,15 @@ async function generate() {
       const refs = relightJob.mode === 'post' ? [fitReference(current, 2)] : relightJob.mode === 'ref' ? [fitReference(lit, 2)] : [];
       const image1 = await uploadCanvas(main, `${stamp}_relight.png`);
       const refNames = await uploadAll(refs, `${stamp}_relight_ref`);
-      run.promptId = await queueGraph(buildApiPrompt({ image1, refs: refNames, text: relightJob.text, resolution: 0, seed: randomSeed(), lora: CONSISTENCY_LORA }));
+      const graph = buildApiPrompt({ image1, refs: refNames, text: relightJob.text, resolution: 0, seed: randomSeed(), lora: CONSISTENCY_LORA });
+      if (lit) {
+        // Ảnh tính sáng cùng cỡ image_1 (bội số 32), nên latent của nó khớp cỡ latent của encoder.
+        if (relightJob.mode !== 'post') graph[50] = { class_type: 'LoadImage', inputs: { image: await uploadCanvas(lit, `${stamp}_relight_start.png`) } };
+        graph[51] = { class_type: 'VAEEncode', inputs: { pixels: relightJob.mode === 'post' ? ['4', 0] : ['50', 0], vae: ['3', 0] } };
+        graph[8].inputs.latent_image = ['51', 0];
+        graph[8].inputs.denoise = RELIGHT_DENOISE;
+      }
+      run.promptId = await queueGraph(graph);
       advanceJob('queue');
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
