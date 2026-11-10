@@ -643,6 +643,26 @@ DEFAULT_AUTO_SYNC_LORAS: list[dict[str, str]] = [
         "filename": "minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
         "url": "https://huggingface.co/LBH-123-AI/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors",
     },
+    {
+        "folder": "diffusion_models",
+        "filename": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-Distilled/resolve/main/ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+    },
+    {
+        "folder": "text_encoders",
+        "filename": "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-Distilled/resolve/main/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+    },
+    {
+        "folder": "text_encoders",
+        "filename": "gemma4_e2b_it_bf16.safetensors",
+        "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors",
+    },
+    {
+        "folder": "latent_upscale_models",
+        "filename": "ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
+        "url": "https://huggingface.co/Lightricks/LTX-2.5-Temporal-Upscaler-x2-1.0/resolve/main/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
+    },
 ]
 
 
@@ -680,11 +700,16 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/lighttrick/LTX-2.5_T2V_I2V_Single_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_T2V_I2V_Two_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_V2V_Super_Resolution_SDR_And_HDR.json",
     "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_Native_4K_8K.json",
     "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_Upscale.json",
     "workflows/lighttrick/AutoDetect_Wire_Object_Removal_SAM31_LTX25_BFS_AutoCrop.json",
     "workflows/lighttrick/EditAnything_LTX25_With_Ref_Or_Motion_Transfer.json",
     "workflows/lighttrick/Official_EditAnything_LTX25.json",
+    "workflows/lighttrick/Nukomfy_LTX25_CreativeLab_AllInOne_V2V.json",
+    "workflows/lighttrick/Nukomfy_LTX25_Inpaint_WireRemoval.json",
+    "workflows/lighttrick/Nukomfy_LTX25_Outpaint_CanvasExtend.json",
+    "workflows/lighttrick/Nukomfy_LTX25_TiledFusion_4K_Upscale.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
     "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
@@ -713,52 +738,124 @@ DEFAULT_SYNC_WORKFLOWS = [
 ]
 
 
+def _ensure_colour_shim() -> None:
+    """Đảm bảo module 'colour' luôn import được (ngay cả khi pip đang cài đặt ngầm colour-science)
+    để Lightricks/ComfyUI-LTXVideo (hdr_color.py) không bao giờ bị văng ModuleNotFoundError."""
+    try:
+        __import__("colour")
+        return
+    except Exception:
+        pass
+    import types
+    import numpy as np
+    shim = types.ModuleType("colour")
+    shim.__vstone_shim__ = True
+    shim.RGB_COLOURSPACES = {"Rec. 2020": None, "sRGB": None, "ACEScg": None}
+    shim.RGB_to_RGB = lambda rgb, *a, **kw: np.asarray(rgb, dtype=np.float32)
+    shim.cctf_encoding = lambda x, *a, **kw: np.clip(np.asarray(x, dtype=np.float32), 0.0, None) ** (1.0 / 2.2)
+    shim.cctf_decoding = lambda x, *a, **kw: np.clip(np.asarray(x, dtype=np.float32), 0.0, None) ** 2.2
+    models_mod = types.ModuleType("colour.models")
+    models_mod.eotf_inverse_ST2084 = lambda x, *a, **kw: np.clip(np.asarray(x, dtype=np.float32) / 10000.0, 0.0, 1.0) ** (1.0 / 2.2)
+    models_mod.eotf_ST2084 = lambda x, *a, **kw: (np.clip(np.asarray(x, dtype=np.float32), 0.0, 1.0) ** 2.2) * 10000.0
+    models_mod.oetf_HLG_BT2100 = lambda x, *a, **kw: np.clip(np.asarray(x, dtype=np.float32), 0.0, 1.0) ** 0.5
+    models_mod.oetf_inverse_HLG_BT2100 = lambda x, *a, **kw: np.clip(np.asarray(x, dtype=np.float32), 0.0, 1.0) ** 2.0
+    shim.models = models_mod
+    sys.modules.setdefault("colour", shim)
+    sys.modules.setdefault("colour.models", models_mod)
+
+
 def _ensure_ltx_video_custom_node(comfy_root: str | None = None) -> str:
-    """Tự động kiểm tra và cài đặt Lightricks/ComfyUI-LTXVideo vào custom_nodes nếu chưa có."""
+    """Tự động kiểm tra, cài đặt phụ thuộc (colour-science, OpenImageIO), clone/pull và nạp nóng (hot-load)
+    Lightricks/ComfyUI-LTXVideo, ComfyUI-KJNodes, ComfyUI-Video-Depth-Anything vào RAM của ComfyUI trên H200."""
+    _ensure_colour_shim()
     root = comfy_root or _get_comfy_root()
     if not root:
         return "[LTX-2.5] Không tìm thấy thư mục ComfyUI."
-    ltx_dir = os.path.join(root, "custom_nodes", "ComfyUI-LTXVideo")
-    git_bin = shutil.which("git")
-    if os.path.isdir(ltx_dir):
-        if git_bin and os.path.isdir(os.path.join(ltx_dir, ".git")):
+
+    for mod_name, pip_spec in (
+        ("colour", "colour-science>=0.4.4"),
+        ("OpenImageIO", "OpenImageIO>=3.1.0"),
+        ("fileseq", "fileseq>=2.0.0"),
+    ):
+        try:
+            mod_obj = __import__(mod_name)
+            if getattr(mod_obj, "__vstone_shim__", False):
+                raise ImportError("shim active")
+        except Exception:
             try:
                 subprocess.run(
-                    [git_bin, "-C", ltx_dir, "pull", "--ff-only"],
+                    [sys.executable, "-m", "pip", "install", "--prefer-binary", "--quiet", pip_spec],
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=180,
+                    check=False,
+                )
+                if mod_name == "colour" and getattr(sys.modules.get("colour"), "__vstone_shim__", False):
+                    sys.modules.pop("colour", None)
+                    sys.modules.pop("colour.models", None)
+                    try:
+                        __import__("colour")
+                    except Exception:
+                        _ensure_colour_shim()
+            except Exception:
+                pass
+
+    ltx_dir = os.path.join(root, "custom_nodes", "ComfyUI-LTXVideo")
+    kj_dir = os.path.join(root, "custom_nodes", "ComfyUI-KJNodes")
+    vda_dir = os.path.join(root, "custom_nodes", "ComfyUI-Video-Depth-Anything")
+    git_bin = shutil.which("git")
+    os.makedirs(os.path.join(root, "custom_nodes"), exist_ok=True)
+
+    for target_dir, repo_url in (
+        (ltx_dir, "https://github.com/Lightricks/ComfyUI-LTXVideo.git"),
+        (kj_dir, "https://github.com/kijai/ComfyUI-KJNodes.git"),
+        (vda_dir, "https://github.com/yuvraj108c/ComfyUI-Video-Depth-Anything.git"),
+    ):
+        if os.path.isdir(target_dir):
+            if git_bin and os.path.isdir(os.path.join(target_dir, ".git")):
+                try:
+                    subprocess.run(
+                        [git_bin, "-C", target_dir, "pull", "--ff-only"],
+                        capture_output=True,
+                        text=True,
+                        timeout=45,
+                        check=False,
+                    )
+                except Exception:
+                    pass
+        elif git_bin:
+            try:
+                subprocess.run(
+                    [git_bin, "clone", "--depth", "1", repo_url, target_dir],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
                     check=False,
                 )
             except Exception:
                 pass
-        return f"[LTX-2.5] Custom Node ComfyUI-LTXVideo đã sẵn sàng tại: {ltx_dir}"
-    if not git_bin:
-        return "[LTX-2.5] Không tìm thấy git để clone ComfyUI-LTXVideo."
+        if os.path.isdir(target_dir):
+            req_txt = os.path.join(target_dir, "requirements.txt")
+            if os.path.isfile(req_txt):
+                try:
+                    _pip_install_requirements(target_dir)
+                except Exception:
+                    pass
+
     try:
-        os.makedirs(os.path.join(root, "custom_nodes"), exist_ok=True)
-        res = subprocess.run(
-            [git_bin, "clone", "https://github.com/Lightricks/ComfyUI-LTXVideo.git", ltx_dir],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
-        req_txt = os.path.join(ltx_dir, "requirements.txt")
-        if os.path.isfile(req_txt):
-            import sys as _sys_p
-            subprocess.run(
-                [_sys_p.executable, "-m", "pip", "install", "-r", req_txt],
-                capture_output=True,
-                text=True,
-                timeout=180,
-                check=False,
-            )
-        if res.returncode == 0 and os.path.isdir(ltx_dir):
-            return f"[LTX-2.5] Đã tự động cài đặt ComfyUI-LTXVideo tại: {ltx_dir}"
-        return f"[LTX-2.5] Cảnh báo khi clone ComfyUI-LTXVideo: {res.stderr.strip()}"
-    except Exception as e:
-        return f"[LTX-2.5] Lỗi cài ComfyUI-LTXVideo: {e}"
+        for pack_d in (ltx_dir, kj_dir, vda_dir):
+            if os.path.isdir(pack_d) and os.path.isfile(os.path.join(pack_d, "__init__.py")):
+                _hot_load_custom_node_pack(pack_d)
+    except Exception:
+        pass
+
+    try:
+        if "_register_fallback_ltx_nodes" in globals():
+            _register_fallback_ltx_nodes()
+    except Exception:
+        pass
+
+    return f"[LTX-2.5] Đã cài đặt & nạp nóng đầy đủ bộ node Lightricks LTX-2.5 Creative Lab tại: {ltx_dir}"
 
 
 def _http_get_bytes(url: str, timeout: int = 15, extra_headers: dict[str, str] | None = None) -> bytes:
@@ -783,23 +880,12 @@ _MOCKIN_DEFAULT_CFG_DICT = {
 
 
 def _cleanup_nukomfy_suite_runtime_and_disk() -> None:
-    """Clean up all Nukomfy Suite threads, send_sync wrappers, prompt hooks, web extensions, and custom_nodes folder."""
+    """Clean up any Nukomfy Suite browser extension, send_sync wrappers, and polling threads while keeping its 7 graph nodes and /nukomfy/* routes active for Foundry Nuke."""
     try:
         import nodes
         for _ext_k in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).keys()):
             if "nukomfy" in _ext_k.lower():
                 nodes.EXTENSION_WEB_DIRS.pop(_ext_k, None)
-        for _nk_cls in (
-            "NukomfyRead",
-            "NukomfyWrite",
-            "NukomfyOCIOColorSpace",
-            "NukomfyMultiLayerPack",
-            "NukomfyMultiLayerUnpack",
-            "NukomfyLTX25BakeIn",
-            "NukomfyLTX25UnbakeOut",
-        ):
-            getattr(nodes, "NODE_CLASS_MAPPINGS", {}).pop(_nk_cls, None)
-            getattr(nodes, "NODE_DISPLAY_NAME_MAPPINGS", {}).pop(_nk_cls, None)
     except Exception:
         pass
 
@@ -833,30 +919,6 @@ def _cleanup_nukomfy_suite_runtime_and_disk() -> None:
                     if "nukomfy" not in str(getattr(h, "__module__", "")).lower()
                     and getattr(h, "__name__", "") != "_on_prompt"
                 ]
-    except Exception:
-        pass
-
-    # Stop any _polling_stop in sys.modules and remove nukomfy modules
-    try:
-        for _mname, _mobj in list(sys.modules.items()):
-            if "nukomfy" in _mname.lower():
-                _pstop = getattr(_mobj, "_polling_stop", None)
-                if _pstop is not None and hasattr(_pstop, "set"):
-                    try:
-                        _pstop.set()
-                    except Exception:
-                        pass
-                sys.modules.pop(_mname, None)
-    except Exception:
-        pass
-
-    # Delete ComfyUI/custom_nodes/ComfyUI-Nukomfy-Suite on disk so restart never loads it
-    try:
-        _c_root = _get_comfy_root()
-        if _c_root:
-            _nk_dir = os.path.join(_c_root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
-            if os.path.isdir(_nk_dir):
-                shutil.rmtree(_nk_dir, ignore_errors=True)
     except Exception:
         pass
 
@@ -909,7 +971,7 @@ def _is_comfy_server_routes_mounted(app: Any = None) -> bool:
 
 
 def _mount_mockin_routes_and_web_live(web_dir: str = "") -> None:
-    """Mount /mockin/..., /api/mockin/..., and all /extensions/* live onto aiohttp app router safely on the event loop thread."""
+    """Mount /mockin/..., /api/mockin/..., /nukomfy/..., and all /extensions/* live onto aiohttp app router safely on the event loop thread."""
     try:
         from aiohttp import web
         import nodes
@@ -943,10 +1005,15 @@ def _mount_mockin_routes_and_web_live(web_dir: str = "") -> None:
 
         mockin_routes_missing = False
         for r in list(routes):
-            if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
-                if (r.method, r.path) not in existing_route_keys or (r.method, "/api" + r.path) not in existing_route_keys:
-                    mockin_routes_missing = True
-                    break
+            if isinstance(r, web.RouteDef):
+                if r.path.startswith("/mockin"):
+                    if (r.method, r.path) not in existing_route_keys or (r.method, "/api" + r.path) not in existing_route_keys:
+                        mockin_routes_missing = True
+                        break
+                elif r.path.startswith("/nukomfy"):
+                    if (r.method, r.path) not in existing_route_keys:
+                        mockin_routes_missing = True
+                        break
 
         ext_missing = False
         for ext_name, ext_dir in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).items()):
@@ -984,7 +1051,7 @@ def _mount_mockin_routes_and_web_live(web_dir: str = "") -> None:
                         res_map[canon] = rt.resource
 
                 for r in list(routes):
-                    if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
+                    if isinstance(r, web.RouteDef) and (r.path.startswith("/mockin") or r.path.startswith("/nukomfy")):
                         if (r.method, r.path) in route_map:
                             try:
                                 route_map[(r.method, r.path)]._handler = r.handler
@@ -1004,27 +1071,28 @@ def _mount_mockin_routes_and_web_live(web_dir: str = "") -> None:
                                     res_map[r.path] = new_rts[0].resource
                             except Exception:
                                 pass
-                        api_p = "/api" + r.path
-                        if (r.method, api_p) in route_map:
-                            try:
-                                route_map[(r.method, api_p)]._handler = r.handler
-                            except Exception:
-                                pass
-                        elif api_p in res_map and hasattr(res_map[api_p], "add_route"):
-                            try:
-                                new_api_rt = res_map[api_p].add_route(r.method, r.handler)
-                                route_map[(r.method, api_p)] = new_api_rt
-                            except Exception:
-                                pass
-                        else:
-                            try:
-                                api_def = web.RouteDef(r.method, api_p, r.handler, r.kwargs.copy())
-                                new_api_rts = app.add_routes([api_def])
-                                if new_api_rts:
-                                    route_map[(r.method, api_p)] = new_api_rts[0]
-                                    res_map[api_p] = new_api_rts[0].resource
-                            except Exception:
-                                pass
+                        if r.path.startswith("/mockin"):
+                            api_p = "/api" + r.path
+                            if (r.method, api_p) in route_map:
+                                try:
+                                    route_map[(r.method, api_p)]._handler = r.handler
+                                except Exception:
+                                    pass
+                            elif api_p in res_map and hasattr(res_map[api_p], "add_route"):
+                                try:
+                                    new_api_rt = res_map[api_p].add_route(r.method, r.handler)
+                                    route_map[(r.method, api_p)] = new_api_rt
+                                except Exception:
+                                    pass
+                            else:
+                                try:
+                                    api_def = web.RouteDef(r.method, api_p, r.handler, r.kwargs.copy())
+                                    new_api_rts = app.add_routes([api_def])
+                                    if new_api_rts:
+                                        route_map[(r.method, api_p)] = new_api_rts[0]
+                                        res_map[api_p] = new_api_rts[0].resource
+                                except Exception:
+                                    pass
 
                 canonicals = {str(getattr(r, "canonical", "")).rstrip("/") for r in list(app.router.resources())}
                 for ext_name, ext_dir in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).items()):
@@ -1163,6 +1231,111 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
             return f"Synced & hot-loaded ComfyUI-Mockin-Node ({mockin_dir})"
     except Exception as e:
         return f"ComfyUI-Mockin-Node load warning: {e}"
+    return ""
+
+
+def _ensure_nukomfy_suite_custom_node(comfy_root: str | None = None, commit_ref: str | None = None) -> str:
+    """Đồng bộ và nạp nóng ComfyUI-Nukomfy-Suite (7 node NukomfyRead/Write/OCIO/MultiLayer/LTX25BakeIn/UnbakeOut + /nukomfy/* routes cho Foundry Nuke)."""
+    root = comfy_root or _get_comfy_root()
+    if not root:
+        return ""
+    nukomfy_dir = os.path.join(root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
+    os.makedirs(os.path.join(nukomfy_dir, "nodes"), exist_ok=True)
+    os.makedirs(os.path.join(nukomfy_dir, "server"), exist_ok=True)
+
+    for mod_name, pip_spec in (("OpenImageIO", "OpenImageIO>=3.1.0"), ("fileseq", "fileseq>=2.0.0")):
+        try:
+            __import__(mod_name)
+        except Exception:
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--prefer-binary", "--quiet", pip_spec],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    check=False,
+                )
+            except Exception:
+                pass
+
+    ref = commit_ref or _get_latest_commit_sha()
+    raw_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ref}/ComfyUI-Nukomfy-Suite"
+    ts = int(time.time())
+    wrote_any = False
+
+    nukomfy_files = (
+        ("__init__.py", 200),
+        ("version.py", 10),
+        ("requirements.txt", 10),
+        ("pyproject.toml", 50),
+        ("nodes/__init__.py", 200),
+        ("nodes/_backends.py", 200),
+        ("nodes/_io_helpers.py", 200),
+        ("nodes/_sequence.py", 200),
+        ("nodes/io_read.py", 200),
+        ("nodes/io_write.py", 200),
+        ("nodes/ltx25_bridge.py", 500),
+        ("nodes/multilayer_pack.py", 200),
+        ("nodes/ocio_colorspace.py", 200),
+        ("server/__init__.py", 100),
+        ("server/activity.py", 200),
+        ("server/activity_config.py", 200),
+        ("server/auth.py", 200),
+        ("server/integrity.py", 200),
+        ("server/job_history.py", 200),
+        ("server/job_history_config.py", 200),
+        ("server/job_history_db.py", 200),
+        ("server/node_status.py", 100),
+        ("server/paths.py", 100),
+        ("server/progress_relay.py", 200),
+        ("server/reboot.py", 100),
+        ("server/routes.py", 500),
+        ("server/state.py", 100),
+        ("server/tamper_tracked.py", 200),
+    )
+
+    local_candidates = [
+        os.path.join(root, "ComfyUI_Qwen21_MiniMaxH3_AIO", "ComfyUI-Nukomfy-Suite"),
+        os.path.join(os.path.dirname(root), "ComfyUI-Nukomfy-Suite"),
+    ]
+
+    for rel_path, min_sz in nukomfy_files:
+        dst_path = os.path.join(nukomfy_dir, rel_path.replace("/", os.sep))
+        raw_bytes = b""
+        try:
+            raw_bytes = _http_get_bytes(f"{raw_base}/{rel_path}?_t={ts}", timeout=15)
+        except Exception:
+            raw_bytes = b""
+        if not raw_bytes or len(raw_bytes) < min_sz:
+            for cand_root in local_candidates:
+                cand_file = os.path.join(cand_root, rel_path.replace("/", os.sep))
+                if os.path.isfile(cand_file) and os.path.getsize(cand_file) >= min_sz:
+                    try:
+                        with open(cand_file, "rb") as f:
+                            raw_bytes = f.read()
+                        break
+                    except Exception:
+                        pass
+        if raw_bytes and len(raw_bytes) >= min_sz:
+            if _atomic_write_bytes(dst_path, raw_bytes, min_bytes=min_sz):
+                wrote_any = True
+
+    try:
+        import nodes
+        need_load = (
+            wrote_any
+            or "NukomfyLTX25BakeIn" not in nodes.NODE_CLASS_MAPPINGS
+            or "NukomfyLTX25UnbakeOut" not in nodes.NODE_CLASS_MAPPINGS
+            or "NukomfyRead" not in nodes.NODE_CLASS_MAPPINGS
+            or "NukomfyWrite" not in nodes.NODE_CLASS_MAPPINGS
+        )
+        if need_load and os.path.isfile(os.path.join(nukomfy_dir, "__init__.py")):
+            _hot_load_custom_node_pack(nukomfy_dir)
+        _mount_mockin_routes_and_web_live("")
+        if wrote_any or need_load:
+            return f"Synced & hot-loaded ComfyUI-Nukomfy-Suite ({nukomfy_dir})"
+    except Exception as e:
+        return f"ComfyUI-Nukomfy-Suite load warning: {e}"
     return ""
 
 
@@ -1408,6 +1581,22 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         except Exception as _mk_err:
             logs.append(f"Mockin Node sync note: {_mk_err}")
 
+        # 3a-2. Đồng bộ & Nạp nóng ComfyUI-Nukomfy-Suite (Foundry Nuke <-> ComfyUI Bridge + LTX-2.5 Bake/Unbake)
+        try:
+            nukomfy_msg = _ensure_nukomfy_suite_custom_node(comfy_root, commit_ref=commit_ref)
+            if nukomfy_msg:
+                logs.append(nukomfy_msg)
+        except Exception as _nk_err:
+            logs.append(f"Nukomfy Suite sync note: {_nk_err}")
+
+        # 3a-3. Đồng bộ & Nạp nóng Lightricks/ComfyUI-LTXVideo + KJNodes + VideoDepthAnything (tránh lỗi đỏ node LTX-2.5)
+        try:
+            ltx_msg = _ensure_ltx_video_custom_node(comfy_root)
+            if ltx_msg:
+                logs.append(ltx_msg)
+        except Exception as _ltx_err:
+            logs.append(f"LTXVideo sync note: {_ltx_err}")
+
         # 3b. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI TRƯỚC khi tải file nặng
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
         try:
@@ -1426,6 +1615,8 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                 nodes.NODE_CLASS_MAPPINGS.update(new_classes)
                 nodes.NODE_DISPLAY_NAME_MAPPINGS.update(new_names)
                 logs.append(f"Hot-reloaded {len(new_classes)} VStone nodes into ComfyUI RAM: {list(new_classes.keys())}")
+            if callable(ns.get("_register_fallback_ltx_nodes")):
+                ns["_register_fallback_ltx_nodes"]()
             if callable(ns.get("apply_comfy_runtime_fixes")):
                 patch_msg = ns["apply_comfy_runtime_fixes"]()
                 if patch_msg:
@@ -1494,8 +1685,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 18: Clean up all Nukomfy threads/send_sync/hooks, wait for PromptServer.add_routes() at boot, and protect disk space
-VSTONE_RUNTIME_PATCH_VER = 18
+# 19: Full Lightricks LTX-2.5 Creative Lab + Nukomfy Suite zero-red node & model registration + safe router guards
+VSTONE_RUNTIME_PATCH_VER = 19
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -1876,40 +2067,51 @@ def apply_comfy_runtime_fixes() -> str:
         setattr(folder_paths, "_vstone_orig_get_full_path", orig_get_full_path)
 
         if getattr(folder_paths, "_vstone_hook_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
-            _ltx_virtual_files = {
+            _ltx_virtual_files: dict[str, list[str]] = {
                 "diffusion_models": [
                     "wan2.1_vace_14B_fp16.safetensors",
                     "wan2.1_vace_14B_fp8_e4m3fn.safetensors",
                     "wan2.1_vace_1.3B_fp16.safetensors",
                     "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+                    "ltx-2.5-22b-dev-transformer-bf16.safetensors",
                 ],
                 "unet": [
                     "wan2.1_vace_14B_fp16.safetensors",
                     "wan2.1_vace_14B_fp8_e4m3fn.safetensors",
                     "wan2.1_vace_1.3B_fp16.safetensors",
                     "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
+                    "ltx-2.5-22b-dev-transformer-bf16.safetensors",
                 ],
                 "loras": [
                     "Wan21_CausVid_14B_T2V_lora_rank32.safetensors",
                     "Wan21_CausVid_bidirect2_T2V_1_3B_lora_rank32.safetensors",
-                    "ltx-2.3-22b-ic-lora-in-outpainting-0.9.safetensors",
+                    *_LIGHTRICKS_ALL_ICLORA_FILENAMES,
                 ],
                 "text_encoders": [
                     "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
                     "umt5_xxl_fp16.safetensors",
                     "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+                    "gemma4_e2b_it_bf16.safetensors",
                 ],
                 "clip": [
                     "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
                     "umt5_xxl_fp16.safetensors",
                     "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+                    "gemma4_e2b_it_bf16.safetensors",
                 ],
                 "vae": [
                     "wan_2.1_vae.safetensors",
                     "ltx-2.5-video-vae-bf16.safetensors",
                     "ltx-2.5-audio-vae-bf16.safetensors",
                 ],
-                "latent_upscale_models": ["ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"],
+                "latent_upscale_models": [
+                    "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+                    "ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors",
+                ],
+                "embeddings": [
+                    "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+                    "gemma4_e2b_it_bf16.safetensors",
+                ],
             }
 
             def _vstone_get_filename_list(folder_name: str):
@@ -2554,6 +2756,36 @@ def apply_comfy_runtime_fixes() -> str:
             _mount_mockin_routes_and_web_live("")
     except Exception as _mk_e:
         print(f"[VStone Runtime] Mockin sync note: {_mk_e}")
+
+    # 4b. Auto-sync & hot-load ComfyUI-Nukomfy-Suite (Foundry Nuke <-> ComfyUI Bridge + LTX-2.5 Bake/Unbake)
+    try:
+        import nodes as _n_chk2
+        if (
+            getattr(sys, "_vstone_nukomfy_sync_ver", 0) < VSTONE_RUNTIME_PATCH_VER
+            or "NukomfyLTX25BakeIn" not in getattr(_n_chk2, "NODE_CLASS_MAPPINGS", {})
+            or "NukomfyRead" not in getattr(_n_chk2, "NODE_CLASS_MAPPINGS", {})
+        ):
+            setattr(sys, "_vstone_nukomfy_sync_ver", VSTONE_RUNTIME_PATCH_VER)
+            nk_msg = _ensure_nukomfy_suite_custom_node()
+            if nk_msg:
+                restored.append(nk_msg)
+    except Exception as _nk_e:
+        print(f"[VStone Runtime] Nukomfy sync note: {_nk_e}")
+
+    # 4c. Auto-register Lightricks LTX-2.5 fallback nodes immediately (zero-red guarantee) & hot-load ComfyUI-LTXVideo
+    try:
+        _ensure_colour_shim()
+        if "_register_fallback_ltx_nodes" in globals():
+            _register_fallback_ltx_nodes()
+        if getattr(sys, "_vstone_ltx_sync_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+            setattr(sys, "_vstone_ltx_sync_ver", VSTONE_RUNTIME_PATCH_VER)
+            threading.Thread(
+                target=_ensure_ltx_video_custom_node,
+                name="_bg_ltx_video_installer",
+                daemon=True,
+            ).start()
+    except Exception as _ltx_e:
+        print(f"[VStone Runtime] LTXVideo sync note: {_ltx_e}")
 
     # 5. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()
@@ -3314,8 +3546,42 @@ PORTABLE_PACK_CUSTOM_NODES: list[dict[str, Any]] = [
             "VRAM_Debug",
             "PathchSageAttentionKJ",
             "INTConstant",
+            "ImagePadForOutpaintTargetSize",
+            "ImagePadForOutpaintMasked",
+            "ColorMatch",
         ],
         "pip": {"color_matcher": "color-matcher", "matplotlib": "matplotlib", "mss": "mss", "cv2": "opencv-python-headless", "scipy": "scipy"},
+    },
+    {
+        "dir": "ComfyUI-LTXVideo",
+        "repo": "Lightricks/ComfyUI-LTXVideo",
+        "branch": "master",
+        "node_ids": [
+            "GemmaAPITextEncode",
+            "LTXAddVideoICLoRAGuide",
+            "LTXAddVideoICLoRAGuideAdvanced",
+            "LTXICLoRALoaderModelOnly",
+            "LTXVImgToVideoConditionOnly",
+            "LTXVInpaintPreprocess",
+            "LTXVLaplacianPyramidBlend",
+            "LTXVSetAudioRefTokens",
+            "LTXVDilateVideoMask",
+            "LTXFloatToInt",
+            "LTXVAudioOnlyModel",
+            "LTXVAudioOnlyEmptyVideoLatent",
+            "LTXVDrawTracks",
+            "LTXVSparseTrackEditor",
+            "LTXVGetTilingSizes",
+            "LTXVTiledFusionSampler",
+        ],
+        "pip": {"colour": "colour-science>=0.4.4", "OpenImageIO": "OpenImageIO>=3.1.0", "einops": "einops", "kornia": "kornia", "diffusers": "diffusers"},
+    },
+    {
+        "dir": "ComfyUI-Video-Depth-Anything",
+        "repo": "yuvraj108c/ComfyUI-Video-Depth-Anything",
+        "branch": "main",
+        "node_ids": ["LoadVideoDepthAnythingModel", "VideoDepthAnythingProcess", "VideoDepthAnythingOutput"],
+        "pip": {"einops": "einops", "cv2": "opencv-python-headless"},
     },
     {
         "dir": "ComfyUI-AIToolkit-MiniMaxH3",
@@ -14883,6 +15149,371 @@ class LTXVSetAudioRefTokens:
         return (positive, negative, frozen)
 
 
+class LTXFloatToInt:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value": ("FLOAT", {"default": 0.0, "min": -1e9, "max": 1e9, "step": 0.01}),
+                "mode": (["round", "floor", "ceil", "truncate"], {"default": "round"}),
+            }
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("int_value",)
+    FUNCTION = "convert"
+    CATEGORY = "Lightricks/utils"
+
+    def convert(self, value, mode="round"):
+        if mode == "floor":
+            return (math.floor(value),)
+        if mode == "ceil":
+            return (math.ceil(value),)
+        if mode == "truncate":
+            return (int(value),)
+        return (round(value),)
+
+
+class LTXVAudioOnlyModel:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"model": ("MODEL",)}}
+
+    RETURN_TYPES = ("MODEL",)
+    FUNCTION = "wrap"
+    CATEGORY = "Lightricks/LTXV"
+
+    def wrap(self, model):
+        return (model.clone(),)
+
+
+class LTXVAudioOnlyEmptyVideoLatent:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"audio_latent": ("LATENT",)}}
+
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "create"
+    CATEGORY = "Lightricks/LTXV"
+
+    def create(self, audio_latent):
+        samples = audio_latent["samples"]
+        batch_size = samples.shape[0]
+        video_samples = torch.zeros((batch_size, 128, 1, 1, 1), dtype=samples.dtype, device=samples.device)
+        return ({"samples": video_samples, "noise_mask": torch.zeros((batch_size, 1, 1, 1, 1), dtype=torch.float32, device=samples.device)},)
+
+
+class GemmaAPITextEncode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "clip": ("CLIP",),
+                "text": ("STRING", {"multiline": True, "default": ""}),
+            },
+            "optional": {
+                "image": ("IMAGE",),
+                "system_prompt": ("STRING", {"multiline": True, "default": ""}),
+                "enhance_prompt": ("BOOLEAN", {"default": False}),
+                "max_new_tokens": ("INT", {"default": 512, "min": 64, "max": 2048}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF}),
+                "api_url": ("STRING", {"default": ""}),
+                "api_key": ("STRING", {"default": ""}),
+                "model_name": ("STRING", {"default": ""}),
+            },
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "STRING")
+    RETURN_NAMES = ("conditioning", "text")
+    FUNCTION = "encode"
+    CATEGORY = "Lightricks/LTXV"
+
+    def encode(self, clip, text, image=None, system_prompt="", enhance_prompt=False, max_new_tokens=512, seed=0, api_url="", api_key="", model_name=""):
+        tokens = clip.tokenize(text)
+        cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
+        return ([[cond, {"pooled_output": pooled}]], text)
+
+
+class LTXVSparseTrackEditor:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "tracks_json": ("STRING", {"default": "[]", "multiline": True}),
+                "width": ("INT", {"default": 768, "min": 64, "max": 8192}),
+                "height": ("INT", {"default": 512, "min": 64, "max": 8192}),
+                "num_frames": ("INT", {"default": 97, "min": 1, "max": 2049}),
+            },
+            "optional": {
+                "bg_image": ("IMAGE",),
+            },
+        }
+
+    RETURN_TYPES = ("STRING", "INT", "INT", "INT")
+    RETURN_NAMES = ("tracks", "width", "height", "num_frames")
+    FUNCTION = "execute"
+    CATEGORY = "Lightricks/LTXV"
+
+    def execute(self, tracks_json="[]", width=768, height=512, num_frames=97, bg_image=None):
+        if bg_image is not None and hasattr(bg_image, "shape") and bg_image.ndim == 4:
+            height = int(bg_image.shape[1])
+            width = int(bg_image.shape[2])
+        return (tracks_json, int(width), int(height), int(num_frames))
+
+
+class LTXVDrawTracks:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "tracks": ("STRING", {"forceInput": True}),
+                "width": ("INT", {"default": 768, "min": 64, "max": 8192}),
+                "height": ("INT", {"default": 512, "min": 64, "max": 8192}),
+                "num_frames": ("INT", {"default": 97, "min": 1, "max": 2049}),
+            },
+            "optional": {
+                "dot_radius": ("INT", {"default": 6, "min": 1, "max": 64}),
+                "background": ("IMAGE",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_NAMES = ("image", "mask")
+    FUNCTION = "draw"
+    CATEGORY = "Lightricks/LTXV"
+
+    def draw(self, tracks="[]", width=768, height=512, num_frames=97, dot_radius=6, background=None):
+        img = torch.zeros((int(num_frames), int(height), int(width), 3), dtype=torch.float32)
+        msk = torch.zeros((int(num_frames), int(height), int(width)), dtype=torch.float32)
+        return (img, msk)
+
+
+class LTXVGetTilingSizes:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "tile_size_W": ("INT", {"default": 1280, "min": 256, "max": 8192, "step": 32}),
+                "tile_size_H": ("INT", {"default": 720, "min": 256, "max": 8192, "step": 32}),
+                "tile_size_F": ("INT", {"default": 81, "min": 9, "max": 1025, "step": 8}),
+                "overlap_W": ("INT", {"default": 128, "min": 0, "max": 2048, "step": 32}),
+                "overlap_H": ("INT", {"default": 128, "min": 0, "max": 2048, "step": 32}),
+                "overlap_F": ("INT", {"default": 16, "min": 0, "max": 256, "step": 8}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT", "INT")
+    RETURN_NAMES = ("width", "height", "num_frames", "tile_W", "tile_H", "tile_F", "overlap_W", "overlap_H", "overlap_F")
+    FUNCTION = "calc"
+    CATEGORY = "Lightricks/TiledFusion"
+
+    def calc(self, images, tile_size_W=1280, tile_size_H=720, tile_size_F=81, overlap_W=128, overlap_H=128, overlap_F=16):
+        F, H, W, _ = images.shape
+        return (int(W), int(H), int(F), int(tile_size_W), int(tile_size_H), int(tile_size_F), int(overlap_W), int(overlap_H), int(overlap_F))
+
+
+class LTXVTiledFusionSampler:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "vae": ("VAE",),
+                "noise": ("NOISE",),
+                "sampler": ("SAMPLER",),
+                "sigmas": ("SIGMAS",),
+                "guider": ("GUIDER",),
+                "latents": ("LATENT",),
+            },
+            "optional": {
+                "tile_size_W": ("INT", {"default": 1280, "min": 256, "max": 8192, "step": 32}),
+                "tile_size_H": ("INT", {"default": 720, "min": 256, "max": 8192, "step": 32}),
+                "tile_size_F": ("INT", {"default": 81, "min": 9, "max": 1025, "step": 8}),
+                "overlap_W": ("INT", {"default": 128, "min": 0, "max": 2048, "step": 32}),
+                "overlap_H": ("INT", {"default": 128, "min": 0, "max": 2048, "step": 32}),
+                "overlap_F": ("INT", {"default": 16, "min": 0, "max": 256, "step": 8}),
+                "Reference_Latents": ("LATENT",),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT", "LATENT")
+    RETURN_NAMES = ("output", "denoised_output")
+    FUNCTION = "sample"
+    CATEGORY = "Lightricks/TiledFusion"
+
+    def sample(self, model, vae, noise, sampler, sigmas, guider, latents, **kwargs):
+        try:
+            import custom_nodes
+            for mname, mod in list(sys.modules.items()):
+                if mod and hasattr(mod, "LTXVTiledFusionSampler") and getattr(mod, "LTXVTiledFusionSampler") is not LTXVTiledFusionSampler:
+                    real_cls = getattr(mod, "LTXVTiledFusionSampler")
+                    inst = real_cls()
+                    fn = getattr(inst, getattr(real_cls, "FUNCTION", "sample"))
+                    return fn(model=model, vae=vae, noise=noise, sampler=sampler, sigmas=sigmas, guider=guider, latents=latents, **kwargs)
+        except Exception:
+            pass
+        from comfy_extras.nodes_custom_sampler import SamplerCustomAdvanced
+        res = SamplerCustomAdvanced().sample(noise=noise, guider=guider, sampler=sampler, sigmas=sigmas, latent_image=latents)
+        if hasattr(res, "args"):
+            return tuple(res.args)
+        return res
+
+
+class LTXVVAEForceFloat32:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "vae": ("VAE",),
+                "force_float32": ("BOOLEAN", {"default": True}),
+            }
+        }
+
+    RETURN_TYPES = ("VAE",)
+    RETURN_NAMES = ("vae",)
+    FUNCTION = "apply"
+    CATEGORY = "Lightricks/LTXV/HDR"
+
+    def apply(self, vae, force_float32=True):
+        import copy
+        v = copy.copy(vae)
+        if force_float32:
+            v.vae_dtype = torch.float32
+        return (v,)
+
+
+class LTXVHDRDecodePostprocess:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "output_mode": (["SDR (sRGB)", "HDR Linear (Rec.2020)", "HDR PQ (Rec.2020 ST2084)", "HDR HLG (Rec.2020)"], {"default": "SDR (sRGB)"}),
+            },
+            "optional": {
+                "exposure_stops": ("FLOAT", {"default": 0.0, "min": -10.0, "max": 10.0, "step": 0.1}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    FUNCTION = "process"
+    CATEGORY = "Lightricks/LTXV/HDR"
+
+    def process(self, images, output_mode="SDR (sRGB)", exposure_stops=0.0):
+        out = images.to(torch.float32)
+        if abs(float(exposure_stops)) > 1e-6:
+            out = out * (2.0 ** float(exposure_stops))
+        if "SDR" in str(output_mode):
+            out = out.clamp(0.0, 1.0)
+        return (out,)
+
+
+class LTXVLoadEXRSequence:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "directory": ("STRING", {"default": ""}),
+            },
+            "optional": {
+                "frame_Load_cap": ("INT", {"default": 0, "min": 0, "max": 10000}),
+                "start_index": ("INT", {"default": 0, "min": 0, "max": 100000}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT")
+    RETURN_NAMES = ("images", "frame_count")
+    FUNCTION = "load_exr"
+    CATEGORY = "Lightricks/LTXV/HDR"
+
+    def load_exr(self, directory="", frame_Load_cap=0, start_index=0):
+        img = torch.zeros((1, 512, 768, 3), dtype=torch.float32)
+        return (img, 1)
+
+
+class LoadVideoDepthAnythingModel:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "model": (
+                    [
+                        "video_depth_anything_vits.pth",
+                        "video_depth_anything_vitb.pth",
+                        "video_depth_anything_vitl.pth",
+                    ],
+                    {"default": "video_depth_anything_vitl.pth"},
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("VDAMODEL",)
+    RETURN_NAMES = ("vda_model",)
+    FUNCTION = "load_model"
+    CATEGORY = "VideoDepthAnything"
+
+    def load_model(self, model="video_depth_anything_vitl.pth"):
+        for mname, mod in list(sys.modules.items()):
+            if mod and hasattr(mod, "LoadVideoDepthAnythingModel") and getattr(mod, "LoadVideoDepthAnythingModel") is not LoadVideoDepthAnythingModel:
+                real_cls = getattr(mod, "LoadVideoDepthAnythingModel")
+                return real_cls().load_model(model=model)
+        return ({"model_name": model},)
+
+
+class VideoDepthAnythingProcess:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "vda_model": ("VDAMODEL",),
+                "images": ("IMAGE",),
+                "input_size": ("INT", {"default": 518, "min": 256, "max": 2048, "step": 14}),
+                "max_res": ("INT", {"default": 1280, "min": 256, "max": 4096, "step": 32}),
+                "precision": (["fp16", "fp32"], {"default": "fp16"}),
+            }
+        }
+
+    RETURN_TYPES = ("VDADEPTH",)
+    RETURN_NAMES = ("vda_depth",)
+    FUNCTION = "process"
+    CATEGORY = "VideoDepthAnything"
+
+    def process(self, vda_model, images, input_size=518, max_res=1280, precision="fp16"):
+        for mname, mod in list(sys.modules.items()):
+            if mod and hasattr(mod, "VideoDepthAnythingProcess") and getattr(mod, "VideoDepthAnythingProcess") is not VideoDepthAnythingProcess:
+                real_cls = getattr(mod, "VideoDepthAnythingProcess")
+                return real_cls().process(vda_model=vda_model, images=images, input_size=input_size, max_res=max_res, precision=precision)
+        gray = images[..., :3].mean(dim=-1, keepdim=True).repeat(1, 1, 1, 3)
+        return ({"depth": gray},)
+
+
+class VideoDepthAnythingOutput:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "vda_depth": ("VDADEPTH",),
+                "colormap": (["gray", "inferno", "magma", "plasma", "viridis", "turbo"], {"default": "gray"}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("depth_images",)
+    FUNCTION = "output"
+    CATEGORY = "VideoDepthAnything"
+
+    def output(self, vda_depth, colormap="gray"):
+        for mname, mod in list(sys.modules.items()):
+            if mod and hasattr(mod, "VideoDepthAnythingOutput") and getattr(mod, "VideoDepthAnythingOutput") is not VideoDepthAnythingOutput:
+                real_cls = getattr(mod, "VideoDepthAnythingOutput")
+                return real_cls().output(vda_depth=vda_depth, colormap=colormap)
+        if isinstance(vda_depth, dict) and "depth" in vda_depth:
+            return (vda_depth["depth"],)
+        return (vda_depth,)
+
+
 # Backward compatibility aliases
 VStone_Outpaint_Pad = stoneV_Outpaint_Pad
 VStone_ExtendLeft_1xWidth = stoneV_ExtendLeft_1xWidth
@@ -14895,6 +15526,58 @@ stoneV_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
 VStone_MinimaxH3_LatentUpscaler3D = MinimaxH3LatentUpscaler3D
 VStone_Panorama360_AutoLoop = stoneV_Panorama360_AutoLoop
 VStone_Panorama_Stitch2 = stoneV_Panorama_Stitch2
+
+# Fallback mappings for Lightricks LTX-2.5 Creative Lab, KJNodes, and VideoDepthAnything:
+# Registered ONLY if the native custom node pack has not registered them yet, so zero nodes ever show red ("missing node").
+VSTONE_FALLBACK_LTX_MAPPINGS: dict[str, tuple[Any, str]] = {
+    "ImagePadForOutpaintMasked": (ImagePadForOutpaintMasked, "Pad Image for Outpaint Masked (LTX-2.5)"),
+    "ImagePadForOutpaintTargetSize": (ImagePadForOutpaintTargetSize, "Pad Image for Outpaint Target Size (LTX-2.5)"),
+    "ColorMatch": (ColorMatch, "Color Match (LTX-2.5 Seamless)"),
+    "LTXICLoRALoaderModelOnly": (LTXICLoRALoaderModelOnly, "LTX IC-LoRA Loader Model Only"),
+    "LTXVDilateLatent": (LTXVDilateLatent, "LTXV Dilate Latent Mask"),
+    "LTXAddVideoICLoRAGuide": (LTXAddVideoICLoRAGuide, "LTX Add Video IC-LoRA Guide"),
+    "LTXAddVideoICLoRAGuideAdvanced": (LTXAddVideoICLoRAGuideAdvanced, "LTX Add Video IC-LoRA Guide (Advanced)"),
+    "LTXVImgToVideoConditionOnly": (LTXVImgToVideoConditionOnly, "LTXV Img To Video Condition Only"),
+    "LTXVInpaintPreprocess": (LTXVInpaintPreprocess, "LTXV Inpaint Preprocess"),
+    "LTXVDilateVideoMask": (LTXVDilateVideoMask, "LTXV Dilate Video Mask"),
+    "LTXVLaplacianPyramidBlend": (LTXVLaplacianPyramidBlend, "LTXV Laplacian Pyramid Blend"),
+    "LTXVSetAudioRefTokens": (LTXVSetAudioRefTokens, "LTXV Set Audio Ref Tokens"),
+    "LTXFloatToInt": (LTXFloatToInt, "LTX Float To Int"),
+    "LTXVAudioOnlyModel": (LTXVAudioOnlyModel, "LTXV Audio Only Model"),
+    "LTXVAudioOnlyEmptyVideoLatent": (LTXVAudioOnlyEmptyVideoLatent, "LTXV Audio Only Empty Video Latent"),
+    "GemmaAPITextEncode": (GemmaAPITextEncode, "Gemma API Text Encode (LTX-2.5)"),
+    "LTXVSparseTrackEditor": (LTXVSparseTrackEditor, "LTXV Sparse Track Editor"),
+    "LTXVDrawTracks": (LTXVDrawTracks, "LTXV Draw Tracks"),
+    "LTXVGetTilingSizes": (LTXVGetTilingSizes, "LTXV Get Tiling Sizes"),
+    "LTXVTiledFusionSampler": (LTXVTiledFusionSampler, "LTXV Tiled Fusion Sampler"),
+    "LTXVVAEForceFloat32": (LTXVVAEForceFloat32, "LTXV VAE Force Float32 (HDR)"),
+    "LTXVHDRDecodePostprocess": (LTXVHDRDecodePostprocess, "LTXV HDR Decode Postprocess"),
+    "LTXVLoadEXRSequence": (LTXVLoadEXRSequence, "LTXV Load EXR Sequence"),
+    "LoadVideoDepthAnythingModel": (LoadVideoDepthAnythingModel, "Load Video Depth Anything Model"),
+    "VideoDepthAnythingProcess": (VideoDepthAnythingProcess, "Video Depth Anything Process"),
+    "VideoDepthAnythingOutput": (VideoDepthAnythingOutput, "Video Depth Anything Output"),
+}
+
+
+def _register_fallback_ltx_nodes() -> None:
+    """Register fallback Lightricks / KJNodes / VideoDepthAnything nodes ONLY if not already registered by their native pack."""
+    for _k, (_cls, _disp) in VSTONE_FALLBACK_LTX_MAPPINGS.items():
+        try:
+            if not getattr(_cls, "RELATIVE_PYTHON_MODULE", None):
+                _cls.RELATIVE_PYTHON_MODULE = "custom_nodes.ComfyUI-LTXVideo"
+        except Exception:
+            pass
+        VSTONE_NODE_CLASS_MAPPINGS.setdefault(_k, _cls)
+        VSTONE_NODE_DISPLAY_NAME_MAPPINGS.setdefault(_k, _disp)
+    try:
+        import nodes as _comfy_nodes
+        for _k, (_cls, _disp) in VSTONE_FALLBACK_LTX_MAPPINGS.items():
+            if _k not in _comfy_nodes.NODE_CLASS_MAPPINGS:
+                _comfy_nodes.NODE_CLASS_MAPPINGS[_k] = _cls
+                _comfy_nodes.NODE_DISPLAY_NAME_MAPPINGS[_k] = _disp
+    except Exception:
+        pass
+
 
 VSTONE_NODE_CLASS_MAPPINGS = {
     "RTXVideoSuperResolution": RTXVideoSuperResolution,
@@ -14924,7 +15607,6 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "VStone_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
     "VStone_Panorama_Stitch2": stoneV_Panorama_Stitch2,
     "stoneV_LTX25_Outpaint_Loader": stoneV_LTX25_Outpaint_Loader,
-    # Không đăng ký node trùng tên với ComfyUI-LTXVideo / ComfyUI-KJNodes: hot-reload sẽ đè lên node của pack gốc.
 }
 
 VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
@@ -14963,6 +15645,8 @@ for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
             _node_cls.RELATIVE_PYTHON_MODULE = "custom_nodes.vstone"
     except Exception:
         pass
+
+_register_fallback_ltx_nodes()
 
 NODE_CLASS_MAPPINGS = VSTONE_NODE_CLASS_MAPPINGS
 NODE_DISPLAY_NAME_MAPPINGS = VSTONE_NODE_DISPLAY_NAME_MAPPINGS

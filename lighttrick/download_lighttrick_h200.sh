@@ -81,8 +81,11 @@ install_or_update_node() {
     fi
 }
 
+python3 -m pip install --prefer-binary "colour-science>=0.4.4" "OpenImageIO>=3.1.0" "fileseq>=2.0.0" einops kornia diffusers || true
+
 install_or_update_node "ComfyUI-LTXVideo" "https://github.com/Lightricks/ComfyUI-LTXVideo.git" "master"
 install_or_update_node "ComfyUI-KJNodes" "https://github.com/kijai/ComfyUI-KJNodes.git" "main"
+install_or_update_node "ComfyUI-Video-Depth-Anything" "https://github.com/yuvraj108c/ComfyUI-Video-Depth-Anything.git" "main"
 
 # 4. Đồng bộ toàn bộ Workflows vào thư mục lighttrick của ComfyUI
 WF_DEST="$COMFY_ROOT/user/default/workflows/lighttrick"
