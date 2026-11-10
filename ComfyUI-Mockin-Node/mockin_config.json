@@ -1,0 +1,10 @@
+{
+  "api_key": "",
+  "inference_key": "",
+  "provisioning_key": "",
+  "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition",
+  "base_url": "https://openrouter.ai/api/v1",
+  "r2_api_base": "https://api.mockin.app/api/room",
+  "r2_code": "9999",
+  "default_room_id": "R-6ZZP"
+}

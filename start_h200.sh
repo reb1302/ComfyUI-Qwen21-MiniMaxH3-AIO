@@ -90,6 +90,10 @@ if [ -n "$REPO_DIR" ] && safe_copy_if_valid "$REPO_DIR/vstone/node_helper_vstone
     if [ -d "$REPO_DIR/workflows" ]; then
         cp -rf "$REPO_DIR/workflows/"* "$COMFY_DIR/user/default/workflows/" 2>/dev/null || true
     fi
+    if [ -d "$REPO_DIR/ComfyUI-Mockin-Node" ]; then
+        mkdir -p "$COMFY_DIR/custom_nodes/ComfyUI-Mockin-Node/web"
+        cp -rf "$REPO_DIR/ComfyUI-Mockin-Node/"* "$COMFY_DIR/custom_nodes/ComfyUI-Mockin-Node/" 2>/dev/null || true
+    fi
     if [ "$SCRIPT_DIR/start_h200.sh" != "$COMFY_DIR/start_h200.sh" ]; then
         safe_copy_if_valid "$REPO_DIR/start_h200.sh" "$COMFY_DIR/start_h200.sh" 500 || true
         chmod +x "$COMFY_DIR/start_h200.sh" 2>/dev/null || true

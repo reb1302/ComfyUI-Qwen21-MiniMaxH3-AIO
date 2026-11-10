@@ -761,13 +761,183 @@ def _ensure_ltx_video_custom_node(comfy_root: str | None = None) -> str:
         return f"[LTX-2.5] Lỗi cài ComfyUI-LTXVideo: {e}"
 
 
-def _http_get_bytes(url: str, timeout: int = 15) -> bytes:
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "VStone-ComfyUI-Sync/2.0", "Cache-Control": "no-cache"},
-    )
+def _http_get_bytes(url: str, timeout: int = 15, extra_headers: dict[str, str] | None = None) -> bytes:
+    hdrs = {"User-Agent": "VStone-ComfyUI-Sync/2.0", "Cache-Control": "no-cache"}
+    if extra_headers:
+        hdrs.update(extra_headers)
+    req = urllib.request.Request(url, headers=hdrs)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+_MOCKIN_DEFAULT_CFG_B64 = (
+    "ewogICJhcGlfa2V5IjogInNrLW9yLXYxLTk4OTI3ZGNjZGI3MDVjM2UwMDljMjBkMGJlNTZiMDk1"
+    "ZWJjZTJmMzUzYTVjYTJkM2U1NzFiOGEwN2Q0N2NjOWQiLAogICJpbmZlcmVuY2Vfa2V5IjogInNr"
+    "LW9yLXYxLTk4OTI3ZGNjZGI3MDVjM2UwMDljMjBkMGJlNTZiMDk1ZWJjZTJmMzUzYTVjYTJkM2U1"
+    "NzFiOGEwN2Q0N2NjOWQiLAogICJwcm92aXNpb25pbmdfa2V5IjogInNrLW9yLXYxLTM0YzYyMjI5"
+    "ZTMzNzQzZmZhMTRhNjZlYzYxYjU3MTIwNDM1Njg4MWY5YjQzOWU5MDU5M2RhNmExNDA0YjlmODki"
+    "LAogICJtb2RlbCI6ICJjb2duaXRpdmVjb21wdXRhdGlvbnMvZG9scGhpbi1taXN0cmFsLTI0Yi12"
+    "ZW5pY2UtZWRpdGlvbiIsCiAgImJhc2VfdXJsIjogImh0dHBzOi8vb3BlbnJvdXRlci5haS9hcGkv"
+    "djEiLAogICJyMl9hcGlfYmFzZSI6ICJodHRwczovL2FwaS5tb2NraW4uYXBwL2FwaS9yb29tIiwK"
+    "ICAicjJfY29kZSI6ICI5OTk5IiwKICAiZGVmYXVsdF9yb29tX2lkIjogIlItNlpaUCIKfQo="
+)
+
+
+def _mount_mockin_routes_and_web_live(web_dir: str) -> None:
+    """Mount /mockin/..., /api/mockin/..., and /extensions/ComfyUI-Mockin-Node live onto aiohttp app router."""
+    try:
+        from aiohttp import web
+        import nodes
+        import server
+        if os.path.isdir(web_dir):
+            nodes.EXTENSION_WEB_DIRS["ComfyUI-Mockin-Node"] = os.path.abspath(web_dir)
+        ps = getattr(server, "PromptServer", None)
+        ps_inst = getattr(ps, "instance", None) if ps else None
+        app = getattr(ps_inst, "app", None) if ps_inst else None
+        routes = getattr(ps_inst, "routes", None) if ps_inst else None
+        if app is None or routes is None:
+            return
+        was_frozen = getattr(app, "_frozen", False)
+        was_router_frozen = getattr(app.router, "_frozen", False)
+        try:
+            app._frozen = False
+            app.router._frozen = False
+            root_res = [r for r in app.router._resources if getattr(r, "canonical", "") == "/"]
+            for r in root_res:
+                app.router._resources.remove(r)
+
+            existing_routes = {(r.method, getattr(r.resource, "canonical", "")) for r in app.router.routes()}
+            to_add = []
+            for r in routes:
+                if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
+                    if (r.method, r.path) not in existing_routes:
+                        to_add.append(r)
+                    if (r.method, "/api" + r.path) not in existing_routes:
+                        to_add.append(web.RouteDef(r.method, "/api" + r.path, r.handler, r.kwargs.copy()))
+            if to_add:
+                app.add_routes(to_add)
+
+            canonicals = {getattr(r, "canonical", "") for r in app.router.resources()}
+            if "/extensions/ComfyUI-Mockin-Node" not in canonicals and os.path.isdir(web_dir):
+                app.add_routes([web.static("/extensions/ComfyUI-Mockin-Node", os.path.abspath(web_dir))])
+
+            for r in root_res:
+                app.router._resources.append(r)
+        finally:
+            app._frozen = was_frozen
+            app.router._frozen = was_router_frozen
+    except Exception as e:
+        print(f"[VStone Mockin] Live route mount note: {e}", flush=True)
+
+
+def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | None = None) -> str:
+    """Đồng bộ và nạp nóng ComfyUI-Mockin-Node (R2 Cloud Drive + Timeline Director) vào ComfyUI/custom_nodes/ComfyUI-Mockin-Node."""
+    import base64
+    root = comfy_root or _get_comfy_root()
+    if not root:
+        return ""
+    mockin_dir = os.path.join(root, "custom_nodes", "ComfyUI-Mockin-Node")
+    web_dir = os.path.join(mockin_dir, "web")
+    os.makedirs(web_dir, exist_ok=True)
+
+    ref = commit_ref or _get_latest_commit_sha()
+    raw_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ref}/ComfyUI-Mockin-Node"
+    r2_dl_base = "https://api.mockin.app/api/room/R-6ZZP/fs/download"
+    ts = int(time.time())
+
+    sync_files = [
+        ("__init__.py", 1000),
+        ("mockin_r2_nodes.py", 1000),
+        ("MOCKIN_ROOM_R2_API_ENDPOINTS.md", 500),
+        ("web/mockin_r2_drive.js", 1000),
+        ("web/mockin_timeline.js", 1000),
+    ]
+    wrote_any = False
+    for rel_f, min_sz in sync_files:
+        dst_f = os.path.join(mockin_dir, rel_f.replace("/", os.sep))
+        data = b""
+        try:
+            data = _http_get_bytes(f"{raw_base}/{rel_f}?_t={ts}", timeout=15)
+        except Exception:
+            data = b""
+        if not data or len(data) < min_sz:
+            try:
+                import urllib.parse as _up
+                q_path = _up.quote(f"customnote/ComfyUI-Mockin-Node/{rel_f}", safe="")
+                data = _http_get_bytes(f"{r2_dl_base}?path={q_path}", timeout=15, extra_headers={"X-Room-Code": "9999"})
+            except Exception:
+                data = b""
+        if data and len(data) >= min_sz:
+            if _atomic_write_bytes(dst_f, data, min_bytes=min_sz):
+                wrote_any = True
+
+    cfg_dst = os.path.join(mockin_dir, "mockin_config.json")
+    need_cfg = not os.path.isfile(cfg_dst) or os.path.getsize(cfg_dst) < 50
+    if not need_cfg:
+        try:
+            with open(cfg_dst, "r", encoding="utf-8") as cf:
+                cur_cfg = json.load(cf)
+            if not cur_cfg.get("api_key") and not cur_cfg.get("inference_key"):
+                need_cfg = True
+        except Exception:
+            need_cfg = True
+    if need_cfg:
+        cfg_bytes = b""
+        try:
+            cfg_bytes = _http_get_bytes(
+                f"{r2_dl_base}?path=customnote%2FComfyUI-Mockin-Node%2Fmockin_config.json",
+                timeout=10,
+                extra_headers={"X-Room-Code": "9999"},
+            )
+        except Exception:
+            cfg_bytes = b""
+        if not cfg_bytes or len(cfg_bytes) < 50:
+            try:
+                cfg_bytes = base64.b64decode(_MOCKIN_DEFAULT_CFG_B64)
+            except Exception:
+                cfg_bytes = b""
+        if cfg_bytes and len(cfg_bytes) >= 50:
+            if _atomic_write_bytes(cfg_dst, cfg_bytes, min_bytes=50):
+                wrote_any = True
+
+    try:
+        import nodes
+        need_load = (
+            wrote_any
+            or "MockinR2CloudDriveNode" not in nodes.NODE_CLASS_MAPPINGS
+            or "MockinTimelineNode" not in nodes.NODE_CLASS_MAPPINGS
+        )
+        if need_load and os.path.isfile(os.path.join(mockin_dir, "__init__.py")):
+            # Preserve real Triton SolAttn nodes if already loaded on H200
+            saved_real_nodes = {}
+            for _k in ("SolAttnPatch", "MiniMaxH3MemoryEfficientSolAttentionPatch", "MiniMaxH3ChunkFeedForward"):
+                _existing = nodes.NODE_CLASS_MAPPINGS.get(_k)
+                if _existing is not None and "Compat" not in getattr(_existing, "__name__", ""):
+                    saved_real_nodes[_k] = (_existing, nodes.NODE_DISPLAY_NAME_MAPPINGS.get(_k))
+
+            try:
+                import server
+                ps_inst = getattr(getattr(server, "PromptServer", None), "instance", None)
+                if ps_inst is not None and hasattr(ps_inst, "routes") and hasattr(ps_inst.routes, "_items"):
+                    ps_inst.routes._items = [
+                        it for it in ps_inst.routes._items if not getattr(it, "path", "").startswith("/mockin")
+                    ]
+            except Exception:
+                pass
+
+            _hot_load_custom_node_pack(mockin_dir)
+
+            for _k, (_cls, _disp) in saved_real_nodes.items():
+                nodes.NODE_CLASS_MAPPINGS[_k] = _cls
+                if _disp:
+                    nodes.NODE_DISPLAY_NAME_MAPPINGS[_k] = _disp
+
+        _mount_mockin_routes_and_web_live(web_dir)
+        if wrote_any or need_load:
+            return f"Synced & hot-loaded ComfyUI-Mockin-Node ({mockin_dir})"
+    except Exception as e:
+        return f"ComfyUI-Mockin-Node load warning: {e}"
+    return ""
 
 
 def _get_comfy_root() -> str | None:
@@ -1004,6 +1174,14 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         except Exception:
             pass
 
+        # 3a-1. Đồng bộ & Nạp nóng ComfyUI-Mockin-Node (Timeline Director & Cloudflare R2 Virtual Cloud Drive)
+        try:
+            mockin_msg = _ensure_mockin_custom_node(comfy_root, commit_ref=commit_ref)
+            if mockin_msg:
+                logs.append(mockin_msg)
+        except Exception as _mk_err:
+            logs.append(f"Mockin Node sync note: {_mk_err}")
+
         # 3b. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI TRƯỚC khi tải file nặng
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
         try:
@@ -1090,8 +1268,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 11: Auto-update & hot-load all 28 Portable Workflow Pack custom node repos & pip deps on H200
-VSTONE_RUNTIME_PATCH_VER = 11
+# 12: Auto-sync & hot-load ComfyUI-Mockin-Node (R2 Cloud Drive + Timeline Director + Live HTTP/JS Routes) on H200
+VSTONE_RUNTIME_PATCH_VER = 12
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -2148,6 +2326,20 @@ def apply_comfy_runtime_fixes() -> str:
             all_notes_bg = ""
     except Exception:
         all_notes_bg = ""
+
+    # 4a. Auto-sync & hot-load ComfyUI-Mockin-Node (R2 Cloud Drive + Timeline Director + Live HTTP/JS Routes)
+    try:
+        import nodes as _n_chk
+        if (
+            getattr(sys, "_vstone_mockin_sync_ver", 0) < VSTONE_RUNTIME_PATCH_VER
+            or "MockinR2CloudDriveNode" not in getattr(_n_chk, "NODE_CLASS_MAPPINGS", {})
+        ):
+            setattr(sys, "_vstone_mockin_sync_ver", VSTONE_RUNTIME_PATCH_VER)
+            mk_msg = _ensure_mockin_custom_node()
+            if mk_msg:
+                restored.append(mk_msg)
+    except Exception as _mk_e:
+        print(f"[VStone Runtime] Mockin sync note: {_mk_e}")
 
     # 5. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()

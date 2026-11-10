@@ -94,6 +94,32 @@ def _bootstrap_bundled_assets():
         except Exception:
             pass
 
+    # 4. Ensure custom_nodes/ComfyUI-Mockin-Node is synced from bundled ComfyUI-Mockin-Node
+    src_mockin = os.path.join(pkg_dir, "ComfyUI-Mockin-Node")
+    dst_mockin = os.path.join(comfy_root, "custom_nodes", "ComfyUI-Mockin-Node")
+    if os.path.isdir(src_mockin):
+        for mfile, min_sz in (
+            ("__init__.py", 1000),
+            ("mockin_r2_nodes.py", 1000),
+            ("MOCKIN_ROOM_R2_API_ENDPOINTS.md", 500),
+            ("web/mockin_r2_drive.js", 1000),
+            ("web/mockin_timeline.js", 1000),
+        ):
+            try:
+                _safe_atomic_copy(
+                    os.path.join(src_mockin, mfile.replace("/", os.sep)),
+                    os.path.join(dst_mockin, mfile.replace("/", os.sep)),
+                    min_bytes=min_sz,
+                )
+            except Exception:
+                pass
+        cfg_dst = os.path.join(dst_mockin, "mockin_config.json")
+        if not os.path.isfile(cfg_dst):
+            try:
+                _safe_atomic_copy(os.path.join(src_mockin, "mockin_config.json"), cfg_dst, min_bytes=50)
+            except Exception:
+                pass
+
 try:
     _bootstrap_bundled_assets()
 except Exception:
