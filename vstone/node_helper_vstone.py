@@ -2870,6 +2870,13 @@ def _should_skip_pip_spec(spec: str) -> bool:
         return True
     if "platform_system == \"windows\"" in s_low and os.name != "nt":
         return True
+    name = s_low
+    for sep in "<>=!~;[ ":
+        name = name.split(sep, 1)[0]
+    # numpy và OpenCV đã có trên H200: ghim numpy<2 (như ComfyUI-Depth-Pro) sẽ hạ numpy cho mọi pack,
+    # còn opencv-python bản có giao diện cần libGL và chồng lên opencv-python-headless (như ComfyUI-HQ-Image-Save).
+    if name in ("numpy", "opencv-python"):
+        return True
     for pref in _SKIP_PIP_PREFIXES:
         if s_low == pref or s_low.startswith(pref + ">") or s_low.startswith(pref + "<") or s_low.startswith(pref + "=") or s_low.startswith(pref + "[") or s_low.startswith(pref + ";") or s_low.startswith(pref + "-"):
             if pref == "torch" and s_low.startswith("torch-") and not s_low.startswith("torch=="):
@@ -3567,6 +3574,22 @@ PORTABLE_PACK_CUSTOM_NODES: list[dict[str, Any]] = [
             "dill": "dill",
             "matplotlib": "matplotlib",
         },
+    },
+    # Depth Pro (Apple) để so với Marigold V2, model ở models/depth/ml-depth-pro theo sync_manifest.json.
+    # SaveEXR cho workflow mẫu của tác giả (workflows/depth_pro). Node "Image Size to Number" của WAS trong workflow đó không cài: WAS quá lớn.
+    {
+        "dir": "ComfyUI-Depth-Pro",
+        "repo": "spacepxl/ComfyUI-Depth-Pro",
+        "branch": "main",
+        "node_ids": ["LoadDepthPro", "DepthPro", "MetricDepthToRelative", "FocalPXtoMM"],
+        "pip": {"timm": "timm>=0.9.16"},
+    },
+    {
+        "dir": "ComfyUI-HQ-Image-Save",
+        "repo": "spacepxl/ComfyUI-HQ-Image-Save",
+        "branch": "main",
+        "node_ids": ["SaveEXR"],
+        "pip": {"imageio": "imageio"},
     },
 ]
 PORTABLE_PACK_RESTARTED_ENV = "VSTONE_PORTABLE_PACK_RESTARTED"

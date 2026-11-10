@@ -550,6 +550,11 @@
       "filename": "4x-UltraSharpV2.safetensors",
       "url": "https://huggingface.co/Kim2091/UltraSharpV2/resolve/main/4x-UltraSharpV2.safetensors",
       "folder": "upscale_models"
+    },
+    {
+      "filename": "depth_pro.fp16.safetensors",
+      "url": "https://huggingface.co/spacepxl/ml-depth-pro/resolve/main/depth_pro.fp16.safetensors",
+      "folder": "depth/ml-depth-pro"
     }
   ],
   "workflows": [
@@ -560,6 +565,7 @@
     "workflows/sam3/utility_image_segment_sam3.json",
     "workflows/moge/utility_moge3_geometry_estimation.json",
     "workflows/marigold/image_marigold_v2_depth_estimation.json",
+    "workflows/depth_pro/depth_pro_example.json",
     "workflows/flux3_klein/flux-3-image-klein-outpaint.json",
     "workflows/flux3_klein/flux-3-image-klein-upscale.json",
     "workflows/flux3_klein/image_flux3_klein_t2i.json",
