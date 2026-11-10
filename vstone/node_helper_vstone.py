@@ -3014,6 +3014,11 @@ AUSBOSS_PACK: dict[str, Any] = {
         # Workflow Tiled Upscale của tác giả cần pack 2.15.0 trở lên, pack cũ hơn thì thiếu hai node này và sẽ được pull.
         "AUSBOSS_NODES_TiledUpscale",
         "AUSBOSS_NODES_TiledUpscaleStitch",
+        # Workflow flux-3-image-klein-upscale của tác giả (repo LoRA Restore FLUX 3 Klein) dùng thêm bốn node này.
+        "AUSBOSS_NODES_Callout",
+        "AUSBOSS_NODES_ImageResize",
+        "AUSBOSS_NODES_MathExpression",
+        "AUSBOSS_NODES_WorkflowSwitches",
     ],
 }
 AUSBOSS_RESTARTED_ENV = "VSTONE_AUSBOSS_PACK_RESTARTED"

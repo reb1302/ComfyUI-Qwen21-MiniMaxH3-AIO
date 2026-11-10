@@ -505,6 +505,51 @@
       "filename": "marigold_v2_depth_conditioning.safetensors",
       "url": "https://huggingface.co/Comfy-Org/marigold-v2-0/resolve/main/embeddings/marigold_v2_depth_conditioning.safetensors",
       "folder": "embeddings"
+    },
+    {
+      "filename": "flux3-image-klein-int8-convrot.safetensors",
+      "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "flux3-image-klein-base-int8-convrot.safetensors",
+      "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-base-int8-convrot.safetensors",
+      "folder": "diffusion_models"
+    },
+    {
+      "filename": "qwen3vl_4b_int8_convrot.safetensors",
+      "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors",
+      "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors",
+      "folder": "text_encoders"
+    },
+    {
+      "filename": "flux-3-image-klein-outpaint.safetensors",
+      "url": "https://huggingface.co/ausboss/FLUX-3-Image-Klein-Outpaint-LoRA/resolve/main/flux-3-image-klein-outpaint.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "flux-3-image-klein-restore.safetensors",
+      "url": "https://huggingface.co/ausboss/FLUX-3-Image-Klein-Restore-LoRA/resolve/main/flux-3-image-klein-restore.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "flux-3-image-klein-consistency.safetensors",
+      "url": "https://huggingface.co/ausboss/FLUX-3-Image-Klein-Consistency-LoRA/resolve/main/flux-3-image-klein-consistency.safetensors",
+      "folder": "loras"
+    },
+    {
+      "filename": "seedvr2_ema_vae_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors",
+      "folder": "vae"
+    },
+    {
+      "filename": "4x-UltraSharpV2.safetensors",
+      "url": "https://huggingface.co/Kim2091/UltraSharpV2/resolve/main/4x-UltraSharpV2.safetensors",
+      "folder": "upscale_models"
     }
   ],
   "workflows": [
@@ -515,6 +560,12 @@
     "workflows/sam3/utility_image_segment_sam3.json",
     "workflows/moge/utility_moge3_geometry_estimation.json",
     "workflows/marigold/image_marigold_v2_depth_estimation.json",
+    "workflows/flux3_klein/flux-3-image-klein-outpaint.json",
+    "workflows/flux3_klein/flux-3-image-klein-upscale.json",
+    "workflows/flux3_klein/image_flux3_klein_t2i.json",
+    "workflows/flux3_klein/image_flux3_klein_image_edit.json",
+    "workflows/flux3_klein/image_flux3_klein_distilled_t2i.json",
+    "workflows/flux3_klein/image_flux3_klein_distilled_image_edit.json",
     "workflows/anyangle_studio/AnyAngle-Studio-Qwen21.json",
     "workflows/qwen_image_2.1/image_qwen_image_2_1_xoay_dummy.app.json",
     "workflows/qwen_image_2.1/qwen_image_2_1_outpaint_ausboss.json",

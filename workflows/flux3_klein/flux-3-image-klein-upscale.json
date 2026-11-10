@@ -1,0 +1,6300 @@
+{
+  "id": "aa98a34b-647e-4b55-a45b-385af9c69c06",
+  "revision": 0,
+  "last_node_id": 143,
+  "last_link_id": 450,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "AUSBOSS_NODES_WorkflowNote",
+      "pos": [
+        0,
+        192
+      ],
+      "size": [
+        440,
+        1399
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "🆎 AusBoss",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_WorkflowNote",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        "{\"v\": 1, \"title\": \"FLUX 3 Image Klein Upscale\", \"subtitle\": \"Load a picture and set the megapixels. FLUX 3 redraws it sharp, one tile at a time, with an optional restore LoRA.\", \"author\": \"AusBoss\", \"layout\": \"card\", \"accent\": \"\", \"body\": \"1. Load your picture.\\n2. Set **Megapixels**: the size of the result.\\n3. Pick **Photo**, **Blurry photo** or **Generated picture**.\\n4. Press **Run**.\\n\\n### What to pick\\n\\n- **Photo** (the default): SeedVR2 3B cleans up and enlarges your photo first, then FLUX 3 redraws it in tiles. It stays close to your picture.\\n- **Blurry photo**: for a very blurry photo, or one blown up from a small picture. FLUX 3 draws the whole picture again first, so it gets much more detail, but faces can change.\\n- **Generated picture**: 4x-UltraSharpV2 enlarges it first. For pictures an AI model made, which are clean already.\\n- **Shrink first** (off at first, for **Photo**): for a big file that is blurry, or one blown up from a small picture. It is made 0.5 megapixels first, so its blur becomes small enough to clean up.\\n- **Describe your picture** (optional): a few words about what is in it, added after the restore sentence.\\n\\n### Tips\\n\\n- Each tile is redrawn in 8 steps at CFG 1. Its request is the sentence the restore LoRA was trained on, plus your description if you write one. **Show Text** shows it.\\n- The slider shows your picture enlarged the plain way against the result.\\n- On an RTX 5090 a 4 megapixel result takes about 13 seconds as a **Photo**, 18 as a **Blurry photo** and 24 as a **Generated picture**, once the models are loaded.\\n\\n### The files\\n\\nThe FLUX 3 Klein files are on Hugging Face behind a license click. Open the [FLUX 3 Klein page](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy), sign in and accept, then the Download buttons below work.\\n\\nNeeds ComfyUI 0.41.0 or newer and AusBoss nodes 2.13.0 or newer (update first).\", \"models\": [{\"name\": \"flux3-image-klein-int8-convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"5.83 GB\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors\", \"note\": \"\"}, {\"name\": \"qwen3vl_4b_int8_convrot.safetensors\", \"dir\": \"text_encoders\", \"size\": \"4.86 GB\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"flux2-vae.safetensors\", \"dir\": \"vae\", \"size\": \"336 MB\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors\", \"note\": \"\"}, {\"name\": \"flux-3-image-klein-restore.safetensors\", \"dir\": \"loras\", \"size\": \"161 MB\", \"url\": \"https://huggingface.co/ausboss/FLUX-3-Image-Klein-Restore-LoRA/resolve/main/flux-3-image-klein-restore.safetensors\", \"note\": \"(optional)\"}, {\"name\": \"seedvr2_3b_int8_convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"3.46 GB\", \"url\": \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors\", \"note\": \"for Photo\"}, {\"name\": \"seedvr2_ema_vae_fp16.safetensors\", \"dir\": \"vae\", \"size\": \"501 MB\", \"url\": \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors\", \"note\": \"for Photo\"}, {\"name\": \"4x-UltraSharpV2.safetensors\", \"dir\": \"upscale_models\", \"size\": \"140 MB\", \"url\": \"https://huggingface.co/Kim2091/UltraSharpV2/resolve/main/4x-UltraSharpV2.safetensors\", \"note\": \"for Generated picture\"}], \"packs\": [{\"name\": \"ComfyUI-AusBoss\", \"url\": \"https://github.com/ausboss/ComfyUI-AusBoss\", \"node\": \"AUSBOSS_NODES_TiledUpscale\"}], \"links\": [{\"label\": \"YouTube · ausbossdev\", \"url\": \"https://www.youtube.com/@ausbossdev\"}, {\"label\": \"FLUX 3 Klein files · Hugging Face\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy\"}, {\"label\": \"Restore LoRA · Hugging Face\", \"url\": \"https://huggingface.co/ausboss/FLUX-3-Image-Klein-Restore-LoRA\"}, {\"label\": \"GitHub · ausboss\", \"url\": \"https://github.com/ausboss\"}, {\"label\": \"Civitai · AusBoss\", \"url\": \"https://civitai.com/user/AusBoss\"}, {\"label\": \"X · Zanzibased\", \"url\": \"https://x.com/Zanzibased\"}]}"
+      ],
+      "widgets_values_named": {
+        "note": "{\"v\": 1, \"title\": \"FLUX 3 Image Klein Upscale\", \"subtitle\": \"Load a picture and set the megapixels. FLUX 3 redraws it sharp, one tile at a time, with an optional restore LoRA.\", \"author\": \"AusBoss\", \"layout\": \"card\", \"accent\": \"\", \"body\": \"1. Load your picture.\\n2. Set **Megapixels**: the size of the result.\\n3. Pick **Photo**, **Blurry photo** or **Generated picture**.\\n4. Press **Run**.\\n\\n### What to pick\\n\\n- **Photo** (the default): SeedVR2 3B cleans up and enlarges your photo first, then FLUX 3 redraws it in tiles. It stays close to your picture.\\n- **Blurry photo**: for a very blurry photo, or one blown up from a small picture. FLUX 3 draws the whole picture again first, so it gets much more detail, but faces can change.\\n- **Generated picture**: 4x-UltraSharpV2 enlarges it first. For pictures an AI model made, which are clean already.\\n- **Shrink first** (off at first, for **Photo**): for a big file that is blurry, or one blown up from a small picture. It is made 0.5 megapixels first, so its blur becomes small enough to clean up.\\n- **Describe your picture** (optional): a few words about what is in it, added after the restore sentence.\\n\\n### Tips\\n\\n- Each tile is redrawn in 8 steps at CFG 1. Its request is the sentence the restore LoRA was trained on, plus your description if you write one. **Show Text** shows it.\\n- The slider shows your picture enlarged the plain way against the result.\\n- On an RTX 5090 a 4 megapixel result takes about 13 seconds as a **Photo**, 18 as a **Blurry photo** and 24 as a **Generated picture**, once the models are loaded.\\n\\n### The files\\n\\nThe FLUX 3 Klein files are on Hugging Face behind a license click. Open the [FLUX 3 Klein page](https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy), sign in and accept, then the Download buttons below work.\\n\\nNeeds ComfyUI 0.41.0 or newer and AusBoss nodes 2.13.0 or newer (update first).\", \"models\": [{\"name\": \"flux3-image-klein-int8-convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"5.83 GB\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors\", \"note\": \"\"}, {\"name\": \"qwen3vl_4b_int8_convrot.safetensors\", \"dir\": \"text_encoders\", \"size\": \"4.86 GB\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors\", \"note\": \"\"}, {\"name\": \"flux2-vae.safetensors\", \"dir\": \"vae\", \"size\": \"336 MB\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors\", \"note\": \"\"}, {\"name\": \"flux-3-image-klein-restore.safetensors\", \"dir\": \"loras\", \"size\": \"161 MB\", \"url\": \"https://huggingface.co/ausboss/FLUX-3-Image-Klein-Restore-LoRA/resolve/main/flux-3-image-klein-restore.safetensors\", \"note\": \"(optional)\"}, {\"name\": \"seedvr2_3b_int8_convrot.safetensors\", \"dir\": \"diffusion_models\", \"size\": \"3.46 GB\", \"url\": \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors\", \"note\": \"for Photo\"}, {\"name\": \"seedvr2_ema_vae_fp16.safetensors\", \"dir\": \"vae\", \"size\": \"501 MB\", \"url\": \"https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors\", \"note\": \"for Photo\"}, {\"name\": \"4x-UltraSharpV2.safetensors\", \"dir\": \"upscale_models\", \"size\": \"140 MB\", \"url\": \"https://huggingface.co/Kim2091/UltraSharpV2/resolve/main/4x-UltraSharpV2.safetensors\", \"note\": \"for Generated picture\"}], \"packs\": [{\"name\": \"ComfyUI-AusBoss\", \"url\": \"https://github.com/ausboss/ComfyUI-AusBoss\", \"node\": \"AUSBOSS_NODES_TiledUpscale\"}], \"links\": [{\"label\": \"YouTube · ausbossdev\", \"url\": \"https://www.youtube.com/@ausbossdev\"}, {\"label\": \"FLUX 3 Klein files · Hugging Face\", \"url\": \"https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy\"}, {\"label\": \"Restore LoRA · Hugging Face\", \"url\": \"https://huggingface.co/ausboss/FLUX-3-Image-Klein-Restore-LoRA\"}, {\"label\": \"GitHub · ausboss\", \"url\": \"https://github.com/ausboss\"}, {\"label\": \"Civitai · AusBoss\", \"url\": \"https://civitai.com/user/AusBoss\"}, {\"label\": \"X · Zanzibased\", \"url\": \"https://x.com/Zanzibased\"}]}"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 2,
+      "type": "AUSBOSS_NODES_ImageCropRotatePad",
+      "pos": [
+        500,
+        272.0
+      ],
+      "size": [
+        424,
+        954
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            1,
+            5,
+            13
+          ]
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_STITCHER",
+          "links": null
+        },
+        {
+          "name": "original",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "prompt_image",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "Your picture",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_ImageCropRotatePad",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": {
+        "image": "",
+        "rotation_degrees": 0,
+        "crop_aspect_ratio": "free",
+        "crop_x": 0,
+        "crop_y": 0,
+        "crop_width": 0,
+        "crop_height": 0,
+        "pad_left": 0,
+        "pad_top": 0,
+        "pad_right": 0,
+        "pad_bottom": 0,
+        "feather": 24,
+        "canvas_multiple": 1,
+        "fill_color": "#808080",
+        "resize_to_megapixels": false,
+        "megapixels": 2,
+        "resize_method": "lanczos",
+        "resolution_steps": 8,
+        "stitch_blend": 32,
+        "stitch_grow": 0,
+        "painted_area": "fill"
+      },
+      "widgets_values_named": {
+        "image": "",
+        "rotation_degrees": 0,
+        "crop_aspect_ratio": "free",
+        "crop_x": 0,
+        "crop_y": 0,
+        "crop_width": 0,
+        "crop_height": 0,
+        "pad_left": 0,
+        "pad_top": 0,
+        "pad_right": 0,
+        "pad_bottom": 0,
+        "feather": 24,
+        "canvas_multiple": 1,
+        "fill_color": "#808080",
+        "resize_to_megapixels": false,
+        "megapixels": 2,
+        "resize_method": "lanczos",
+        "resolution_steps": 8,
+        "stitch_blend": 32,
+        "stitch_grow": 0,
+        "painted_area": "fill",
+        "upload": "image"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 3,
+      "type": "AUSBOSS_NODES_TiledUpscale",
+      "pos": [
+        964,
+        80.0
+      ],
+      "size": [
+        424,
+        221
+      ],
+      "flags": {},
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 1
+        },
+        {
+          "name": "upscale_model",
+          "shape": 7,
+          "type": "UPSCALE_MODEL",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tiles",
+          "shape": 6,
+          "type": "IMAGE",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_TILE_STITCHER",
+          "links": [
+            4
+          ]
+        },
+        {
+          "name": "before",
+          "type": "IMAGE",
+          "links": [
+            28
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            6,
+            14
+          ]
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            7,
+            15
+          ]
+        },
+        {
+          "name": "report",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Megapixels of the result",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_TiledUpscale",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        4,
+        2,
+        128,
+        32,
+        8
+      ],
+      "widgets_values_named": {
+        "megapixels": 4,
+        "tile_megapixels": 2,
+        "overlap": 128,
+        "multiple": 32,
+        "max_growth": 8
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 4,
+      "type": "AUSBOSS_NODES_WorkflowSwitches",
+      "pos": [
+        964,
+        613.0
+      ],
+      "size": [
+        424,
+        66
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "What you have",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_WorkflowSwitches",
+        "ausboss_workflow_switches": {
+          "off": "bypass",
+          "groups": "none",
+          "match": "",
+          "order": "canvas",
+          "exclusive": true,
+          "show": "pill",
+          "switches": [
+            {
+              "id": 1,
+              "title": "Photo",
+              "nodes": [
+                13,
+                10,
+                11
+              ],
+              "groups": [],
+              "on": {},
+              "off": {}
+            },
+            {
+              "id": 3,
+              "title": "Blurry photo",
+              "nodes": [
+                27
+              ],
+              "groups": [],
+              "on": {},
+              "off": {}
+            },
+            {
+              "id": 2,
+              "title": "Generated picture",
+              "nodes": [
+                12
+              ],
+              "groups": [],
+              "on": {},
+              "off": {}
+            }
+          ]
+        },
+        "ausboss_show_edit": false,
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {},
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 5,
+      "type": "AUSBOSS_NODES_Seed",
+      "pos": [
+        500,
+        1296.0
+      ],
+      "size": [
+        424,
+        216
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            10,
+            17,
+            23
+          ]
+        }
+      ],
+      "title": "Seed",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Seed",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        20261016,
+        "randomize"
+      ],
+      "widgets_values_named": {
+        "seed": 20261016,
+        "control_after_generate": "randomize"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 6,
+      "type": "CLIPLoader",
+      "pos": [
+        1468,
+        682.0
+      ],
+      "size": [
+        300,
+        106
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            18,
+            24
+          ]
+        }
+      ],
+      "title": "Text encoder",
+      "properties": {
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3vl_4b_int8_convrot.safetensors",
+            "directory": "text_encoders",
+            "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/text_encoders/qwen3vl_4b_int8_convrot.safetensors"
+          }
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.41.2"
+      },
+      "widgets_values": [
+        "qwen3vl_4b_int8_convrot.safetensors",
+        "flux3",
+        "default"
+      ],
+      "widgets_values_named": {
+        "clip_name": "qwen3vl_4b_int8_convrot.safetensors",
+        "type": "flux3",
+        "device": "default"
+      },
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 7,
+      "type": "VAELoader",
+      "pos": [
+        1468,
+        828.0
+      ],
+      "size": [
+        300,
+        58
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            19,
+            25
+          ]
+        }
+      ],
+      "title": "VAE",
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "models": [
+          {
+            "name": "flux2-vae.safetensors",
+            "directory": "vae",
+            "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/vae/flux2-vae.safetensors"
+          }
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.41.2"
+      },
+      "widgets_values": [
+        "flux2-vae.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "flux2-vae.safetensors"
+      },
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 8,
+      "type": "UNETLoader",
+      "pos": [
+        1468,
+        926.0
+      ],
+      "size": [
+        300,
+        82
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            26
+          ]
+        }
+      ],
+      "title": "Diffusion model",
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "models": [
+          {
+            "name": "flux3-image-klein-int8-convrot.safetensors",
+            "directory": "diffusion_models",
+            "url": "https://huggingface.co/black-forest-labs/flux-3-image-klein-comfy/resolve/main/diffusion_models/flux3-image-klein-int8-convrot.safetensors"
+          }
+        ],
+        "cnr_id": "comfy-core",
+        "ver": "0.41.2"
+      },
+      "widgets_values": [
+        "flux3-image-klein-int8-convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "flux3-image-klein-int8-convrot.safetensors",
+        "weight_dtype": "default"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 9,
+      "type": "AUSBOSS_NODES_LoraLoader",
+      "pos": [
+        1808,
+        844.0
+      ],
+      "size": [
+        600,
+        188
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 26
+        },
+        {
+          "name": "clip",
+          "shape": 7,
+          "type": "CLIP",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            20,
+            27
+          ]
+        },
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "links": null
+        },
+        {
+          "name": "triggers",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "LoRA Loader - Restore LoRA",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_LoraLoader",
+        "ausbossLoraLinked": true,
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0",
+        "models": [
+          {
+            "name": "flux-3-image-klein-restore.safetensors",
+            "directory": "loras",
+            "url": "https://huggingface.co/ausboss/FLUX-3-Image-Klein-Restore-LoRA/resolve/main/flux-3-image-klein-restore.safetensors"
+          }
+        ]
+      },
+      "widgets_values": [
+        "[{\"name\":\"flux-3-image-klein-restore.safetensors\",\"strength\":1,\"enabled\":true,\"triggers\":\"\"}]",
+        ", ",
+        "skip"
+      ],
+      "widgets_values_named": {
+        "loras": "[{\"name\":\"flux-3-image-klein-restore.safetensors\",\"strength\":1,\"enabled\":true,\"triggers\":\"\"}]",
+        "trigger_separator": ", ",
+        "on_missing": "skip"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 10,
+      "type": "UNETLoader",
+      "pos": [
+        1468,
+        1048.0
+      ],
+      "size": [
+        300,
+        82
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            8
+          ]
+        }
+      ],
+      "title": "SeedVR2 model",
+      "properties": {
+        "Node name for S&R": "UNETLoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.41.2",
+        "models": [
+          {
+            "name": "seedvr2_3b_int8_convrot.safetensors",
+            "directory": "diffusion_models",
+            "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/diffusion_models/seedvr2_3b_int8_convrot.safetensors"
+          }
+        ]
+      },
+      "widgets_values": [
+        "seedvr2_3b_int8_convrot.safetensors",
+        "default"
+      ],
+      "widgets_values_named": {
+        "unet_name": "seedvr2_3b_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      },
+      "color": "#323",
+      "bgcolor": "#535"
+    },
+    {
+      "id": 11,
+      "type": "VAELoader",
+      "pos": [
+        1468,
+        1170.0
+      ],
+      "size": [
+        300,
+        58
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            9
+          ]
+        }
+      ],
+      "title": "SeedVR2 VAE",
+      "properties": {
+        "Node name for S&R": "VAELoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.41.2",
+        "models": [
+          {
+            "name": "seedvr2_ema_vae_fp16.safetensors",
+            "directory": "vae",
+            "url": "https://huggingface.co/Comfy-Org/SeedVR2/resolve/main/vae/seedvr2_ema_vae_fp16.safetensors"
+          }
+        ]
+      },
+      "widgets_values": [
+        "seedvr2_ema_vae_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "vae_name": "seedvr2_ema_vae_fp16.safetensors"
+      },
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 12,
+      "type": "UpscaleModelLoader",
+      "pos": [
+        1468,
+        1268.0
+      ],
+      "size": [
+        300,
+        58
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "UPSCALE_MODEL",
+          "type": "UPSCALE_MODEL",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "title": "Upscale model - 4x-UltraSharpV2",
+      "properties": {
+        "Node name for S&R": "UpscaleModelLoader",
+        "cnr_id": "comfy-core",
+        "ver": "0.41.2",
+        "models": [
+          {
+            "name": "4x-UltraSharpV2.safetensors",
+            "directory": "upscale_models",
+            "url": "https://huggingface.co/Kim2091/UltraSharpV2/resolve/main/4x-UltraSharpV2.safetensors"
+          }
+        ]
+      },
+      "widgets_values": [
+        "4x-UltraSharpV2.safetensors"
+      ],
+      "widgets_values_named": {
+        "model_name": "4x-UltraSharpV2.safetensors"
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 13,
+      "type": "649f881c-d3ad-5744-9b3a-4b35ac94a221",
+      "pos": [
+        1468,
+        272.0
+      ],
+      "size": [
+        300,
+        210
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "tiles",
+          "type": "IMAGE",
+          "link": 3
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_TILE_STITCHER",
+          "link": 4
+        },
+        {
+          "name": "your picture",
+          "type": "IMAGE",
+          "link": 5
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 6
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 7
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "link": 10
+        },
+        {
+          "name": "seedvr2 model",
+          "type": "MODEL",
+          "link": 8
+        },
+        {
+          "name": "seedvr2 vae",
+          "type": "VAE",
+          "link": 9
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tiles",
+          "type": "IMAGE",
+          "links": [
+            11
+          ]
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_TILE_STITCHER",
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "previewExposures": [
+          {
+            "name": "$$canvas-image-preview",
+            "sourceNodeId": "88",
+            "sourcePreviewName": "$$canvas-image-preview"
+          }
+        ]
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 27,
+      "type": "72e661eb-b1bf-5f80-a12a-a80d32aa2000",
+      "pos": [
+        1808,
+        272.0
+      ],
+      "size": [
+        300,
+        250
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "tiles",
+          "type": "IMAGE",
+          "link": 11
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_TILE_STITCHER",
+          "link": 12
+        },
+        {
+          "name": "your picture",
+          "type": "IMAGE",
+          "link": 13
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 14
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 15
+        },
+        {
+          "name": "description",
+          "type": "STRING",
+          "link": 16
+        },
+        {
+          "name": "seed",
+          "shape": 7,
+          "type": "INT",
+          "link": 17
+        },
+        {
+          "name": "text encoder",
+          "type": "CLIP",
+          "link": 18
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 19
+        },
+        {
+          "name": "diffusion model",
+          "type": "MODEL",
+          "link": 20
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tiles",
+          "type": "IMAGE",
+          "links": [
+            21
+          ]
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_TILE_STITCHER",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "previewExposures": [
+          {
+            "name": "$$canvas-image-preview",
+            "sourceNodeId": "124",
+            "sourcePreviewName": "$$canvas-image-preview"
+          }
+        ]
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 14,
+      "type": "8360cd8c-bd44-5ab7-a2e4-5733b4167c3e",
+      "pos": [
+        2148,
+        272.0
+      ],
+      "size": [
+        260,
+        190
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "tiles",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 21
+        },
+        {
+          "name": "stitcher",
+          "type": "AUSBOSS_TILE_STITCHER",
+          "link": 22
+        },
+        {
+          "name": "description",
+          "type": "STRING",
+          "link": 31
+        },
+        {
+          "name": "seed",
+          "shape": 7,
+          "type": "FLOAT,INT",
+          "link": 23
+        },
+        {
+          "name": "text encoder",
+          "type": "CLIP",
+          "link": 24
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 25
+        },
+        {
+          "name": "diffusion model",
+          "type": "MODEL",
+          "link": 27
+        }
+      ],
+      "outputs": [
+        {
+          "name": "picture, upscaled",
+          "type": "IMAGE",
+          "links": [
+            29,
+            30
+          ]
+        },
+        {
+          "name": "request",
+          "type": "STRING",
+          "links": [
+            32
+          ]
+        }
+      ],
+      "properties": {
+        "previewExposures": [
+          {
+            "name": "$$canvas-image-preview",
+            "sourceNodeId": "36",
+            "sourcePreviewName": "$$canvas-image-preview"
+          }
+        ]
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 15,
+      "type": "AUSBOSS_NODES_Compare",
+      "pos": [
+        2488,
+        80.0
+      ],
+      "size": [
+        460,
+        480
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image_a",
+          "type": "IMAGE",
+          "link": 28
+        },
+        {
+          "name": "image_b",
+          "type": "IMAGE",
+          "link": 29
+        },
+        {
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image_a",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "Image Compare A/B - Before and after",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Compare",
+        "ausboss_compare_mode": "slide",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {},
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 16,
+      "type": "AUSBOSS_NODES_SaveImage",
+      "pos": [
+        2488,
+        600.0
+      ],
+      "size": [
+        460,
+        566
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 30
+        },
+        {
+          "name": "filename",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        },
+        {
+          "name": "caption_text",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "file_path",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "title": "Save Image",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_SaveImage",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": {
+        "filename_prefix": "flux3_klein_upscale",
+        "format": "png",
+        "save_metadata": true,
+        "exact_name": "",
+        "on_existing": "overwrite",
+        "output_dir": "",
+        "caption": "",
+        "name_counter": true,
+        "name_date": false,
+        "name_time": false,
+        "name_size": false,
+        "name_batch": false,
+        "preview": true
+      },
+      "widgets_values_named": {
+        "filename_prefix": "flux3_klein_upscale",
+        "format": "png",
+        "save_metadata": true,
+        "exact_name": "",
+        "on_existing": "overwrite",
+        "output_dir": "",
+        "caption": "",
+        "name_counter": true,
+        "name_date": false,
+        "name_time": false,
+        "name_size": false,
+        "name_batch": false,
+        "preview": true
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 17,
+      "type": "AUSBOSS_NODES_RunTimer",
+      "pos": [
+        2613,
+        1406.0
+      ],
+      "size": [
+        210,
+        67
+      ],
+      "flags": {
+        "no_title": true
+      },
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Run Timer",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_RunTimer",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a"
+    },
+    {
+      "id": 23,
+      "type": "AUSBOSS_NODES_WorkflowSwitches",
+      "pos": [
+        964,
+        769.0
+      ],
+      "size": [
+        424,
+        66
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Shrink first",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_WorkflowSwitches",
+        "ausboss_workflow_switches": {
+          "off": "bypass",
+          "groups": "none",
+          "match": "",
+          "order": "canvas",
+          "exclusive": false,
+          "show": "rows",
+          "switches": [
+            {
+              "id": 1,
+              "title": "Shrink first",
+              "nodes": [],
+              "groups": [],
+              "on": {
+                "2": {
+                  "resize_to_megapixels": true,
+                  "megapixels": 0.5
+                }
+              },
+              "off": {
+                "2": {
+                  "resize_to_megapixels": false,
+                  "megapixels": 2
+                }
+              }
+            }
+          ]
+        },
+        "ausboss_show_edit": false,
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {},
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 24,
+      "type": "AUSBOSS_NODES_Text",
+      "pos": [
+        964,
+        1257.0
+      ],
+      "size": [
+        424,
+        255
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": [
+            16,
+            31
+          ]
+        }
+      ],
+      "title": "Describe your picture (optional)",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Text",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "widgets_values_named": {
+        "text": ""
+      },
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 25,
+      "type": "AUSBOSS_NODES_ShowText",
+      "pos": [
+        2488,
+        1206.0
+      ],
+      "size": [
+        460,
+        160
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text",
+          "type": "*",
+          "link": 32
+        }
+      ],
+      "outputs": [
+        {
+          "name": "text",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Show Text - Prompt sent to FLUX 3",
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_ShowText",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {},
+      "color": "#14424d",
+      "bgcolor": "#161f21"
+    },
+    {
+      "id": 18,
+      "type": "AUSBOSS_NODES_Callout",
+      "pos": [
+        0,
+        30
+      ],
+      "size": [
+        440,
+        122
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Callout",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        "[▶ **AusBoss on YouTube**](https://www.youtube.com/@ausbossdev)\n###### Videos on these nodes and workflows. Click to open the channel."
+      ],
+      "widgets_values_named": {
+        "text": "[▶ **AusBoss on YouTube**](https://www.youtube.com/@ausbossdev)\n###### Videos on these nodes and workflows. Click to open the channel."
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a",
+      "title": "Callout"
+    },
+    {
+      "id": 19,
+      "type": "AUSBOSS_NODES_Callout",
+      "pos": [
+        500,
+        80.0
+      ],
+      "size": [
+        424,
+        122
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Callout",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        "⬇️#2 Load your **picture** here.\n###### Optionally, you can crop it with the blue handles."
+      ],
+      "widgets_values_named": {
+        "text": "⬇️#2 Load your **picture** here.\n###### Optionally, you can crop it with the blue handles."
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a",
+      "title": "Callout"
+    },
+    {
+      "id": 20,
+      "type": "AUSBOSS_NODES_Callout",
+      "pos": [
+        964,
+        341.0
+      ],
+      "size": [
+        424,
+        228
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Callout",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        "⬆️#3 Set **Megapixels**: the size of the result.\n###### 4 is a good start. Bigger takes longer.\n\n⬇️#4 Pick what you have.\n###### **Photo**: SeedVR2 cleans it up first and stays close to your picture. **Blurry photo**: for a very blurry or blown-up photo. FLUX 3 draws the whole picture again first, so it gets much more detail, but faces can change. **Generated picture**: one an AI model made. 4x-UltraSharpV2 enlarges it first."
+      ],
+      "widgets_values_named": {
+        "text": "⬆️#3 Set **Megapixels**: the size of the result.\n###### 4 is a good start. Bigger takes longer.\n\n⬇️#4 Pick what you have.\n###### **Photo**: SeedVR2 cleans it up first and stays close to your picture. **Blurry photo**: for a very blurry or blown-up photo. FLUX 3 draws the whole picture again first, so it gets much more detail, but faces can change. **Generated picture**: one an AI model made. 4x-UltraSharpV2 enlarges it first."
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a",
+      "title": "Callout"
+    },
+    {
+      "id": 21,
+      "type": "AUSBOSS_NODES_Callout",
+      "pos": [
+        1468,
+        80.0
+      ],
+      "size": [
+        940,
+        150
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Callout",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        "The boxes do the work: SeedVR2 cleans up a photo, or FLUX 3 draws a blurry one again, then FLUX 3 redraws it one tile at a time.\n###### Double-click one to see inside if you want."
+      ],
+      "widgets_values_named": {
+        "text": "The boxes do the work: SeedVR2 cleans up a photo, or FLUX 3 draws a blurry one again, then FLUX 3 redraws it one tile at a time.\n###### Double-click one to see inside if you want."
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a",
+      "title": "Callout"
+    },
+    {
+      "id": 22,
+      "type": "AUSBOSS_NODES_Callout",
+      "pos": [
+        1808,
+        682.0
+      ],
+      "size": [
+        600,
+        122
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Callout",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        "⬇️#9 The **restore LoRA** is optional.\n###### With it, faces come out a little closer to your picture. Without the file, the workflow skips it and still runs."
+      ],
+      "widgets_values_named": {
+        "text": "⬇️#9 The **restore LoRA** is optional.\n###### With it, faces come out a little closer to your picture. Without the file, the workflow skips it and still runs."
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a",
+      "title": "Callout"
+    },
+    {
+      "id": 26,
+      "type": "AUSBOSS_NODES_Callout",
+      "pos": [
+        964,
+        925.0
+      ],
+      "size": [
+        424,
+        292
+      ],
+      "flags": {
+        "pinned": true
+      },
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "text",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "AUSBOSS_NODES_Callout",
+        "cnr_id": "ausboss-nodes",
+        "ver": "2.13.0"
+      },
+      "widgets_values": [
+        "⬆️#23 Turn on **Shrink first** for a big file that is blurry, or one blown up from a small picture.\n###### For **Photo**: the picture is made smaller first, so its blur becomes small enough to clean up. **Blurry photo** does this by itself.\n\n⬇️#24 **Optional**: say what is in the picture in a few words.\n###### Like \"a woman with black bangs and dark eye makeup\", \"two friends at a party\" or \"an old man in a wool hat\".\n###### **Blurry photo** can turn shadows on a face into stubble. Describing the person, like \"a young woman\", can help."
+      ],
+      "widgets_values_named": {
+        "text": "⬆️#23 Turn on **Shrink first** for a big file that is blurry, or one blown up from a small picture.\n###### For **Photo**: the picture is made smaller first, so its blur becomes small enough to clean up. **Blurry photo** does this by itself.\n\n⬇️#24 **Optional**: say what is in the picture in a few words.\n###### Like \"a woman with black bangs and dark eye makeup\", \"two friends at a party\" or \"an old man in a wool hat\".\n###### **Blurry photo** can turn shadows on a face into stubble. Describing the person, like \"a young woman\", can help."
+      },
+      "color": "#07090a",
+      "bgcolor": "#07090a",
+      "title": "Callout"
+    }
+  ],
+  "links": [
+    [
+      1,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      12,
+      0,
+      3,
+      1,
+      "UPSCALE_MODEL"
+    ],
+    [
+      3,
+      3,
+      0,
+      13,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      1,
+      13,
+      1,
+      "AUSBOSS_TILE_STITCHER"
+    ],
+    [
+      5,
+      2,
+      0,
+      13,
+      2,
+      "IMAGE"
+    ],
+    [
+      6,
+      3,
+      3,
+      13,
+      3,
+      "INT"
+    ],
+    [
+      7,
+      3,
+      4,
+      13,
+      4,
+      "INT"
+    ],
+    [
+      8,
+      10,
+      0,
+      13,
+      6,
+      "MODEL"
+    ],
+    [
+      9,
+      11,
+      0,
+      13,
+      7,
+      "VAE"
+    ],
+    [
+      10,
+      5,
+      0,
+      13,
+      5,
+      "INT"
+    ],
+    [
+      11,
+      13,
+      0,
+      27,
+      0,
+      "IMAGE"
+    ],
+    [
+      12,
+      13,
+      1,
+      27,
+      1,
+      "AUSBOSS_TILE_STITCHER"
+    ],
+    [
+      13,
+      2,
+      0,
+      27,
+      2,
+      "IMAGE"
+    ],
+    [
+      14,
+      3,
+      3,
+      27,
+      3,
+      "INT"
+    ],
+    [
+      15,
+      3,
+      4,
+      27,
+      4,
+      "INT"
+    ],
+    [
+      16,
+      24,
+      0,
+      27,
+      5,
+      "STRING"
+    ],
+    [
+      17,
+      5,
+      0,
+      27,
+      6,
+      "INT"
+    ],
+    [
+      18,
+      6,
+      0,
+      27,
+      7,
+      "CLIP"
+    ],
+    [
+      19,
+      7,
+      0,
+      27,
+      8,
+      "VAE"
+    ],
+    [
+      20,
+      9,
+      0,
+      27,
+      9,
+      "MODEL"
+    ],
+    [
+      21,
+      27,
+      0,
+      14,
+      0,
+      "IMAGE"
+    ],
+    [
+      22,
+      27,
+      1,
+      14,
+      1,
+      "AUSBOSS_TILE_STITCHER"
+    ],
+    [
+      23,
+      5,
+      0,
+      14,
+      3,
+      "INT"
+    ],
+    [
+      24,
+      6,
+      0,
+      14,
+      4,
+      "CLIP"
+    ],
+    [
+      25,
+      7,
+      0,
+      14,
+      5,
+      "VAE"
+    ],
+    [
+      26,
+      8,
+      0,
+      9,
+      0,
+      "MODEL"
+    ],
+    [
+      27,
+      9,
+      0,
+      14,
+      6,
+      "MODEL"
+    ],
+    [
+      28,
+      3,
+      2,
+      15,
+      0,
+      "IMAGE"
+    ],
+    [
+      29,
+      14,
+      0,
+      15,
+      1,
+      "IMAGE"
+    ],
+    [
+      30,
+      14,
+      0,
+      16,
+      0,
+      "IMAGE"
+    ],
+    [
+      31,
+      24,
+      0,
+      14,
+      2,
+      "STRING"
+    ],
+    [
+      32,
+      14,
+      1,
+      25,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "1 · Your picture",
+      "bounding": [
+        480,
+        0.0,
+        928,
+        1537.0
+      ],
+      "color": "#1d5560",
+      "flags": {
+        "pinned": true
+      }
+    },
+    {
+      "id": 2,
+      "title": "2 · Behind the scenes",
+      "bounding": [
+        1448,
+        0.0,
+        980,
+        562.0
+      ],
+      "color": "#1d5560",
+      "flags": {
+        "pinned": true
+      }
+    },
+    {
+      "id": 3,
+      "title": "3 · Models",
+      "bounding": [
+        1448,
+        602.0,
+        980,
+        752.0
+      ],
+      "color": "#1d5560",
+      "flags": {
+        "pinned": true
+      }
+    },
+    {
+      "id": 4,
+      "title": "4 · Result",
+      "bounding": [
+        2468,
+        0.0,
+        500,
+        1520.0
+      ],
+      "color": "#1d5560",
+      "flags": {
+        "pinned": true
+      }
+    }
+  ],
+  "definitions": {
+    "subgraphs": [
+      {
+        "id": "649f881c-d3ad-5744-9b3a-4b35ac94a221",
+        "version": 1,
+        "state": {
+          "lastGroupId": 14,
+          "lastNodeId": 143,
+          "lastLinkId": 450,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "Clean up and enlarge with SeedVR2",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -260,
+            120,
+            150,
+            200
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1640,
+            120,
+            150,
+            80
+          ]
+        },
+        "inputs": [
+          {
+            "id": "d11cd340-ccf7-5e73-9867-b5cfbe11126e",
+            "name": "tiles",
+            "type": "IMAGE",
+            "linkIds": [],
+            "localized_name": "tiles",
+            "shape": 7,
+            "pos": [
+              51,
+              24
+            ]
+          },
+          {
+            "id": "a74e922b-f3c1-50c8-ae7b-5ab0ed68d18e",
+            "name": "stitcher",
+            "type": "AUSBOSS_TILE_STITCHER",
+            "linkIds": [],
+            "localized_name": "stitcher",
+            "pos": [
+              51,
+              44
+            ]
+          },
+          {
+            "id": "2d873e31-3527-573f-b0f9-0322516ec766",
+            "name": "your picture",
+            "type": "IMAGE",
+            "linkIds": [
+              204,
+              208
+            ],
+            "localized_name": "your picture",
+            "pos": [
+              51,
+              64
+            ]
+          },
+          {
+            "id": "592fabcd-87fd-58dc-91bf-67ab64acb991",
+            "name": "width",
+            "type": "INT",
+            "linkIds": [
+              200
+            ],
+            "localized_name": "width",
+            "pos": [
+              51,
+              84
+            ]
+          },
+          {
+            "id": "2ef085ee-53f8-5096-98c1-a0173cd89b27",
+            "name": "height",
+            "type": "INT",
+            "linkIds": [
+              201
+            ],
+            "localized_name": "height",
+            "pos": [
+              51,
+              104
+            ]
+          },
+          {
+            "id": "cb3b17ba-cdf7-5f11-a8a8-616aae6527f3",
+            "name": "seed",
+            "type": "INT",
+            "linkIds": [
+              202
+            ],
+            "localized_name": "seed",
+            "pos": [
+              51,
+              124
+            ]
+          },
+          {
+            "id": "b8954ffd-e9b4-5205-8903-79b89d46111e",
+            "name": "seedvr2 model",
+            "type": "MODEL",
+            "linkIds": [
+              213,
+              215
+            ],
+            "localized_name": "seedvr2 model",
+            "pos": [
+              51,
+              144
+            ]
+          },
+          {
+            "id": "042f4bdc-6017-5f31-bac7-0dcf5406559e",
+            "name": "seedvr2 vae",
+            "type": "VAE",
+            "linkIds": [
+              212,
+              220
+            ],
+            "localized_name": "seedvr2 vae",
+            "pos": [
+              51,
+              164
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "67afa011-85c5-594a-934a-286db0475a68",
+            "name": "tiles",
+            "type": "IMAGE",
+            "linkIds": [
+              227
+            ],
+            "localized_name": "tiles",
+            "shape": 6,
+            "pos": [
+              51,
+              24
+            ]
+          },
+          {
+            "id": "217fafef-74b4-5755-a203-7d0251cca98e",
+            "name": "stitcher",
+            "type": "AUSBOSS_TILE_STITCHER",
+            "linkIds": [
+              228
+            ],
+            "localized_name": "stitcher",
+            "pos": [
+              51,
+              44
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 80,
+            "type": "Reroute",
+            "pos": [
+              20,
+              270.0
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 200
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "INT",
+                "links": [
+                  205,
+                  224
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 81,
+            "type": "Reroute",
+            "pos": [
+              135,
+              270.0
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 201
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "INT",
+                "links": [
+                  207,
+                  225
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 96,
+            "type": "Reroute",
+            "pos": [
+              250,
+              270.0
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 16,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 202
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "INT",
+                "links": [
+                  203
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 82,
+            "type": "GetImageSize",
+            "pos": [
+              20,
+              382.0
+            ],
+            "size": [
+              460,
+              86
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 204
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": [
+                  206
+                ]
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "batch_size",
+                "name": "batch_size",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "title": "Get Image Size - Your picture",
+            "properties": {
+              "Node name for S&R": "GetImageSize",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 83,
+            "type": "AUSBOSS_NODES_MathExpression",
+            "pos": [
+              20,
+              508.0
+            ],
+            "size": [
+              460,
+              134
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "a",
+                "name": "a",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": 205
+              },
+              {
+                "localized_name": "b",
+                "name": "b",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": 206
+              },
+              {
+                "localized_name": "c",
+                "name": "c",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": 207
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "float",
+                "name": "float",
+                "type": "FLOAT",
+                "links": [
+                  209
+                ]
+              },
+              {
+                "localized_name": "int",
+                "name": "int",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "title": "Math Expression - Megapixels for SeedVR2",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_MathExpression",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "min(12, max(a * c, 9 * b * b * c / a) / 1000000)"
+            ],
+            "widgets_values_named": {
+              "expression": "min(12, max(a * c, 9 * b * b * c / a) / 1000000)"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 84,
+            "type": "AUSBOSS_NODES_ImageResize",
+            "pos": [
+              20,
+              682.0
+            ],
+            "size": [
+              460,
+              330
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 208
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "shape": 7,
+                "type": "MASK",
+                "link": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "link": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "link": null
+              },
+              {
+                "localized_name": "megapixels",
+                "name": "megapixels",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "megapixels"
+                },
+                "link": 209
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "links": [
+                  210,
+                  222
+                ]
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "type": "MASK",
+                "links": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "title": "Image Resize - Your picture at that size",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_ImageResize",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "megapixels",
+              0,
+              0,
+              1024,
+              4,
+              0.5,
+              "fit",
+              "#000000",
+              32,
+              "lanczos"
+            ],
+            "widgets_values_named": {
+              "target_mode": "megapixels",
+              "width": 0,
+              "height": 0,
+              "edge_length": 1024,
+              "megapixels": 4,
+              "scale_factor": 0.5,
+              "keep_proportion": "fit",
+              "fill_color": "#000000",
+              "divisible_by": 32,
+              "interpolation": "lanczos"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 85,
+            "type": "SeedVR2Preprocess",
+            "pos": [
+              560,
+              270.0
+            ],
+            "size": [
+              460,
+              46
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "resized_images",
+                "name": "resized_images",
+                "type": "IMAGE",
+                "link": 210
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "images",
+                "name": "images",
+                "type": "IMAGE",
+                "links": [
+                  211
+                ]
+              }
+            ],
+            "title": "SeedVR2 Preprocess",
+            "properties": {
+              "Node name for S&R": "SeedVR2Preprocess",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 86,
+            "type": "VAEEncodeTiled",
+            "pos": [
+              560,
+              356.0
+            ],
+            "size": [
+              460,
+              154
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "pixels",
+                "name": "pixels",
+                "type": "IMAGE",
+                "link": 211
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 212
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  214,
+                  218
+                ]
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "VAEEncodeTiled",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              512,
+              128,
+              4096,
+              8
+            ],
+            "widgets_values_named": {
+              "tile_size": 512,
+              "overlap": 128,
+              "temporal_size": 4096,
+              "temporal_overlap": 8
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 87,
+            "type": "SeedVR2Conditioning",
+            "pos": [
+              560,
+              550.0
+            ],
+            "size": [
+              460,
+              66
+            ],
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 213
+              },
+              {
+                "localized_name": "latent",
+                "name": "vae_conditioning",
+                "type": "LATENT",
+                "link": 214
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "links": [
+                  216
+                ]
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "links": [
+                  217
+                ]
+              }
+            ],
+            "title": "SeedVR2 Conditioning",
+            "properties": {
+              "Node name for S&R": "SeedVR2Conditioning",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 88,
+            "type": "KSampler",
+            "pos": [
+              560,
+              656.0
+            ],
+            "size": [
+              460,
+              262
+            ],
+            "flags": {},
+            "order": 11,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 215
+              },
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 216
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 217
+              },
+              {
+                "localized_name": "latent_image",
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 218
+              },
+              {
+                "localized_name": "seed",
+                "name": "seed",
+                "type": "INT",
+                "widget": {
+                  "name": "seed"
+                },
+                "link": 203
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  219
+                ]
+              }
+            ],
+            "title": "KSampler - 1 step, CFG 1",
+            "properties": {
+              "Node name for S&R": "KSampler",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              20261016,
+              "fixed",
+              1,
+              1,
+              "euler",
+              "simple",
+              1
+            ],
+            "widgets_values_named": {
+              "seed": 20261016,
+              "control_after_generate": "fixed",
+              "steps": 1,
+              "cfg": 1,
+              "sampler_name": "euler",
+              "scheduler": "simple",
+              "denoise": 1
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 89,
+            "type": "VAEDecodeTiled",
+            "pos": [
+              560,
+              958.0
+            ],
+            "size": [
+              460,
+              154
+            ],
+            "flags": {},
+            "order": 12,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "samples",
+                "name": "samples",
+                "type": "LATENT",
+                "link": 219
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 220
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  221
+                ]
+              }
+            ],
+            "properties": {
+              "Node name for S&R": "VAEDecodeTiled",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              512,
+              128,
+              4096,
+              8
+            ],
+            "widgets_values_named": {
+              "tile_size": 512,
+              "overlap": 128,
+              "temporal_size": 4096,
+              "temporal_overlap": 8
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 90,
+            "type": "SeedVR2PostProcessing",
+            "pos": [
+              560,
+              1152.0
+            ],
+            "size": [
+              460,
+              82
+            ],
+            "flags": {},
+            "order": 13,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "images",
+                "name": "images",
+                "type": "IMAGE",
+                "link": 221
+              },
+              {
+                "localized_name": "original_resized_images",
+                "name": "original_resized_images",
+                "type": "IMAGE",
+                "link": 222
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "images",
+                "name": "images",
+                "type": "IMAGE",
+                "links": [
+                  223
+                ]
+              }
+            ],
+            "title": "SeedVR2 Post Processing - Colors back",
+            "properties": {
+              "Node name for S&R": "SeedVR2PostProcessing",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "lab"
+            ],
+            "widgets_values_named": {
+              "color_correction_method": "lab"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 91,
+            "type": "ImageScale",
+            "pos": [
+              1100,
+              270.0
+            ],
+            "size": [
+              460,
+              130
+            ],
+            "flags": {},
+            "order": 14,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 223
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "widget": {
+                  "name": "width"
+                },
+                "link": 224
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "widget": {
+                  "name": "height"
+                },
+                "link": 225
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  226
+                ]
+              }
+            ],
+            "title": "Upscale Image - To the size of the result",
+            "properties": {
+              "Node name for S&R": "ImageScale",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "lanczos",
+              512,
+              512,
+              "disabled"
+            ],
+            "widgets_values_named": {
+              "upscale_method": "lanczos",
+              "width": 512,
+              "height": 512,
+              "crop": "disabled"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 92,
+            "type": "AUSBOSS_NODES_TiledUpscale",
+            "pos": [
+              1100,
+              440.0
+            ],
+            "size": [
+              460,
+              221
+            ],
+            "flags": {},
+            "order": 15,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 226
+              },
+              {
+                "localized_name": "upscale_model",
+                "name": "upscale_model",
+                "shape": 7,
+                "type": "UPSCALE_MODEL",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "tiles",
+                "name": "tiles",
+                "shape": 6,
+                "type": "IMAGE",
+                "links": [
+                  227
+                ]
+              },
+              {
+                "localized_name": "stitcher",
+                "name": "stitcher",
+                "type": "AUSBOSS_TILE_STITCHER",
+                "links": [
+                  228
+                ]
+              },
+              {
+                "localized_name": "before",
+                "name": "before",
+                "type": "IMAGE",
+                "links": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "report",
+                "name": "report",
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "Tiled Upscale - Cut into tiles at this size",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_TiledUpscale",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              0,
+              2,
+              128,
+              32,
+              8
+            ],
+            "widgets_values_named": {
+              "megapixels": 0,
+              "tile_megapixels": 2,
+              "overlap": 128,
+              "multiple": 32,
+              "max_growth": 8
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 93,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              20,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "SeedVR2 works at about three times your picture's size per side.\n###### At least the size of the result, and 12 megapixels at most."
+            ],
+            "widgets_values_named": {
+              "text": "SeedVR2 works at about three times your picture's size per side.\n###### At least the size of the result, and 12 megapixels at most."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 94,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              560,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 1,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "One step of SeedVR2 3B cleans up the photo: blur, noise and blocky compression.\n###### Then its colors are set back to your picture's. Its seed is the **Seed**."
+            ],
+            "widgets_values_named": {
+              "text": "One step of SeedVR2 3B cleans up the photo: blur, noise and blocky compression.\n###### Then its colors are set back to your picture's. Its seed is the **Seed**."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 95,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              1100,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 2,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "It is brought to the size of the result and cut into tiles for FLUX 3.\n###### When **Photo** is not picked this box is off, and the tiles go straight through."
+            ],
+            "widgets_values_named": {
+              "text": "It is brought to the size of the result and cut into tiles for FLUX 3.\n###### When **Photo** is not picked this box is off, and the tiles go straight through."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          }
+        ],
+        "groups": [
+          {
+            "id": 5,
+            "title": "1 · Size",
+            "bounding": [
+              0,
+              0.0,
+              500,
+              1032
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          },
+          {
+            "id": 6,
+            "title": "2 · Clean up",
+            "bounding": [
+              540,
+              0.0,
+              500,
+              1254
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          },
+          {
+            "id": 7,
+            "title": "3 · Cut",
+            "bounding": [
+              1080,
+              0.0,
+              500,
+              691
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          }
+        ],
+        "links": [
+          {
+            "id": 200,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 80,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 201,
+            "origin_id": -10,
+            "origin_slot": 4,
+            "target_id": 81,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 202,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 96,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 203,
+            "origin_id": 96,
+            "origin_slot": 0,
+            "target_id": 88,
+            "target_slot": 4,
+            "type": "INT"
+          },
+          {
+            "id": 204,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 82,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 205,
+            "origin_id": 80,
+            "origin_slot": 0,
+            "target_id": 83,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 206,
+            "origin_id": 82,
+            "origin_slot": 0,
+            "target_id": 83,
+            "target_slot": 1,
+            "type": "INT"
+          },
+          {
+            "id": 207,
+            "origin_id": 81,
+            "origin_slot": 0,
+            "target_id": 83,
+            "target_slot": 2,
+            "type": "INT"
+          },
+          {
+            "id": 208,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 84,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 209,
+            "origin_id": 83,
+            "origin_slot": 0,
+            "target_id": 84,
+            "target_slot": 4,
+            "type": "FLOAT"
+          },
+          {
+            "id": 210,
+            "origin_id": 84,
+            "origin_slot": 0,
+            "target_id": 85,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 211,
+            "origin_id": 85,
+            "origin_slot": 0,
+            "target_id": 86,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 212,
+            "origin_id": -10,
+            "origin_slot": 7,
+            "target_id": 86,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 213,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 87,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 214,
+            "origin_id": 86,
+            "origin_slot": 0,
+            "target_id": 87,
+            "target_slot": 1,
+            "type": "LATENT"
+          },
+          {
+            "id": 215,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 88,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 216,
+            "origin_id": 87,
+            "origin_slot": 0,
+            "target_id": 88,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 217,
+            "origin_id": 87,
+            "origin_slot": 1,
+            "target_id": 88,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 218,
+            "origin_id": 86,
+            "origin_slot": 0,
+            "target_id": 88,
+            "target_slot": 3,
+            "type": "LATENT"
+          },
+          {
+            "id": 219,
+            "origin_id": 88,
+            "origin_slot": 0,
+            "target_id": 89,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 220,
+            "origin_id": -10,
+            "origin_slot": 7,
+            "target_id": 89,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 221,
+            "origin_id": 89,
+            "origin_slot": 0,
+            "target_id": 90,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 222,
+            "origin_id": 84,
+            "origin_slot": 0,
+            "target_id": 90,
+            "target_slot": 1,
+            "type": "IMAGE"
+          },
+          {
+            "id": 223,
+            "origin_id": 90,
+            "origin_slot": 0,
+            "target_id": 91,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 224,
+            "origin_id": 80,
+            "origin_slot": 0,
+            "target_id": 91,
+            "target_slot": 1,
+            "type": "INT"
+          },
+          {
+            "id": 225,
+            "origin_id": 81,
+            "origin_slot": 0,
+            "target_id": 91,
+            "target_slot": 2,
+            "type": "INT"
+          },
+          {
+            "id": 226,
+            "origin_id": 91,
+            "origin_slot": 0,
+            "target_id": 92,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 227,
+            "origin_id": 92,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 228,
+            "origin_id": 92,
+            "origin_slot": 1,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "AUSBOSS_TILE_STITCHER"
+          }
+        ],
+        "extra": {}
+      },
+      {
+        "id": "72e661eb-b1bf-5f80-a12a-a80d32aa2000",
+        "version": 1,
+        "state": {
+          "lastGroupId": 14,
+          "lastNodeId": 143,
+          "lastLinkId": 450,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "Redraw the whole picture with FLUX 3",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -260,
+            120,
+            150,
+            240
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            2180,
+            120,
+            150,
+            80
+          ]
+        },
+        "inputs": [
+          {
+            "id": "50015d8d-0b11-5e46-af24-2ff0c0e76fd5",
+            "name": "tiles",
+            "type": "IMAGE",
+            "linkIds": [],
+            "localized_name": "tiles",
+            "shape": 7,
+            "pos": [
+              51,
+              24
+            ]
+          },
+          {
+            "id": "3cff753c-2834-519c-915c-65f370436142",
+            "name": "stitcher",
+            "type": "AUSBOSS_TILE_STITCHER",
+            "linkIds": [],
+            "localized_name": "stitcher",
+            "pos": [
+              51,
+              44
+            ]
+          },
+          {
+            "id": "3f394283-e68f-540b-86d9-362908e4b2a0",
+            "name": "your picture",
+            "type": "IMAGE",
+            "linkIds": [
+              402,
+              405
+            ],
+            "localized_name": "your picture",
+            "pos": [
+              51,
+              64
+            ]
+          },
+          {
+            "id": "32def098-223d-5430-8e27-6d596c8a0f94",
+            "name": "width",
+            "type": "INT",
+            "linkIds": [
+              400
+            ],
+            "localized_name": "width",
+            "pos": [
+              51,
+              84
+            ]
+          },
+          {
+            "id": "64c70a45-5c03-5aa0-bf7f-8fa47c830b3d",
+            "name": "height",
+            "type": "INT",
+            "linkIds": [
+              401
+            ],
+            "localized_name": "height",
+            "pos": [
+              51,
+              104
+            ]
+          },
+          {
+            "id": "37cbec95-604d-5617-9dbf-6a276ea7cbcc",
+            "name": "description",
+            "type": "STRING",
+            "linkIds": [
+              408
+            ],
+            "localized_name": "description",
+            "pos": [
+              51,
+              124
+            ]
+          },
+          {
+            "id": "c3b23a03-cb67-5bc7-975a-4701ea7f4d3b",
+            "name": "seed",
+            "type": "INT",
+            "linkIds": [
+              419
+            ],
+            "localized_name": "seed",
+            "pos": [
+              51,
+              144
+            ]
+          },
+          {
+            "id": "8ab90cf2-2740-5d3a-8d80-b4d08f9490b8",
+            "name": "text encoder",
+            "type": "CLIP",
+            "linkIds": [
+              413
+            ],
+            "localized_name": "text encoder",
+            "pos": [
+              51,
+              164
+            ]
+          },
+          {
+            "id": "f9be6504-d391-5b5c-9d06-7b3e8c920f06",
+            "name": "vae",
+            "type": "VAE",
+            "linkIds": [
+              417,
+              426
+            ],
+            "localized_name": "vae",
+            "pos": [
+              51,
+              184
+            ]
+          },
+          {
+            "id": "c882ca2b-0492-5e3b-89e4-a7c43560de5b",
+            "name": "diffusion model",
+            "type": "MODEL",
+            "linkIds": [
+              420
+            ],
+            "localized_name": "diffusion model",
+            "pos": [
+              51,
+              204
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "718bf12e-8ee9-5ffc-849b-5f4a521a51d8",
+            "name": "tiles",
+            "type": "IMAGE",
+            "linkIds": [
+              431
+            ],
+            "localized_name": "tiles",
+            "shape": 6,
+            "pos": [
+              51,
+              24
+            ]
+          },
+          {
+            "id": "be933820-7c38-5c87-aa16-7c6a4b839998",
+            "name": "stitcher",
+            "type": "AUSBOSS_TILE_STITCHER",
+            "linkIds": [
+              432
+            ],
+            "localized_name": "stitcher",
+            "pos": [
+              51,
+              44
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 110,
+            "type": "Reroute",
+            "pos": [
+              20,
+              270.0
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 400
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "INT",
+                "links": [
+                  428
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 111,
+            "type": "Reroute",
+            "pos": [
+              135,
+              270.0
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 401
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "INT",
+                "links": [
+                  429
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 112,
+            "type": "GetImageSize",
+            "pos": [
+              20,
+              366.0
+            ],
+            "size": [
+              460,
+              86
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 402
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": [
+                  403
+                ]
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": [
+                  404
+                ]
+              },
+              {
+                "localized_name": "batch_size",
+                "name": "batch_size",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "title": "Get Image Size - Your picture",
+            "properties": {
+              "Node name for S&R": "GetImageSize",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 113,
+            "type": "AUSBOSS_NODES_MathExpression",
+            "pos": [
+              20,
+              522.0
+            ],
+            "size": [
+              460,
+              134
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "a",
+                "name": "a",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": 403
+              },
+              {
+                "localized_name": "b",
+                "name": "b",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": 404
+              },
+              {
+                "localized_name": "c",
+                "name": "c",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "float",
+                "name": "float",
+                "type": "FLOAT",
+                "links": [
+                  406
+                ]
+              },
+              {
+                "localized_name": "int",
+                "name": "int",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "title": "Math Expression - 0.5, or 0 for a smaller picture",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_MathExpression",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "0.5 * min(1, ceil(max(0, a * b / 1000000 - 0.5)))"
+            ],
+            "widgets_values_named": {
+              "expression": "0.5 * min(1, ceil(max(0, a * b / 1000000 - 0.5)))"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 114,
+            "type": "AUSBOSS_NODES_ImageResize",
+            "pos": [
+              20,
+              726.0
+            ],
+            "size": [
+              460,
+              330
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 405
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "shape": 7,
+                "type": "MASK",
+                "link": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "link": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "link": null
+              },
+              {
+                "localized_name": "megapixels",
+                "name": "megapixels",
+                "type": "FLOAT",
+                "widget": {
+                  "name": "megapixels"
+                },
+                "link": 406
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "links": [
+                  407
+                ]
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "type": "MASK",
+                "links": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "title": "Image Resize - 0.5 megapixels at most",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_ImageResize",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "megapixels",
+              0,
+              0,
+              1024,
+              0.5,
+              0.5,
+              "fit",
+              "#000000",
+              1,
+              "lanczos"
+            ],
+            "widgets_values_named": {
+              "target_mode": "megapixels",
+              "width": 0,
+              "height": 0,
+              "edge_length": 1024,
+              "megapixels": 0.5,
+              "scale_factor": 0.5,
+              "keep_proportion": "fit",
+              "fill_color": "#000000",
+              "divisible_by": 1,
+              "interpolation": "lanczos"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 115,
+            "type": "AUSBOSS_NODES_ImageResize",
+            "pos": [
+              20,
+              1126.0
+            ],
+            "size": [
+              460,
+              330
+            ],
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 407
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "shape": 7,
+                "type": "MASK",
+                "link": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "link": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "links": [
+                  418
+                ]
+              },
+              {
+                "localized_name": "mask",
+                "name": "mask",
+                "type": "MASK",
+                "links": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": null
+              }
+            ],
+            "title": "Image Resize - 2 megapixels for the redraw",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_ImageResize",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "megapixels",
+              0,
+              0,
+              1024,
+              2,
+              0.5,
+              "fit",
+              "#000000",
+              32,
+              "lanczos"
+            ],
+            "widgets_values_named": {
+              "target_mode": "megapixels",
+              "width": 0,
+              "height": 0,
+              "edge_length": 1024,
+              "megapixels": 2,
+              "scale_factor": 0.5,
+              "keep_proportion": "fit",
+              "fill_color": "#000000",
+              "divisible_by": 32,
+              "interpolation": "lanczos"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 116,
+            "type": "AUSBOSS_NODES_Text",
+            "pos": [
+              560,
+              300.0
+            ],
+            "size": [
+              460,
+              168
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  409
+                ]
+              }
+            ],
+            "title": "Text - What the redraw is asked to do",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Text",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "Restore the photo: remove blur, noise and compression artifacts and recover sharp, natural detail, keeping the same composition, people and colors."
+            ],
+            "widgets_values_named": {
+              "text": "Restore the photo: remove blur, noise and compression artifacts and recover sharp, natural detail, keeping the same composition, people and colors."
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 117,
+            "type": "Reroute",
+            "pos": [
+              560,
+              508.0
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 11,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 408
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "STRING",
+                "links": [
+                  410
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 118,
+            "type": "StringConcatenate",
+            "pos": [
+              560,
+              634.0
+            ],
+            "size": [
+              460,
+              166
+            ],
+            "flags": {},
+            "order": 12,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string_a",
+                "name": "string_a",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_a"
+                },
+                "link": 409
+              },
+              {
+                "localized_name": "string_b",
+                "name": "string_b",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_b"
+                },
+                "link": 410
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  411
+                ]
+              }
+            ],
+            "title": "Concatenate - The sentence, then your words",
+            "properties": {
+              "Node name for S&R": "StringConcatenate",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "",
+              "",
+              " "
+            ],
+            "widgets_values_named": {
+              "string_a": "",
+              "string_b": "",
+              "delimiter": " "
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 119,
+            "type": "StringTrim",
+            "pos": [
+              560,
+              870.0
+            ],
+            "size": [
+              460,
+              112
+            ],
+            "flags": {},
+            "order": 13,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string",
+                "name": "string",
+                "type": "STRING",
+                "widget": {
+                  "name": "string"
+                },
+                "link": 411
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  412
+                ]
+              }
+            ],
+            "title": "Trim - No space left when your words are empty",
+            "properties": {
+              "Node name for S&R": "StringTrim",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "",
+              "Both"
+            ],
+            "widgets_values_named": {
+              "string": "",
+              "mode": "Both"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 120,
+            "type": "CLIPTextEncode",
+            "pos": [
+              560,
+              1052.0
+            ],
+            "size": [
+              460,
+              100
+            ],
+            "flags": {},
+            "order": 14,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 413
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": 412
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  414,
+                  415
+                ]
+              }
+            ],
+            "title": "CLIP Text Encode - The request",
+            "properties": {
+              "Node name for S&R": "CLIPTextEncode",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              ""
+            ],
+            "widgets_values_named": {
+              "text": ""
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 121,
+            "type": "ConditioningZeroOut",
+            "pos": [
+              560,
+              1222.0
+            ],
+            "size": [
+              460,
+              50
+            ],
+            "flags": {},
+            "order": 15,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "conditioning",
+                "name": "conditioning",
+                "type": "CONDITIONING",
+                "link": 414
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  416
+                ]
+              }
+            ],
+            "title": "Empty negative",
+            "properties": {
+              "Node name for S&R": "ConditioningZeroOut",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 122,
+            "type": "ReferenceMultiLatent",
+            "pos": [
+              560,
+              1342.0
+            ],
+            "size": [
+              460,
+              158
+            ],
+            "flags": {},
+            "order": 16,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 415
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "shape": 7,
+                "type": "CONDITIONING",
+                "link": 416
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "shape": 7,
+                "type": "VAE",
+                "link": 417
+              },
+              {
+                "localized_name": "image0",
+                "name": "images.image0",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": 418
+              },
+              {
+                "localized_name": "image1",
+                "name": "images.image1",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "links": [
+                  421
+                ]
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "links": [
+                  422
+                ]
+              },
+              {
+                "localized_name": "empty_latent",
+                "name": "empty_latent",
+                "type": "LATENT",
+                "links": [
+                  423
+                ]
+              }
+            ],
+            "title": "Set Reference Multi Latent - Your picture as the reference",
+            "properties": {
+              "Node name for S&R": "ReferenceMultiLatent",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "keep resolution"
+            ],
+            "widgets_values_named": {
+              "resolution": "keep resolution"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 123,
+            "type": "AUSBOSS_NODES_MathExpression",
+            "pos": [
+              1100,
+              300.0
+            ],
+            "size": [
+              460,
+              134
+            ],
+            "flags": {},
+            "order": 17,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "a",
+                "name": "a",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": 419
+              },
+              {
+                "localized_name": "b",
+                "name": "b",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": null
+              },
+              {
+                "localized_name": "c",
+                "name": "c",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "float",
+                "name": "float",
+                "type": "FLOAT",
+                "links": null
+              },
+              {
+                "localized_name": "int",
+                "name": "int",
+                "type": "INT",
+                "links": [
+                  424
+                ]
+              }
+            ],
+            "title": "Math Expression - Seed plus 2",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_MathExpression",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "a + 2"
+            ],
+            "widgets_values_named": {
+              "expression": "a + 2"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 124,
+            "type": "KSampler",
+            "pos": [
+              1100,
+              504.0
+            ],
+            "size": [
+              460,
+              262
+            ],
+            "flags": {},
+            "order": 18,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 420
+              },
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 421
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 422
+              },
+              {
+                "localized_name": "latent_image",
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 423
+              },
+              {
+                "localized_name": "seed",
+                "name": "seed",
+                "type": "INT",
+                "widget": {
+                  "name": "seed"
+                },
+                "link": 424
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  425
+                ]
+              }
+            ],
+            "title": "KSampler - 16 steps, the whole picture drawn again",
+            "properties": {
+              "Node name for S&R": "KSampler",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              20261018,
+              "fixed",
+              16,
+              1,
+              "euler",
+              "simple",
+              1
+            ],
+            "widgets_values_named": {
+              "seed": 20261018,
+              "control_after_generate": "fixed",
+              "steps": 16,
+              "cfg": 1,
+              "sampler_name": "euler",
+              "scheduler": "simple",
+              "denoise": 1
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 125,
+            "type": "VAEDecode",
+            "pos": [
+              1100,
+              836.0
+            ],
+            "size": [
+              460,
+              46
+            ],
+            "flags": {},
+            "order": 19,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "samples",
+                "name": "samples",
+                "type": "LATENT",
+                "link": 425
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 426
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  427
+                ]
+              }
+            ],
+            "title": "Decode",
+            "properties": {
+              "Node name for S&R": "VAEDecode",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 126,
+            "type": "ImageScale",
+            "pos": [
+              1640,
+              302.0
+            ],
+            "size": [
+              460,
+              130
+            ],
+            "flags": {},
+            "order": 20,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 427
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "widget": {
+                  "name": "width"
+                },
+                "link": 428
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "widget": {
+                  "name": "height"
+                },
+                "link": 429
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  430
+                ]
+              }
+            ],
+            "title": "Upscale Image - To the size of the result",
+            "properties": {
+              "Node name for S&R": "ImageScale",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "lanczos",
+              512,
+              512,
+              "disabled"
+            ],
+            "widgets_values_named": {
+              "upscale_method": "lanczos",
+              "width": 512,
+              "height": 512,
+              "crop": "disabled"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 127,
+            "type": "AUSBOSS_NODES_TiledUpscale",
+            "pos": [
+              1640,
+              502.0
+            ],
+            "size": [
+              460,
+              221
+            ],
+            "flags": {},
+            "order": 21,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "link": 430
+              },
+              {
+                "localized_name": "upscale_model",
+                "name": "upscale_model",
+                "shape": 7,
+                "type": "UPSCALE_MODEL",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "tiles",
+                "name": "tiles",
+                "shape": 6,
+                "type": "IMAGE",
+                "links": [
+                  431
+                ]
+              },
+              {
+                "localized_name": "stitcher",
+                "name": "stitcher",
+                "type": "AUSBOSS_TILE_STITCHER",
+                "links": [
+                  432
+                ]
+              },
+              {
+                "localized_name": "before",
+                "name": "before",
+                "type": "IMAGE",
+                "links": null
+              },
+              {
+                "localized_name": "width",
+                "name": "width",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "height",
+                "name": "height",
+                "type": "INT",
+                "links": null
+              },
+              {
+                "localized_name": "report",
+                "name": "report",
+                "type": "STRING",
+                "links": null
+              }
+            ],
+            "title": "Tiled Upscale - Cut into tiles at this size",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_TiledUpscale",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              0,
+              2,
+              128,
+              32,
+              8
+            ],
+            "widgets_values_named": {
+              "megapixels": 0,
+              "tile_megapixels": 2,
+              "overlap": 128,
+              "multiple": 32,
+              "max_growth": 8
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 140,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              20,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 1,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "A picture bigger than 0.5 megapixels is made 0.5 first. A smaller one stays as it is.\n###### Then it is enlarged to 2 megapixels for FLUX 3 to draw again."
+            ],
+            "widgets_values_named": {
+              "text": "A picture bigger than 0.5 megapixels is made 0.5 first. A smaller one stays as it is.\n###### Then it is enlarged to 2 megapixels for FLUX 3 to draw again."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 141,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              560,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 2,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "FLUX 3 reads the same request as the tiles, with your picture as the reference.\n###### The restore LoRA is on the model when its file is there."
+            ],
+            "widgets_values_named": {
+              "text": "FLUX 3 reads the same request as the tiles, with your picture as the reference.\n###### The restore LoRA is on the model when its file is there."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 142,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              1100,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "16 steps, CFG 1: the whole picture is drawn again from noise.\n###### Its seed is the **Seed** plus 2."
+            ],
+            "widgets_values_named": {
+              "text": "16 steps, CFG 1: the whole picture is drawn again from noise.\n###### Its seed is the **Seed** plus 2."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 143,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              1640,
+              80.0
+            ],
+            "size": [
+              460,
+              152
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "It is brought to the size of the result and cut into tiles for FLUX 3.\n###### When **Blurry photo** is not picked this box is off, and the tiles go straight through."
+            ],
+            "widgets_values_named": {
+              "text": "It is brought to the size of the result and cut into tiles for FLUX 3.\n###### When **Blurry photo** is not picked this box is off, and the tiles go straight through."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          }
+        ],
+        "groups": [
+          {
+            "id": 8,
+            "title": "1 · Size",
+            "bounding": [
+              0,
+              0.0,
+              500,
+              1476
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          },
+          {
+            "id": 9,
+            "title": "2 · Read",
+            "bounding": [
+              540,
+              0.0,
+              500,
+              1520
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          },
+          {
+            "id": 10,
+            "title": "3 · Draw",
+            "bounding": [
+              1080,
+              0.0,
+              500,
+              912
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          },
+          {
+            "id": 11,
+            "title": "4 · Cut",
+            "bounding": [
+              1620,
+              0.0,
+              500,
+              753
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          }
+        ],
+        "links": [
+          {
+            "id": 400,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 110,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 401,
+            "origin_id": -10,
+            "origin_slot": 4,
+            "target_id": 111,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 402,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 112,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 403,
+            "origin_id": 112,
+            "origin_slot": 0,
+            "target_id": 113,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 404,
+            "origin_id": 112,
+            "origin_slot": 1,
+            "target_id": 113,
+            "target_slot": 1,
+            "type": "INT"
+          },
+          {
+            "id": 405,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 114,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 406,
+            "origin_id": 113,
+            "origin_slot": 0,
+            "target_id": 114,
+            "target_slot": 4,
+            "type": "FLOAT"
+          },
+          {
+            "id": 407,
+            "origin_id": 114,
+            "origin_slot": 0,
+            "target_id": 115,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 408,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 117,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 409,
+            "origin_id": 116,
+            "origin_slot": 0,
+            "target_id": 118,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 410,
+            "origin_id": 117,
+            "origin_slot": 0,
+            "target_id": 118,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 411,
+            "origin_id": 118,
+            "origin_slot": 0,
+            "target_id": 119,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 412,
+            "origin_id": 119,
+            "origin_slot": 0,
+            "target_id": 120,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 413,
+            "origin_id": -10,
+            "origin_slot": 7,
+            "target_id": 120,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 414,
+            "origin_id": 120,
+            "origin_slot": 0,
+            "target_id": 121,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 419,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 123,
+            "target_slot": 0,
+            "type": "INT"
+          },
+          {
+            "id": 420,
+            "origin_id": -10,
+            "origin_slot": 9,
+            "target_id": 124,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 421,
+            "origin_id": 122,
+            "origin_slot": 0,
+            "target_id": 124,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 422,
+            "origin_id": 122,
+            "origin_slot": 1,
+            "target_id": 124,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 423,
+            "origin_id": 122,
+            "origin_slot": 2,
+            "target_id": 124,
+            "target_slot": 3,
+            "type": "LATENT"
+          },
+          {
+            "id": 424,
+            "origin_id": 123,
+            "origin_slot": 1,
+            "target_id": 124,
+            "target_slot": 4,
+            "type": "INT"
+          },
+          {
+            "id": 425,
+            "origin_id": 124,
+            "origin_slot": 0,
+            "target_id": 125,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 426,
+            "origin_id": -10,
+            "origin_slot": 8,
+            "target_id": 125,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 427,
+            "origin_id": 125,
+            "origin_slot": 0,
+            "target_id": 126,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 428,
+            "origin_id": 110,
+            "origin_slot": 0,
+            "target_id": 126,
+            "target_slot": 1,
+            "type": "INT"
+          },
+          {
+            "id": 429,
+            "origin_id": 111,
+            "origin_slot": 0,
+            "target_id": 126,
+            "target_slot": 2,
+            "type": "INT"
+          },
+          {
+            "id": 430,
+            "origin_id": 126,
+            "origin_slot": 0,
+            "target_id": 127,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 431,
+            "origin_id": 127,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 432,
+            "origin_id": 127,
+            "origin_slot": 1,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "AUSBOSS_TILE_STITCHER"
+          },
+          {
+            "id": 415,
+            "origin_id": 120,
+            "origin_slot": 0,
+            "target_id": 122,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 416,
+            "origin_id": 121,
+            "origin_slot": 0,
+            "target_id": 122,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 417,
+            "origin_id": -10,
+            "origin_slot": 8,
+            "target_id": 122,
+            "target_slot": 2,
+            "type": "VAE"
+          },
+          {
+            "id": 418,
+            "origin_id": 115,
+            "origin_slot": 0,
+            "target_id": 122,
+            "target_slot": 3,
+            "type": "IMAGE"
+          }
+        ],
+        "extra": {}
+      },
+      {
+        "id": "8360cd8c-bd44-5ab7-a2e4-5733b4167c3e",
+        "version": 1,
+        "state": {
+          "lastGroupId": 14,
+          "lastNodeId": 143,
+          "lastLinkId": 450,
+          "lastRerouteId": 0
+        },
+        "revision": 0,
+        "config": {},
+        "name": "Redraw it in tiles with FLUX 3",
+        "inputNode": {
+          "id": -10,
+          "bounding": [
+            -260,
+            120,
+            150,
+            160
+          ]
+        },
+        "outputNode": {
+          "id": -20,
+          "bounding": [
+            1640,
+            120,
+            150,
+            60
+          ]
+        },
+        "inputs": [
+          {
+            "id": "aaae3fe7-712f-5096-bf38-0d550d816c00",
+            "name": "tiles",
+            "type": "IMAGE",
+            "linkIds": [
+              128
+            ],
+            "localized_name": "tiles",
+            "shape": 7,
+            "pos": [
+              51,
+              24
+            ]
+          },
+          {
+            "id": "f218802f-e8a4-5974-ad41-c5fc3c0a45f0",
+            "name": "stitcher",
+            "type": "AUSBOSS_TILE_STITCHER",
+            "linkIds": [
+              138
+            ],
+            "localized_name": "stitcher",
+            "pos": [
+              51,
+              44
+            ]
+          },
+          {
+            "id": "40b13ca7-7c38-5684-80b7-a60bfdd497ca",
+            "name": "description",
+            "type": "STRING",
+            "linkIds": [
+              300
+            ],
+            "localized_name": "description",
+            "pos": [
+              51,
+              64
+            ]
+          },
+          {
+            "id": "947f636d-4ee3-52d9-8ef8-3a3527f4e430",
+            "name": "seed",
+            "type": "FLOAT,INT",
+            "linkIds": [
+              129
+            ],
+            "localized_name": "seed",
+            "shape": 7,
+            "pos": [
+              51,
+              84
+            ]
+          },
+          {
+            "id": "4a0604c6-5141-5d89-9e75-8c251251de0a",
+            "name": "text encoder",
+            "type": "CLIP",
+            "linkIds": [
+              123
+            ],
+            "localized_name": "text encoder",
+            "pos": [
+              51,
+              104
+            ]
+          },
+          {
+            "id": "45efb0cc-22e4-549d-aab4-d978195f310b",
+            "name": "vae",
+            "type": "VAE",
+            "linkIds": [
+              127,
+              136
+            ],
+            "localized_name": "vae",
+            "shape": 7,
+            "pos": [
+              51,
+              124
+            ]
+          },
+          {
+            "id": "8b8386e7-06b2-59dc-8df5-80749f26b599",
+            "name": "diffusion model",
+            "type": "MODEL",
+            "linkIds": [
+              130
+            ],
+            "localized_name": "diffusion model",
+            "pos": [
+              51,
+              144
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "47fc9135-869c-56ab-99fb-662b75f6bae5",
+            "name": "picture, upscaled",
+            "type": "IMAGE",
+            "linkIds": [
+              139
+            ],
+            "localized_name": "picture, upscaled",
+            "pos": [
+              24,
+              24
+            ]
+          },
+          {
+            "id": "234b7c06-6072-5d04-80d7-1a05745bda19",
+            "name": "request",
+            "type": "STRING",
+            "linkIds": [
+              305
+            ],
+            "localized_name": "request",
+            "pos": [
+              51,
+              44
+            ]
+          }
+        ],
+        "widgets": [],
+        "nodes": [
+          {
+            "id": 31,
+            "type": "AUSBOSS_NODES_Text",
+            "pos": [
+              20,
+              306.0
+            ],
+            "size": [
+              460,
+              168
+            ],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "links": [
+                  301
+                ]
+              }
+            ],
+            "title": "Text - What each tile is asked to do",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Text",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "Restore the photo: remove blur, noise and compression artifacts and recover sharp, natural detail, keeping the same composition, people and colors."
+            ],
+            "widgets_values_named": {
+              "text": "Restore the photo: remove blur, noise and compression artifacts and recover sharp, natural detail, keeping the same composition, people and colors."
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 32,
+            "type": "CLIPTextEncode",
+            "pos": [
+              20,
+              1058.0
+            ],
+            "size": [
+              460,
+              100
+            ],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "clip",
+                "name": "clip",
+                "type": "CLIP",
+                "link": 123
+              },
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": 304
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  124,
+                  125
+                ]
+              }
+            ],
+            "title": "CLIP Text Encode - The request",
+            "properties": {
+              "Node name for S&R": "CLIPTextEncode",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.0"
+            },
+            "widgets_values": [
+              ""
+            ],
+            "widgets_values_named": {
+              "text": ""
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 69,
+            "type": "ConditioningZeroOut",
+            "pos": [
+              20,
+              1228.0
+            ],
+            "size": [
+              460,
+              50
+            ],
+            "flags": {},
+            "order": 12,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "conditioning",
+                "name": "conditioning",
+                "type": "CONDITIONING",
+                "link": 124
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "CONDITIONING",
+                "name": "CONDITIONING",
+                "type": "CONDITIONING",
+                "links": [
+                  126
+                ]
+              }
+            ],
+            "title": "Empty negative",
+            "properties": {
+              "Node name for S&R": "ConditioningZeroOut",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.0"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 70,
+            "type": "ReferenceMultiLatent",
+            "pos": [
+              20,
+              1348.0
+            ],
+            "size": [
+              460,
+              158
+            ],
+            "flags": {},
+            "order": 13,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 125
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "shape": 7,
+                "type": "CONDITIONING",
+                "link": 126
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "shape": 7,
+                "type": "VAE",
+                "link": 127
+              },
+              {
+                "localized_name": "image0",
+                "name": "images.image0",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": 128
+              },
+              {
+                "localized_name": "image1",
+                "name": "images.image1",
+                "shape": 7,
+                "type": "IMAGE",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "links": [
+                  131
+                ]
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "links": [
+                  132
+                ]
+              },
+              {
+                "localized_name": "empty_latent",
+                "name": "empty_latent",
+                "type": "LATENT",
+                "links": [
+                  133
+                ]
+              }
+            ],
+            "title": "Set Reference Multi Latent - The tile as the reference",
+            "properties": {
+              "Node name for S&R": "ReferenceMultiLatent",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.0"
+            },
+            "widgets_values": [
+              "keep resolution"
+            ],
+            "widgets_values_named": {
+              "resolution": "keep resolution"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 35,
+            "type": "AUSBOSS_NODES_MathExpression",
+            "pos": [
+              560,
+              300.0
+            ],
+            "size": [
+              460,
+              134
+            ],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "a",
+                "name": "a",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": 129
+              },
+              {
+                "localized_name": "b",
+                "name": "b",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": null
+              },
+              {
+                "localized_name": "c",
+                "name": "c",
+                "shape": 7,
+                "type": "FLOAT,INT",
+                "link": null
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "float",
+                "name": "float",
+                "type": "FLOAT",
+                "links": null
+              },
+              {
+                "localized_name": "int",
+                "name": "int",
+                "type": "INT",
+                "links": [
+                  134
+                ]
+              }
+            ],
+            "title": "Math Expression - Seed plus 1",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_MathExpression",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "a + 1"
+            ],
+            "widgets_values_named": {
+              "expression": "a + 1"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 36,
+            "type": "KSampler",
+            "pos": [
+              560,
+              514.0
+            ],
+            "size": [
+              460,
+              262
+            ],
+            "flags": {},
+            "order": 6,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "model",
+                "name": "model",
+                "type": "MODEL",
+                "link": 130
+              },
+              {
+                "localized_name": "positive",
+                "name": "positive",
+                "type": "CONDITIONING",
+                "link": 131
+              },
+              {
+                "localized_name": "negative",
+                "name": "negative",
+                "type": "CONDITIONING",
+                "link": 132
+              },
+              {
+                "localized_name": "latent_image",
+                "name": "latent_image",
+                "type": "LATENT",
+                "link": 133
+              },
+              {
+                "localized_name": "seed",
+                "name": "seed",
+                "type": "INT",
+                "widget": {
+                  "name": "seed"
+                },
+                "link": 134
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "LATENT",
+                "name": "LATENT",
+                "type": "LATENT",
+                "links": [
+                  135
+                ]
+              }
+            ],
+            "title": "KSampler - 8 steps, each tile drawn again",
+            "properties": {
+              "Node name for S&R": "KSampler",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.0"
+            },
+            "widgets_values": [
+              20261016,
+              "fixed",
+              8,
+              1,
+              "euler",
+              "simple",
+              1
+            ],
+            "widgets_values_named": {
+              "seed": 20261016,
+              "control_after_generate": "fixed",
+              "steps": 8,
+              "cfg": 1,
+              "sampler_name": "euler",
+              "scheduler": "simple",
+              "denoise": 1
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 37,
+            "type": "VAEDecode",
+            "pos": [
+              1100,
+              300.0
+            ],
+            "size": [
+              460,
+              46
+            ],
+            "flags": {},
+            "order": 7,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "samples",
+                "name": "samples",
+                "type": "LATENT",
+                "link": 135
+              },
+              {
+                "localized_name": "vae",
+                "name": "vae",
+                "type": "VAE",
+                "link": 136
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "IMAGE",
+                "name": "IMAGE",
+                "type": "IMAGE",
+                "links": [
+                  137
+                ]
+              }
+            ],
+            "title": "Decode",
+            "properties": {
+              "Node name for S&R": "VAEDecode",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.0"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 38,
+            "type": "AUSBOSS_NODES_TiledUpscaleStitch",
+            "pos": [
+              1100,
+              426.0
+            ],
+            "size": [
+              460,
+              114
+            ],
+            "flags": {},
+            "order": 8,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "tiles",
+                "name": "tiles",
+                "type": "IMAGE",
+                "link": 137
+              },
+              {
+                "localized_name": "stitcher",
+                "name": "stitcher",
+                "type": "AUSBOSS_TILE_STITCHER",
+                "link": 138
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "image",
+                "name": "image",
+                "type": "IMAGE",
+                "links": [
+                  139
+                ]
+              }
+            ],
+            "title": "Tiled Upscale Stitch - Join the tiles",
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_TiledUpscaleStitch",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              1
+            ],
+            "widgets_values_named": {
+              "keep_colors": 1
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 51,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              20,
+              80.0
+            ],
+            "size": [
+              460,
+              136
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 1,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "Each tile is its own reference.\n###### The request is the sentence the restore LoRA was trained on, plus your description if you wrote one. Left empty, it is the sentence alone."
+            ],
+            "widgets_values_named": {
+              "text": "Each tile is its own reference.\n###### The request is the sentence the restore LoRA was trained on, plus your description if you wrote one. Left empty, it is the sentence alone."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 52,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              560,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 2,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "8 steps draw each tile again from noise, with the tile as the guide.\n###### CFG 1, euler. Its seed is the **Seed** plus 1."
+            ],
+            "widgets_values_named": {
+              "text": "8 steps draw each tile again from noise, with the tile as the guide.\n###### CFG 1, euler. Its seed is the **Seed** plus 1."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 53,
+            "type": "AUSBOSS_NODES_Callout",
+            "pos": [
+              1100,
+              80.0
+            ],
+            "size": [
+              460,
+              150
+            ],
+            "flags": {
+              "pinned": true
+            },
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "text",
+                "name": "text",
+                "type": "STRING",
+                "widget": {
+                  "name": "text"
+                },
+                "link": null
+              }
+            ],
+            "outputs": [],
+            "properties": {
+              "Node name for S&R": "AUSBOSS_NODES_Callout",
+              "cnr_id": "ausboss-nodes",
+              "ver": "2.13.0"
+            },
+            "widgets_values": [
+              "Each tile is decoded and matched to its own tile's colors.\n###### Then all are joined and fitted to the size you asked for."
+            ],
+            "widgets_values_named": {
+              "text": "Each tile is decoded and matched to its own tile's colors.\n###### Then all are joined and fitted to the size you asked for."
+            },
+            "color": "#07090a",
+            "bgcolor": "#07090a",
+            "title": "Callout"
+          },
+          {
+            "id": 61,
+            "type": "Reroute",
+            "pos": [
+              20,
+              514.0
+            ],
+            "size": [
+              75,
+              26
+            ],
+            "flags": {},
+            "order": 9,
+            "mode": 0,
+            "inputs": [
+              {
+                "name": "",
+                "type": "*",
+                "link": 300
+              }
+            ],
+            "outputs": [
+              {
+                "name": "",
+                "type": "STRING",
+                "links": [
+                  302
+                ]
+              }
+            ],
+            "properties": {
+              "showOutputText": false,
+              "horizontal": false
+            }
+          },
+          {
+            "id": 62,
+            "type": "StringConcatenate",
+            "pos": [
+              20,
+              640.0
+            ],
+            "size": [
+              460,
+              166
+            ],
+            "flags": {},
+            "order": 10,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string_a",
+                "name": "string_a",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_a"
+                },
+                "link": 301
+              },
+              {
+                "localized_name": "string_b",
+                "name": "string_b",
+                "type": "STRING",
+                "widget": {
+                  "name": "string_b"
+                },
+                "link": 302
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  303
+                ]
+              }
+            ],
+            "title": "Concatenate - The sentence, then your words",
+            "properties": {
+              "Node name for S&R": "StringConcatenate",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "",
+              "",
+              " "
+            ],
+            "widgets_values_named": {
+              "string_a": "",
+              "string_b": "",
+              "delimiter": " "
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          },
+          {
+            "id": 63,
+            "type": "StringTrim",
+            "pos": [
+              20,
+              876.0
+            ],
+            "size": [
+              460,
+              112
+            ],
+            "flags": {},
+            "order": 11,
+            "mode": 0,
+            "inputs": [
+              {
+                "localized_name": "string",
+                "name": "string",
+                "type": "STRING",
+                "widget": {
+                  "name": "string"
+                },
+                "link": 303
+              }
+            ],
+            "outputs": [
+              {
+                "localized_name": "STRING",
+                "name": "STRING",
+                "type": "STRING",
+                "links": [
+                  304,
+                  305
+                ]
+              }
+            ],
+            "title": "Trim - No space left when your words are empty",
+            "properties": {
+              "Node name for S&R": "StringTrim",
+              "cnr_id": "comfy-core",
+              "ver": "0.41.2"
+            },
+            "widgets_values": [
+              "",
+              "Both"
+            ],
+            "widgets_values_named": {
+              "string": "",
+              "mode": "Both"
+            },
+            "color": "#14424d",
+            "bgcolor": "#161f21"
+          }
+        ],
+        "groups": [
+          {
+            "id": 12,
+            "title": "1 · Read",
+            "bounding": [
+              0,
+              0.0,
+              500,
+              1536
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          },
+          {
+            "id": 13,
+            "title": "2 · Redraw",
+            "bounding": [
+              540,
+              0.0,
+              500,
+              806.0
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          },
+          {
+            "id": 14,
+            "title": "3 · Join",
+            "bounding": [
+              1080,
+              0.0,
+              500,
+              570.0
+            ],
+            "color": "#1d5560",
+            "flags": {
+              "pinned": true
+            }
+          }
+        ],
+        "links": [
+          {
+            "id": 123,
+            "origin_id": -10,
+            "origin_slot": 4,
+            "target_id": 32,
+            "target_slot": 0,
+            "type": "CLIP"
+          },
+          {
+            "id": 124,
+            "origin_id": 32,
+            "origin_slot": 0,
+            "target_id": 69,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 129,
+            "origin_id": -10,
+            "origin_slot": 3,
+            "target_id": 35,
+            "target_slot": 0,
+            "type": "FLOAT,INT"
+          },
+          {
+            "id": 130,
+            "origin_id": -10,
+            "origin_slot": 6,
+            "target_id": 36,
+            "target_slot": 0,
+            "type": "MODEL"
+          },
+          {
+            "id": 131,
+            "origin_id": 70,
+            "origin_slot": 0,
+            "target_id": 36,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 132,
+            "origin_id": 70,
+            "origin_slot": 1,
+            "target_id": 36,
+            "target_slot": 2,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 133,
+            "origin_id": 70,
+            "origin_slot": 2,
+            "target_id": 36,
+            "target_slot": 3,
+            "type": "LATENT"
+          },
+          {
+            "id": 134,
+            "origin_id": 35,
+            "origin_slot": 1,
+            "target_id": 36,
+            "target_slot": 4,
+            "type": "INT"
+          },
+          {
+            "id": 135,
+            "origin_id": 36,
+            "origin_slot": 0,
+            "target_id": 37,
+            "target_slot": 0,
+            "type": "LATENT"
+          },
+          {
+            "id": 136,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 37,
+            "target_slot": 1,
+            "type": "VAE"
+          },
+          {
+            "id": 137,
+            "origin_id": 37,
+            "origin_slot": 0,
+            "target_id": 38,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 138,
+            "origin_id": -10,
+            "origin_slot": 1,
+            "target_id": 38,
+            "target_slot": 1,
+            "type": "AUSBOSS_TILE_STITCHER"
+          },
+          {
+            "id": 139,
+            "origin_id": 38,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 0,
+            "type": "IMAGE"
+          },
+          {
+            "id": 300,
+            "origin_id": -10,
+            "origin_slot": 2,
+            "target_id": 61,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 301,
+            "origin_id": 31,
+            "origin_slot": 0,
+            "target_id": 62,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 302,
+            "origin_id": 61,
+            "origin_slot": 0,
+            "target_id": 62,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 303,
+            "origin_id": 62,
+            "origin_slot": 0,
+            "target_id": 63,
+            "target_slot": 0,
+            "type": "STRING"
+          },
+          {
+            "id": 304,
+            "origin_id": 63,
+            "origin_slot": 0,
+            "target_id": 32,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 305,
+            "origin_id": 63,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "STRING"
+          },
+          {
+            "id": 125,
+            "origin_id": 32,
+            "origin_slot": 0,
+            "target_id": 70,
+            "target_slot": 0,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 126,
+            "origin_id": 69,
+            "origin_slot": 0,
+            "target_id": 70,
+            "target_slot": 1,
+            "type": "CONDITIONING"
+          },
+          {
+            "id": 127,
+            "origin_id": -10,
+            "origin_slot": 5,
+            "target_id": 70,
+            "target_slot": 2,
+            "type": "VAE"
+          },
+          {
+            "id": 128,
+            "origin_id": -10,
+            "origin_slot": 0,
+            "target_id": 70,
+            "target_slot": 3,
+            "type": "IMAGE"
+          }
+        ],
+        "extra": {}
+      }
+    ]
+  },
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.6,
+      "offset": [
+        6,
+        60
+      ]
+    },
+    "frontendVersion": "1.55.17"
+  },
+  "version": 0.4
+}
