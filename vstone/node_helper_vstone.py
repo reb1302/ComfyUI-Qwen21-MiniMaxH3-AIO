@@ -6285,9 +6285,9 @@ a.btn{color:inherit;text-decoration:none}
       <option value="0">Gen ở cỡ gốc</option>
     </select>
     <span class="qstate" id="qState" title="Hàng đợi chung của ComfyUI trên H200, mọi họa sĩ dùng chung, chạy từng việc một"><span class="qdot" aria-hidden="true"></span><span id="qText">Chưa kết nối ComfyUI</span></span>
-    <select class="field model" id="model" aria-label="Model">
-      <option>Qwen 2.1</option>
-      <option disabled>Flux 2 (chưa có model)</option>
+    <select class="field model" id="model" aria-label="Model" title="Flux 3 Klein dùng cho lượt Sửa bằng cọ. Kéo rộng, Ghép và Ánh sáng vẫn chạy Qwen 2.1.">
+      <option value="qwen">Qwen 2.1</option>
+      <option value="flux3">Flux 3 Klein</option>
     </select>
     <button class="btn" id="promptBtn" type="button" aria-expanded="false" aria-controls="drawer"><span data-icon="lines"></span>Prompt<span class="dotwarn" id="promptDot" hidden></span></button>
     <button id="gen" type="button" disabled title="Chưa nối ComfyUI">Gen</button>
@@ -6395,40 +6395,74 @@ const PROMPTS = {
   ],
   keep: { en: 'Keep everything else exactly the same.', vi: 'Giữ nguyên mọi thứ còn lại.' },
 };
+// Flux 3 Klein: cùng ý như PROMPTS nhưng chỉ vùng bằng khung <obj_N> và ảnh bằng <ref_image_N> như template của nó.
+// <ref_image_0> là ảnh đang sửa, câu cuối theo prompt mẫu trong template image_flux3_klein_distilled_image_edit.
+const FLUX_PROMPTS = {
+  open: { en: 'In <ref_image_0>:', vi: 'Trong <ref_image_0>:' },
+  add: {
+    en: (c, r) => `Place what <ref_image_${r}> shows in ${c.obj}.`,
+    vi: (c, r) => `Đặt thứ trong <ref_image_${r}> vào ${c.obj} (vùng ${c.area}).`,
+  },
+  addText: {
+    en: (c, n) => `Add ${n} in ${c.obj}.`,
+    vi: (c, n) => `Thêm ${n} vào ${c.obj} (vùng ${c.area}).`,
+  },
+  replace: {
+    en: (c, r) => `Keep the position, pose, size and camera angle of what is in ${c.obj}, and change it into what <ref_image_${r}> shows.`,
+    vi: (c, r) => `Giữ vị trí, dáng, cỡ và góc máy của thứ trong ${c.obj} (vùng ${c.area}), đổi nó thành thứ trong <ref_image_${r}>.`,
+  },
+  clone: {
+    en: (c, r) => `Copy all of what <ref_image_${r}> shows into ${c.obj}, changing only its lighting, shadows and perspective to fit <ref_image_0>.`,
+    vi: (c, r) => `Chép toàn bộ thứ trong <ref_image_${r}> vào ${c.obj} (vùng ${c.area}), chỉ đổi ánh sáng, bóng đổ và phối cảnh cho hợp <ref_image_0>.`,
+  },
+  remove: {
+    en: (c, n) => `Remove ${n || 'what is'} in ${c.obj} and fill it with the surrounding background.`,
+    vi: (c, n) => `Xoá ${n || 'thứ'} trong ${c.obj} (vùng ${c.area}) và lấp bằng nền xung quanh.`,
+  },
+  note: {
+    en: (c, n) => `In ${c.obj}: ${n}.`,
+    vi: (c, n) => `Trong ${c.obj} (vùng ${c.area}): ${n}.`,
+  },
+  finish: { en: 'Match the lighting, shadows and perspective of <ref_image_0>. Keep all other parts of the image completely unchanged.', vi: 'Khớp ánh sáng, bóng đổ và phối cảnh của <ref_image_0>. Giữ nguyên mọi phần còn lại của ảnh.' },
+};
 const line = (p, c, v) => ({ en: p.en(c, v), vi: p.vi(c, v) });
 
 // Mọi cọ gom vào một lượt trên cả shot. Màu chỉ để nhận diện, ý nghĩa nằm trong hộp của cọ.
-function buildEditPass(marks, problems) {
-  const lines = [], slots = [], looks = [], brushes = [];
+// Flux 3 Klein: mỗi cọ là một khung <obj_N> (theo thứ tự trong brushes), ghi chú của cọ là mô tả của khung.
+function buildEditPass(marks, problems, model) {
+  const flux = model === 'flux3', P = flux ? FLUX_PROMPTS : PROMPTS;
+  const lines = flux ? [P.open] : [], slots = [], looks = [], brushes = [], descs = [];
   for (const m of marks) {
-    const c = PAINT[m.color];
+    const c = flux ? { ...PAINT[m.color], obj: `<obj_${brushes.length + 1}>` } : PAINT[m.color];
     const note = m.note.trim().replace(/[.\s]+$/, '');
     if (m.type === 'remove') {
-      lines.push(line(PROMPTS.remove, c, note));
+      lines.push(line(P.remove, c, note));
     } else if (m.hasRef) {
-      const n = slots.length + 2;
-      lines.push(line(PROMPTS[m.type], c, n));
-      if (note) lines.push(line(PROMPTS.note, c, note));
+      const n = slots.length + (flux ? 1 : 2);
+      lines.push(line(P[m.type], c, n));
+      if (note) lines.push(line(P.note, c, note));
       slots.push({ brush: m.brush, n });
-      if (m.type !== 'clone') looks.push(`<image${n}>`);
+      if (m.type !== 'clone') looks.push(flux ? `<ref_image_${n}>` : `<image${n}>`);
     } else if (m.type === 'clone') {
       problems.push({ brush: m.brush, text: `${c.vi}: chưa chụp vùng` });
       continue;
     } else if (note) {
-      lines.push(line(m.type === 'add' ? PROMPTS.addText : PROMPTS.note, c, note));
+      lines.push(line(m.type === 'add' ? P.addText : P.note, c, note));
     } else {
       problems.push({ brush: m.brush, text: `${c.vi}: thiếu ảnh hoặc mô tả` });
       continue;
     }
     brushes.push(m.brush);
+    descs.push(note);
   }
   if (!brushes.length) return null;
   if (looks.length) lines.push({ en: PROMPTS.looks.en(looks), vi: PROMPTS.looks.vi(looks) });
-  lines.push(PROMPTS.finish[brushes.length > 1 ? 1 : 0], PROMPTS.keep);
-  return { kind: 'edit', name: 'Sửa', lines, slots, brushes };
+  if (flux) lines.push(P.finish);
+  else lines.push(PROMPTS.finish[brushes.length > 1 ? 1 : 0], PROMPTS.keep);
+  return { kind: 'edit', name: flux ? 'Sửa (Flux 3 Klein)' : 'Sửa', lines, slots, brushes, descs, model: flux ? 'flux3' : 'qwen' };
 }
 
-function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, blendLora, light }) {
+function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, blendLora, light, model }) {
   const problems = [];
   const passes = [];
   if (expanded) {
@@ -6443,7 +6477,7 @@ function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, ble
     passes.push({ kind: 'expand', name: `Kéo rộng${loraNote}`, lines: out, slots: [] });
   }
   if (layers && layers.length) passes.push(buildMergePass(layers, blendLora));
-  const edit = buildEditPass(marks.filter(m => m.cover), problems);
+  const edit = buildEditPass(marks.filter(m => m.cover), problems, model);
   if (edit) passes.push(edit);
   if (light && light.lights.length) passes.push(buildRelightPass(light, problems));
   return { passes, problems };
@@ -6468,6 +6502,7 @@ const S = {
   padsPainted: false, capture: null, baseFromResult: false, isSample: false, tab: 'edit',
   scene: '',
   expandLora: 1,
+  model: 'qwen',
   tool: null,
   blendLora: true,
   env: [0, 1, 2, 3].map(() => ({ ref: null, refUrl: '' })),
@@ -6895,7 +6930,7 @@ function iconButton(name, title, onclick) {
 
 function renderPanel() {
   const marks = S.brushes.map(b => ({ brush: b.id, color: b.color, type: b.type, hasRef: !!b.ref, note: b.note, cover: b.cover }));
-  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.tab === 'upscale' ? buildUpscalePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora, layers: Layers.list, blendLora: S.blendLora, light: Light }) : { passes: [], problems: [] };
+  const { passes, problems } = S.tab === 'sheet' ? buildSheetPasses() : S.tab === 'rotate' ? buildRotatePasses() : S.tab === 'swap' ? buildSwapPasses() : S.tab === 'upscale' ? buildUpscalePasses() : S.base ? buildPasses({ marks, expanded: needsOutpaint(), scene: S.scene, envCount: S.env.filter(s => s.ref).length, expandLora: S.expandLora, layers: Layers.list, blendLora: S.blendLora, light: Light, model: S.model }) : { passes: [], problems: [] };
 
   document.querySelectorAll('.tile').forEach(t => {
     t.querySelector('.bang').hidden = !problems.some(p => p.brush === Number(t.dataset.id));
@@ -6973,6 +7008,12 @@ function renderPanel() {
       S.env.filter(s => s.ref).forEach((slot, n) => {
         slots.append(slotFigure(`image_${n + 2}`, 'Môi trường', cv => paintRefThumb(cv, slot.ref)));
       });
+    } else if (pass.model === 'flux3') {
+      slots.append(slotFigure('ref_image_0', 'Cả shot, mỗi cọ là một khung <obj_N> theo thứ tự cọ', cv => paintShotThumb(cv, pass.brushes)));
+      for (const s of pass.slots) {
+        const b = brushOf(s.brush);
+        slots.append(slotFigure(`ref_image_${s.n}`, TYPES[b.type].label, cv => paintRefThumb(cv, b.ref)));
+      }
     } else {
       slots.append(slotFigure('image_1', 'Cả shot, model thấy viền mỏng thay cho nét tô', cv => paintShotThumb(cv, pass.brushes)));
       for (const s of pass.slots) {
@@ -9222,6 +9263,13 @@ function buildEnvBox() {
     $('envLora').querySelectorAll('.viewchip').forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
     renderPanel();
   });
+  // Prompt sửa tay theo model cũ (viền màu hay khung <obj_N>) không hợp model mới, nên bỏ.
+  $('model').addEventListener('change', e => {
+    S.model = e.target.value;
+    S.overrides = { ...S.overrides, edit: null };
+    setStatus(S.model === 'flux3' ? 'Flux 3 Klein dùng cho lượt Sửa bằng cọ. Kéo rộng, Ghép và Ánh sáng vẫn chạy Qwen 2.1.' : 'Mọi lượt chạy Qwen 2.1.');
+    renderPanel();
+  });
 }
 function buildSlotBoxes(containerId, slots, take, sync) {
   $(containerId).innerHTML = slots.map(slot => `
@@ -11254,6 +11302,64 @@ function buildInpaintPrompt({ shot, outlined, mask, refs, text, seed }) {
   return graph;
 }
 
+// ---------- Flux 3 Klein: đúng các node và thông số của template image_flux3_klein_distilled_image_edit (Comfy-Org) ----------
+// Bỏ các node chỉ để xem (ImageCompare, PreviewAny). Khung là các cọ, prompt nâng cấp bằng Qwen3.5 9B như mặc định của template.
+const FLUX3 = {
+  unet: 'flux3-image-klein-int8-convrot.safetensors',
+  clip: 'qwen3vl_4b_int8_convrot.safetensors',
+  vae: 'flux2-vae.safetensors',
+  upsampler: 'qwen3.5_9b_flux3_prompt_upsampler_w4a8.safetensors',
+};
+// Nguyên văn system prompt trong template, kể cả các ký tự \n viết tay.
+const FLUX3_UPSAMPLER_SYSTEM = "You are the prompt upsampler of an image-editing model. You see the reference image(s), attached in order (the first image, the second image, ...), and the user's short request. Expand it into ONE detailed, self-contained instruction: the caption the editing model receives together with the same images. Output only the instruction as one continuous English prose block, with no greetings, explanations, Markdown, JSON, coordinates, ids or angle-bracket tokens. Read a vague or conversational request as the most plausible edit of the supplied images.\\n\\nPick the voice by task shape. When one reference stays and gets bounded changes, write an imperative editing instruction on it (\\\"Remove the ...\\\", \\\"Change the ... to ...\\\", \\\"Zoom in on ...\\\"); a whole-image transformation opens with its scope (\\\"Convert the entire image into ...\\\", \\\"Apply a ... filter over the entire scene\\\", \\\"Horizontally flip the entire image so that ...\\\", \\\"Shift the camera viewpoint to ...\\\", then where the major elements should now be). When the references are drawn into a newly composed frame (combining subjects, a new scene, a garment, object or style donor), write a generation request (\\\"Create a photograph of ...\\\", \\\"Create an anime-style illustration of ...\\\", \\\"Generate a new image featuring ...\\\") that says what to take from each image, by ordinal, and what is newly generated.\\n\\nKeep every explicit edit, constraint, count, position, style cue and piece of wording, and decide what is left open as one concrete plan. Ground everything in what is actually visible: identify each referent unambiguously by its real appearance, never mention content that is not there, and use every image the user attached. State every end state concretely (which color, how large, which pose, which material) and give new content enough appearance to be generated. Cover the knock-on effects of the change (shadows, reflections, occlusion, perspective, scale, lighting) and say what fills a removed region. A zoom-in names what stays in frame and which neighbors are cropped out; an outpainting continues the scene in the same medium. Describe the change, not the whole scene, and close an editing instruction with one compact clause naming what stays unchanged; transferred people keep their identity, face and accessories unless asked otherwise. Transcribe on-image text verbatim in its original language inside double quotes, with line breaks as \\\\n, and match the original font, size and color when replacing it. Name recognizable public figures, brands and landmarks you can see. Directions are frame-relative; use no evaluative or quality words. Typical length is 50 to 150 words.\\n\\nOutput only the instruction.";
+// Khung của từng cọ (theo thứ tự <obj_N>) tính trên ảnh gửi lên, cỡ điểm ảnh của canvas Create Bounding Boxes.
+function flux3Boxes(step, plan) {
+  const kx = plan.outW / plan.w, ky = plan.outH / plan.h;
+  return step.marks.map((m, i) => {
+    const b = maskBounds(m.mask);
+    return { x: Math.round((b.x - plan.x) * kx), y: Math.round((b.y - plan.y) * ky), width: Math.max(1, Math.round(b.w * kx)), height: Math.max(1, Math.round(b.h * ky)), metadata: { type: 'obj', text: '', desc: step.descs[i] || '', palette: [] } };
+  });
+}
+function buildFlux3EditGraph({ shot, refs, text, boxes, w, h, seed }) {
+  const graph = {
+    1: { class_type: 'UNETLoader', inputs: { unet_name: FLUX3.unet, weight_dtype: 'default' } },
+    2: { class_type: 'CLIPLoader', inputs: { clip_name: FLUX3.clip, type: 'flux3', device: 'default' } },
+    3: { class_type: 'VAELoader', inputs: { vae_name: FLUX3.vae } },
+    11: { class_type: 'LoadImage', inputs: { image: shot } },
+    // Danh sách khung phải bọc trong __value__, vì ComfyUI hiểu mảng trần là dây nối.
+    33: { class_type: 'CreateBoundingBoxes', inputs: { background: ['11', 0], width: w, height: h, editor_state: { __value__: boxes } } },
+    49: { class_type: 'Flux3LayoutPrompt', inputs: { prompt: text, element: ['33', 2] } },
+    46: { class_type: 'CLIPLoader', inputs: { clip_name: FLUX3.upsampler, type: 'flux3', device: 'default' } },
+    48: { class_type: 'PrimitiveStringMultiline', inputs: { value: FLUX3_UPSAMPLER_SYSTEM } },
+    50: { class_type: 'BatchImagesNode', inputs: { 'images.image0': ['11', 0] } },
+    47: { class_type: 'TextGenerate', inputs: { clip: ['46', 0], prompt: ['49', 0], image: ['50', 0], system_prompt: ['48', 0], max_length: 3584, sampling_mode: 'on', 'sampling_mode.temperature': 1, 'sampling_mode.top_k': 1, 'sampling_mode.top_p': 0.95, 'sampling_mode.min_p': 0, 'sampling_mode.repetition_penalty': 1.05, 'sampling_mode.seed': 0, 'sampling_mode.presence_penalty': 0, thinking: false, use_default_template: true, mtp: 'off' } },
+    51: { class_type: 'ComfySwitchNode', inputs: { switch: false, on_false: ['47', 0], on_true: ['49', 0] } },
+    4: { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: ['51', 0] } },
+    32: { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['4', 0] } },
+    17: { class_type: 'ReferenceMultiLatent', inputs: { positive: ['4', 0], negative: ['32', 0], vae: ['3', 0], resolution: 'resize', 'resolution.megapixels': 1, 'images.image0': ['11', 0] } },
+    7: { class_type: 'KSampler', inputs: { model: ['1', 0], positive: ['17', 0], negative: ['17', 1], latent_image: ['17', 2], seed, steps: 16, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
+    8: { class_type: 'VAEDecode', inputs: { samples: ['7', 0], vae: ['3', 0] } },
+    9: { class_type: 'SaveImage', inputs: { filename_prefix: 'Concept_edit_flux3', images: ['8', 0] } },
+  };
+  // Ảnh mẫu của cọ là <ref_image_1>, <ref_image_2>... : thêm vào cùng chỗ với ảnh gốc ở cả hai node, theo thứ tự.
+  refs.forEach((name, i) => {
+    const id = String(60 + i);
+    graph[id] = { class_type: 'LoadImage', inputs: { image: name } };
+    graph[17].inputs[`images.image${i + 1}`] = [id, 0];
+    graph[50].inputs[`images.image${i + 1}`] = [id, 0];
+  });
+  return graph;
+}
+const comboList = spec => (spec ? (Array.isArray(spec[0]) ? spec[0] : (spec[1] && spec[1].options) || []) : []);
+async function requireFlux3() {
+  const info = await fetch('/api/object_info').then(r => (r.ok ? r.json() : {}), () => ({}));
+  const nodesMissing = ['Flux3LayoutPrompt', 'CreateBoundingBoxes', 'ReferenceMultiLatent', 'TextGenerate', 'ComfySwitchNode', 'BatchImagesNode'].filter(n => !info[n]);
+  if (nodesMissing.length) throw new Error(`ComfyUI trên máy này chưa có node của Flux 3 Klein (${nodesMissing.join(', ')}), cần cập nhật ComfyUI.`);
+  const have = [...comboList(info.UNETLoader && info.UNETLoader.input.required.unet_name), ...comboList(info.CLIPLoader && info.CLIPLoader.input.required.clip_name), ...comboList(info.VAELoader && info.VAELoader.input.required.vae_name)];
+  const missing = Object.values(FLUX3).filter(f => !have.includes(f));
+  if (missing.length) throw new Error(`Chưa có model Flux 3 Klein: ${missing.join(', ')}. Bấm mục 1 của stoneV_CloudSyncHub (cần token Hugging Face cho repo của BFL), tải xong Gen lại.`);
+}
+
 async function uploadCanvas(canvas, name) {
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
   const form = new FormData();
@@ -11417,7 +11523,7 @@ function editStep(pass) {
   const area = newCanvas(W(), H());
   for (const m of marks) area.getContext('2d').drawImage(m.mask, 0, 0);
   const refMp = Math.min(1, EDIT_REF_MP / pass.slots.length);
-  return { name: pass.name, text: promptFor(pass), marks, area, refs: pass.slots.map(s => fitReference(brushOf(s.brush).ref, refMp)) };
+  return { name: pass.name, text: promptFor(pass), marks, area, refs: pass.slots.map(s => fitReference(brushOf(s.brush).ref, refMp)), model: pass.model, descs: pass.descs };
 }
 async function uploadAll(canvases, prefix) {
   const names = [];
@@ -11563,11 +11669,16 @@ async function generate() {
       startPass(passLabel(total - (relight ? 1 : 0), step.name));
       const plan = planShot(snap.w, snap.h, megapixels);
       const clean = cropCanvas(current, plan);
+      if (step.model === 'flux3') await requireFlux3();
       const shot = await uploadCanvas(clean, `${stamp}_shot.png`);
-      const mask = await uploadCanvas(modelMask(step.area, plan), `${stamp}_mask.png`);
-      const outlined = await uploadCanvas(guideImage(clean, step.marks, plan), `${stamp}_outlined.png`);
       const refs = await uploadAll(step.refs, `${stamp}_ref`);
-      run.promptId = await queueGraph(buildInpaintPrompt({ shot, outlined, mask, refs, text: step.text, seed: randomSeed() }));
+      if (step.model === 'flux3') {
+        run.promptId = await queueGraph(buildFlux3EditGraph({ shot, refs, text: step.text, boxes: flux3Boxes(step, plan), w: plan.outW, h: plan.outH, seed: randomSeed() }));
+      } else {
+        const mask = await uploadCanvas(modelMask(step.area, plan), `${stamp}_mask.png`);
+        const outlined = await uploadCanvas(guideImage(clean, step.marks, plan), `${stamp}_outlined.png`);
+        run.promptId = await queueGraph(buildInpaintPrompt({ shot, outlined, mask, refs, text: step.text, seed: randomSeed() }));
+      }
       advanceJob('queue');
       renderJob();
       const { img } = await loadOutput(await waitForImage(run.promptId));
