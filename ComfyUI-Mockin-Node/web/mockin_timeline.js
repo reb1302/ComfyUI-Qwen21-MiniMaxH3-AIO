@@ -724,43 +724,4 @@ app.registerExtension({
             return r;
         };
     },
-    async setup() {
-        function fixGraphModelPaths() {
-            if (!app.graph || !app.graph._nodes) return;
-            let changed = false;
-            for (const n of app.graph._nodes) {
-                if (!n.widgets) continue;
-                for (const w of n.widgets) {
-                    if (typeof w.value === "string" && (w.value.startsWith("Downloads/") || w.value.startsWith("minimax/") || w.value.startsWith("Downloads\\") || w.value.startsWith("minimax\\"))) {
-                        let cleaned = w.value
-                            .replace(/^Downloads[\/\\]/, "")
-                            .replace(/^minimax[\/\\]/, "");
-                        if (cleaned !== w.value) {
-                            w.value = cleaned;
-                            if (Array.isArray(n.widgets_values)) {
-                                const idx = n.widgets.indexOf(w);
-                                if (idx >= 0 && idx < n.widgets_values.length) {
-                                    n.widgets_values[idx] = cleaned;
-                                }
-                            }
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            if (changed) {
-                app.graph.setDirtyCanvas(true, true);
-            }
-        }
-        setTimeout(fixGraphModelPaths, 500);
-        setTimeout(fixGraphModelPaths, 2000);
-        const origLoadGraphData = app.loadGraphData;
-        if (origLoadGraphData) {
-            app.loadGraphData = async function () {
-                const res = await origLoadGraphData.apply(this, arguments);
-                setTimeout(fixGraphModelPaths, 200);
-                return res;
-            };
-        }
-    },
 });

@@ -52,6 +52,7 @@ function normalizeR2Params(apiBase, code, roomId) {
 
 function sanitizeNodeWidgets(node) {
     if (!node?.widgets) return;
+    if (!NODE_KIND_MAP[node?.comfyClass || node?.type]) return;
     const getW = (name) => node.widgets.find((w) => w.name === name);
     const wBase = getW("api_base");
     const wCode = getW("room_code");
@@ -534,8 +535,20 @@ async function downloadSingleFileViaTunnel(apiBase, code, roomId, remotePath, fi
     const norm = normalizeR2Params(apiBase, code, roomId);
     if (onStatus) onStatus(`Downloading ${fileName || remotePath}...`);
     try {
-        const streamUrl = `/mockin/r2/stream_file?api_base=${encodeURIComponent(norm.apiBase)}&code=${encodeURIComponent(norm.code)}&room_id=${encodeURIComponent(norm.roomId)}&path=${encodeURIComponent(remotePath)}`;
-        const resp = await api.fetchApi(streamUrl);
+        let resp = await api.fetchApi("/mockin/r2/stream_file", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                api_base: norm.apiBase,
+                code: norm.code,
+                room_id: norm.roomId,
+                path: remotePath,
+            }),
+        });
+        if (!resp.ok) {
+            const streamUrl = `/mockin/r2/stream_file?api_base=${encodeURIComponent(norm.apiBase)}&code=${encodeURIComponent(norm.code)}&room_id=${encodeURIComponent(norm.roomId)}&path=${encodeURIComponent(remotePath)}`;
+            resp = await api.fetchApi(streamUrl);
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const blob = await resp.blob();
         if (ACTIVE_PROJECT.mode === "device" && ACTIVE_PROJECT.dirHandle) {
@@ -569,8 +582,21 @@ async function downloadFolderBundleViaTunnel(apiBase, code, roomId, remotePath, 
     const folderLabel = cleanPath ? cleanPath.split("/").pop() : norm.roomId;
     if (onStatus) onStatus(`Bundling '${folderLabel}' on H200 (16x parallel)...`);
     try {
-        const zipUrl = `/mockin/r2/stream_folder_zip?api_base=${encodeURIComponent(norm.apiBase)}&code=${encodeURIComponent(norm.code)}&room_id=${encodeURIComponent(norm.roomId)}&path=${encodeURIComponent(cleanPath)}&include_root=1`;
-        const resp = await api.fetchApi(zipUrl);
+        let resp = await api.fetchApi("/mockin/r2/stream_folder_zip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                api_base: norm.apiBase,
+                code: norm.code,
+                room_id: norm.roomId,
+                path: cleanPath,
+                include_root: "1",
+            }),
+        });
+        if (!resp.ok) {
+            const zipUrl = `/mockin/r2/stream_folder_zip?api_base=${encodeURIComponent(norm.apiBase)}&code=${encodeURIComponent(norm.code)}&room_id=${encodeURIComponent(norm.roomId)}&path=${encodeURIComponent(cleanPath)}&include_root=1`;
+            resp = await api.fetchApi(zipUrl);
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const fileCount = parseInt(resp.headers.get("X-File-Count") || "1", 10);
 
@@ -2487,16 +2513,24 @@ function attachMockinNodeUI(node) {
 app.registerExtension({
     name: "Mockin.R2CloudDrive",
     async nodeCreated(node) {
-        attachMockinNodeUI(node);
+        try {
+            attachMockinNodeUI(node);
+        } catch (err) {
+            console.warn("[Mockin.R2CloudDrive] nodeCreated error:", err);
+        }
     },
     async loadedGraphNode(node) {
-        const kind = NODE_KIND_MAP[node?.comfyClass || node?.type];
-        if (!kind) return;
-        attachMockinNodeUI(node);
-        sanitizeNodeWidgets(node);
-        hideAllNativeWidgets(node);
-        if (kind === "main" && (node.size?.[1] > 720 || node.size?.[1] < 495)) {
-            node.setSize([Math.max(640, node.size?.[0] || 640), 505]);
+        try {
+            const kind = NODE_KIND_MAP[node?.comfyClass || node?.type];
+            if (!kind) return;
+            attachMockinNodeUI(node);
+            sanitizeNodeWidgets(node);
+            hideAllNativeWidgets(node);
+            if (kind === "main" && (node.size?.[1] > 720 || node.size?.[1] < 495)) {
+                node.setSize([Math.max(640, node.size?.[0] || 640), 505]);
+            }
+        } catch (err) {
+            console.warn("[Mockin.R2CloudDrive] loadedGraphNode error:", err);
         }
     },
 });

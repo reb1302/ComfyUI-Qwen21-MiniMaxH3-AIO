@@ -1019,13 +1019,20 @@ try:
             return web.json_response(res)
 
         @routes.get("/mockin/r2/stream_file")
+        @routes.post("/mockin/r2/stream_file")
         async def get_r2_stream_file_route(request):
             cfg = load_r2_config()
-            api_base = request.query.get("api_base") or cfg["r2_api_base"]
-            code = request.query.get("code") or cfg["r2_code"]
-            room_id = (request.query.get("room_id") or cfg["default_room_id"]).strip()
-            remote_path = (request.query.get("path") or "").strip().lstrip("/")
-            inline = request.query.get("inline", "0") == "1"
+            body = {}
+            if request.method == "POST":
+                try:
+                    body = await request.json()
+                except Exception:
+                    body = {}
+            api_base = body.get("api_base") or request.query.get("api_base") or cfg["r2_api_base"]
+            code = body.get("code") or request.query.get("code") or cfg["r2_code"]
+            room_id = str(body.get("room_id") or request.query.get("room_id") or cfg["default_room_id"]).strip()
+            remote_path = str(body.get("path") or body.get("remote_path") or request.query.get("path") or "").strip().lstrip("/")
+            inline = str(body.get("inline") or request.query.get("inline", "0")) == "1"
             if not remote_path:
                 return web.json_response({"ok": False, "error": "Missing path"}, status=400)
             try:
@@ -1047,13 +1054,20 @@ try:
                 return web.json_response({"ok": False, "error": str(e)}, status=400)
 
         @routes.get("/mockin/r2/stream_folder_zip")
+        @routes.post("/mockin/r2/stream_folder_zip")
         async def get_r2_stream_folder_zip_route(request):
             cfg = load_r2_config()
-            api_base = request.query.get("api_base") or cfg["r2_api_base"]
-            code = request.query.get("code") or cfg["r2_code"]
-            room_id = (request.query.get("room_id") or cfg["default_room_id"]).strip()
-            remote_path = (request.query.get("path") or request.query.get("remote_path") or "").strip().strip("/")
-            include_root = request.query.get("include_root", "1") != "0"
+            body = {}
+            if request.method == "POST":
+                try:
+                    body = await request.json()
+                except Exception:
+                    body = {}
+            api_base = body.get("api_base") or request.query.get("api_base") or cfg["r2_api_base"]
+            code = body.get("code") or request.query.get("code") or cfg["r2_code"]
+            room_id = str(body.get("room_id") or request.query.get("room_id") or cfg["default_room_id"]).strip()
+            remote_path = str(body.get("path") or body.get("remote_path") or request.query.get("path") or request.query.get("remote_path") or "").strip().strip("/")
+            include_root = str(body.get("include_root", request.query.get("include_root", "1"))) != "0"
             try:
                 zip_bytes, zip_fname, packed_count = await asyncio.to_thread(
                     r2_build_folder_zip_bytes,

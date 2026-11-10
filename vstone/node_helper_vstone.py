@@ -782,16 +782,43 @@ _MOCKIN_DEFAULT_CFG_DICT = {
 }
 
 
-def _mount_mockin_routes_and_web_live(web_dir: str) -> None:
-    """Mount /mockin/..., /api/mockin/..., and /extensions/ComfyUI-Mockin-Node live onto aiohttp app router."""
+def _mount_mockin_routes_and_web_live(web_dir: str = "") -> None:
+    """Mount /mockin/..., /api/mockin/..., and all /extensions/* live onto aiohttp app router, keeping PlainResource('/') first and StaticResource('/') last."""
     try:
         from aiohttp import web
         import nodes
         import server
-        if os.path.isdir(web_dir):
+        if web_dir and os.path.isdir(web_dir):
             nodes.EXTENSION_WEB_DIRS["ComfyUI-Mockin-Node"] = os.path.abspath(web_dir)
+
+        # Clean up any Nukomfy Suite web extension or send_sync wrapper on H200 so /extensions never 404s
+        for _ext_k in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).keys()):
+            if "nukomfy" in _ext_k.lower():
+                nodes.EXTENSION_WEB_DIRS.pop(_ext_k, None)
+
         ps = getattr(server, "PromptServer", None)
         ps_inst = getattr(ps, "instance", None) if ps else None
+        if ps_inst is not None:
+            for _mname, _mobj in list(sys.modules.items()):
+                if "nukomfy" in _mname.lower():
+                    _orig_ss = getattr(_mobj, "_original_send_sync", None)
+                    if callable(_orig_ss):
+                        ps_inst.send_sync = _orig_ss
+                    _pstop = getattr(_mobj, "_polling_stop", None)
+                    if _pstop is not None and hasattr(_pstop, "set"):
+                        try:
+                            _pstop.set()
+                        except Exception:
+                            pass
+        try:
+            _c_root = _get_comfy_root()
+            if _c_root:
+                _nk_dir = os.path.join(_c_root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
+                if os.path.isdir(_nk_dir):
+                    shutil.rmtree(_nk_dir, ignore_errors=True)
+        except Exception:
+            pass
+
         app = getattr(ps_inst, "app", None) if ps_inst else None
         routes = getattr(ps_inst, "routes", None) if ps_inst else None
         if app is None or routes is None:
@@ -801,44 +828,88 @@ def _mount_mockin_routes_and_web_live(web_dir: str) -> None:
         try:
             app._frozen = False
             app.router._frozen = False
-            root_res = [r for r in app.router._resources if getattr(r, "canonical", "") == "/"]
-            for r in root_res:
-                app.router._resources.remove(r)
 
             route_map = {}
+            res_map = {}
             for rt in app.router.routes():
                 canon = getattr(rt.resource, "canonical", "")
                 if canon:
                     route_map[(rt.method, canon)] = rt
+                    res_map[canon] = rt.resource
 
-            to_add = []
-            for r in routes:
+            for r in list(routes):
                 if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
                     if (r.method, r.path) in route_map:
                         try:
                             route_map[(r.method, r.path)]._handler = r.handler
                         except Exception:
                             pass
+                    elif r.path in res_map and hasattr(res_map[r.path], "add_route"):
+                        try:
+                            new_rt = res_map[r.path].add_route(r.method, r.handler)
+                            route_map[(r.method, r.path)] = new_rt
+                        except Exception:
+                            pass
                     else:
-                        to_add.append(r)
+                        try:
+                            new_rts = app.add_routes([r])
+                            if new_rts:
+                                route_map[(r.method, r.path)] = new_rts[0]
+                                res_map[r.path] = new_rts[0].resource
+                        except Exception:
+                            pass
                     api_p = "/api" + r.path
                     if (r.method, api_p) in route_map:
                         try:
                             route_map[(r.method, api_p)]._handler = r.handler
                         except Exception:
                             pass
+                    elif api_p in res_map and hasattr(res_map[api_p], "add_route"):
+                        try:
+                            new_api_rt = res_map[api_p].add_route(r.method, r.handler)
+                            route_map[(r.method, api_p)] = new_api_rt
+                        except Exception:
+                            pass
                     else:
-                        to_add.append(web.RouteDef(r.method, api_p, r.handler, r.kwargs.copy()))
-            if to_add:
-                app.add_routes(to_add)
+                        try:
+                            api_def = web.RouteDef(r.method, api_p, r.handler, r.kwargs.copy())
+                            new_api_rts = app.add_routes([api_def])
+                            if new_api_rts:
+                                route_map[(r.method, api_p)] = new_api_rts[0]
+                                res_map[api_p] = new_api_rts[0].resource
+                        except Exception:
+                            pass
 
-            canonicals = {getattr(r, "canonical", "") for r in app.router.resources()}
-            if "/extensions/ComfyUI-Mockin-Node" not in canonicals and os.path.isdir(web_dir):
-                app.add_routes([web.static("/extensions/ComfyUI-Mockin-Node", os.path.abspath(web_dir))])
-
-            for r in root_res:
-                app.router._resources.append(r)
+            # Ensure EVERY directory in nodes.EXTENSION_WEB_DIRS has a mounted StaticResource on app.router so GET /extensions never returns a 404 module!
+            canonicals = {str(getattr(r, "canonical", "")).rstrip("/") for r in app.router.resources()}
+            for ext_name, ext_dir in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).items()):
+                if not ext_dir or not os.path.isdir(ext_dir) or "nukomfy" in ext_name.lower():
+                    nodes.EXTENSION_WEB_DIRS.pop(ext_name, None)
+                    continue
+                ext_prefix = f"/extensions/{ext_name}".rstrip("/")
+                if ext_prefix not in canonicals:
+                    try:
+                        app.add_routes([web.static(f"/extensions/{ext_name}", os.path.abspath(ext_dir), follow_symlinks=True)])
+                        canonicals.add(ext_prefix)
+                    except Exception:
+                        pass
         finally:
+            try:
+                exact_root_res = [
+                    r for r in app.router._resources
+                    if r.__class__.__name__ == "PlainResource" and str(getattr(r, "canonical", "")) == "/"
+                ]
+                catchall_static_root_res = [
+                    r for r in app.router._resources
+                    if r.__class__.__name__ == "StaticResource" and str(getattr(r, "canonical", "")).rstrip("/") == ""
+                ]
+                normal_res = [
+                    r for r in app.router._resources
+                    if r not in exact_root_res and r not in catchall_static_root_res
+                ]
+                app.router._resources[:] = exact_root_res + normal_res + catchall_static_root_res
+            except Exception:
+                pass
             app._frozen = was_frozen
             app.router._frozen = was_router_frozen
     except Exception as e:
@@ -1344,14 +1415,6 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         except Exception as _mk_err:
             logs.append(f"Mockin Node sync note: {_mk_err}")
 
-        # 3a-2. Đồng bộ & Nạp nóng ComfyUI-Nukomfy-Suite (Foundry Nuke <-> ComfyUI Bridge + LTX-2.5 Bake/Unbake)
-        try:
-            nukomfy_msg = _ensure_nukomfy_suite_custom_node(comfy_root, commit_ref=commit_ref)
-            if nukomfy_msg:
-                logs.append(nukomfy_msg)
-        except Exception as _nk_err:
-            logs.append(f"Nukomfy Suite sync note: {_nk_err}")
-
         # 3b. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI TRƯỚC khi tải file nặng
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
         try:
@@ -1438,8 +1501,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 16: ComfyUI-Mockin-Node single-stream folder bundle + 1:1 unpack + instant Laptop Bridge check
-VSTONE_RUNTIME_PATCH_VER = 16
+# 17: Restore aiohttp router PlainResource('/') & StaticResource('/') ordering + mount all EXTENSION_WEB_DIRS live
+VSTONE_RUNTIME_PATCH_VER = 17
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -1708,8 +1771,8 @@ def _recover_comfy_queue_and_worker() -> list[str]:
             new_wt.start()
             notes.append("Respawned dead prompt_worker thread")
         elif worker_thread is not None and q is not None:
-            # One-time recovery on v5 upgrade if an old job was stuck in currently_running
-            if getattr(sys, "_vstone_queue_recovery_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+            # One-time recovery on initial load only (never interrupt active jobs on patch version bumps)
+            if getattr(sys, "_vstone_queue_recovery_ver", 0) < 1:
                 setattr(sys, "_vstone_queue_recovery_ver", VSTONE_RUNTIME_PATCH_VER)
                 with q.mutex:
                     running_count = len(q.currently_running)
@@ -2475,9 +2538,9 @@ def apply_comfy_runtime_fixes() -> str:
     except Exception as e:
         print(f"[VStone Runtime] Warning hooking SAM3: {e}")
 
-    # 4. Auto-install & hot-load Portable Workflow Pack custom nodes in background (once per patch version)
+    # 4. Auto-install & hot-load Portable Workflow Pack custom nodes in background (once per session, not on every patch bump)
     try:
-        if getattr(sys, "_vstone_portable_pack_bg_ver", 0) < VSTONE_RUNTIME_PATCH_VER:
+        if getattr(sys, "_vstone_portable_pack_bg_ver", 0) < 1:
             if not any("_bg_portable_pack_installer" in t.name for t in threading.enumerate()):
                 setattr(sys, "_vstone_portable_pack_bg_ver", VSTONE_RUNTIME_PATCH_VER)
 
@@ -2508,23 +2571,10 @@ def apply_comfy_runtime_fixes() -> str:
             mk_msg = _ensure_mockin_custom_node()
             if mk_msg:
                 restored.append(mk_msg)
+        else:
+            _mount_mockin_routes_and_web_live("")
     except Exception as _mk_e:
         print(f"[VStone Runtime] Mockin sync note: {_mk_e}")
-
-    # 4b. Auto-sync & hot-load ComfyUI-Nukomfy-Suite (Foundry Nuke <-> ComfyUI Bridge + LTX-2.5 Bake/Unbake)
-    try:
-        import nodes as _n_chk2
-        if (
-            getattr(sys, "_vstone_nukomfy_sync_ver", 0) < VSTONE_RUNTIME_PATCH_VER
-            or "NukomfyLTX25BakeIn" not in getattr(_n_chk2, "NODE_CLASS_MAPPINGS", {})
-            or "NukomfyRead" not in getattr(_n_chk2, "NODE_CLASS_MAPPINGS", {})
-        ):
-            setattr(sys, "_vstone_nukomfy_sync_ver", VSTONE_RUNTIME_PATCH_VER)
-            nk_msg = _ensure_nukomfy_suite_custom_node()
-            if nk_msg:
-                restored.append(nk_msg)
-    except Exception as _nk_e:
-        print(f"[VStone Runtime] Nukomfy sync note: {_nk_e}")
 
     # 5. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()
@@ -2887,10 +2937,16 @@ def _hot_load_custom_node_pack(pack_dir: str, module_parent: str = "custom_nodes
         if inspect.isawaitable(res):
             loop = asyncio.new_event_loop()
             try:
-                return bool(loop.run_until_complete(res))
+                ok_load = bool(loop.run_until_complete(res))
             finally:
                 loop.close()
-        return bool(res)
+        else:
+            ok_load = bool(res)
+        try:
+            _mount_mockin_routes_and_web_live("")
+        except Exception:
+            pass
+        return ok_load
     except Exception as e:
         print(f"[VStone] Hot-load pack {os.path.basename(pack_dir)} warning: {e}", flush=True)
         return False
