@@ -8213,7 +8213,10 @@ async function mogeGeometry() {
   if (!res || !res.ok) throw new Error('Không hỏi được ComfyUI. Xem ComfyUI còn chạy không, rồi bấm Thử lại.');
   const info = await res.json();
   if (!info.LoadMoGeModel) throw new Error('ComfyUI trên máy này chưa có node MoGe, cần cập nhật ComfyUI (bản 0.43 đã có).');
-  if (!info.LoadMoGeModel.input.required.model_name[0].includes(MOGE_MODEL)) {
+  // LoadMoGeModel là node V3: object_info gửi ["COMBO", {options: [...]}], không phải [[...], {}] như node cũ.
+  const spec = info.LoadMoGeModel.input.required.model_name;
+  const models = Array.isArray(spec[0]) ? spec[0] : (spec[1] && spec[1].options) || [];
+  if (!models.includes(MOGE_MODEL)) {
     throw new Error(`Chưa có model ${MOGE_MODEL} trong models/geometry_estimation. Bấm mục 1 của node stoneV_CloudSyncHub: model của trang này được tải trước, không phải chờ model lớn. Tải xong bấm Thử lại.`);
   }
   const name = await uploadCanvas(fitReference(S.base, 2), `${Date.now().toString(36)}_moge.png`);
