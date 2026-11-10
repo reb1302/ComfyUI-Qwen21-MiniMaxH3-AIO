@@ -8250,8 +8250,9 @@ async function requireBlendLora() {
 // Normal map theo template utility_moge3_geometry_estimation của ComfyUI. Qwen chạy không LoRA Consistency: LoRA đó ép
 // kết quả trùng ảnh dẫn hướng nên không vẽ thêm bóng đổ, còn tác giả đo đổi sáng không LoRA chỉ lệch trung vị 0.7 px.
 const MOGE_MODEL = 'moge_3_vitl_fp16.safetensors';
-// Như IC-Light chọn hướng đèn: sampler bắt đầu từ ảnh đã tính sáng (VAE encode) thay vì latent trống, denoise 0.9 như lowres_denoise của IC-Light.
-const RELIGHT_DENOISE = 0.9;
+// Như IC-Light chọn hướng đèn: sampler bắt đầu từ ảnh đã tính sáng (VAE encode) thay vì latent trống.
+// Với 25 bước, 0.93-0.96 cùng ra lịch 26 bước, bắt đầu từ khoảng 2% ảnh (0.9 là 4%); từ 0.97 là như latent trống.
+const RELIGHT_DENOISE = 0.94;
 const LIGHT_MAX = 3;
 const LIGHT_PREVIEW_PX = 1600;
 const LIGHT_DEFAULT = { color: '#FFB46B', power: 1.2, soft: 0.4, height: 0.5, range: 1.2 };
