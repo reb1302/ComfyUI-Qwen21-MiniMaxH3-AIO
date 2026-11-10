@@ -2,6 +2,7 @@ import asyncio
 import base64
 import concurrent.futures
 import http.client
+import io
 import json
 import mimetypes
 import os
@@ -12,6 +13,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 from aiohttp import web
 
 try:
@@ -548,6 +550,294 @@ def r2_sync_download(
     }
 
 
+def r2_build_folder_zip_bytes(
+    room_id: str,
+    remote_path: str = "",
+    api_base: str = DEFAULT_R2_API_BASE,
+    code: str = DEFAULT_R2_CODE,
+    include_root: bool = True,
+) -> tuple:
+    room_id = (room_id or DEFAULT_ROOM_ID).strip()
+    remote_clean = (remote_path or "").strip().strip("/")
+    manifest_res = r2_api_request(
+        "GET",
+        f"/{room_id}/fs/manifest",
+        api_base=api_base,
+        code=code,
+        query={"path": remote_clean},
+    )
+    if not manifest_res["ok"] or not isinstance(manifest_res["data"], dict):
+        raise RuntimeError(manifest_res.get("error") or "Failed to fetch folder manifest")
+
+    manifest_files = manifest_res["data"].get("files") or []
+    cache_root = os.path.join(COMFY_ROOT, "temp", "mockin_r2_cache", room_id)
+    os.makedirs(cache_root, exist_ok=True)
+
+    to_download = []
+    cached_items = []
+    folder_base = os.path.basename(remote_clean) if remote_clean else room_id
+
+    for f_item in manifest_files:
+        f_remote = (f_item.get("path") or "").strip().lstrip("/")
+        if not f_remote:
+            continue
+        f_rel = (f_item.get("relative_path") or "").strip().lstrip("/")
+        if not f_rel:
+            if remote_clean and f_remote.startswith(remote_clean + "/"):
+                f_rel = f_remote[len(remote_clean) + 1 :]
+            else:
+                f_rel = f_item.get("name") or os.path.basename(f_remote)
+
+        arcname = f"{folder_base}/{f_rel}" if (include_root and remote_clean and f_rel != os.path.basename(remote_clean)) else f_rel
+        local_cache_path = os.path.join(cache_root, f_remote.replace("/", os.sep))
+        expected_size = int(f_item.get("size", 0) or 0)
+        cached_items.append((arcname, local_cache_path, f_remote))
+
+        if os.path.exists(local_cache_path):
+            local_sz = os.path.getsize(local_cache_path)
+            if (expected_size > 0 and local_sz == expected_size) or (expected_size == 0 and local_sz > 0):
+                continue
+        to_download.append((f_remote, local_cache_path, f_item.get("direct_download_url", "")))
+
+    if to_download:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+            futs = [
+                pool.submit(
+                    r2_download_single_file,
+                    room_id,
+                    f_rem,
+                    dst_f,
+                    api_base,
+                    code,
+                    d_url,
+                )
+                for (f_rem, dst_f, d_url) in to_download
+            ]
+            for fut in concurrent.futures.as_completed(futs):
+                try:
+                    fut.result()
+                except Exception:
+                    pass
+
+    bio = io.BytesIO()
+    packed_count = 0
+    with zipfile.ZipFile(bio, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for arcname, local_cache_path, _ in cached_items:
+            if os.path.exists(local_cache_path):
+                zf.write(local_cache_path, arcname=arcname)
+                packed_count += 1
+
+    zip_fname = f"{folder_base or room_id}.zip"
+    return bio.getvalue(), zip_fname, packed_count
+
+
+def build_laptop_sync_agent_ps1_content(api_base: str = DEFAULT_R2_API_BASE, code: str = DEFAULT_R2_CODE) -> str:
+    ps_script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+$StateFile = Join-Path $env:USERPROFILE ".mockin_laptop_sync.json"
+$DefaultDir = Join-Path ([Environment]::GetFolderPath("Desktop")) "Mockin_Sync"
+if (-not (Test-Path $DefaultDir)) { New-Item -ItemType Directory -Path $DefaultDir -Force | Out-Null }
+$CurrentPath = $DefaultDir
+
+if (Test-Path $StateFile) {
+    try {
+        $st = Get-Content $StateFile -Raw | ConvertFrom-Json
+        if ($st.laptop_path -and (Test-Path $st.laptop_path)) { $CurrentPath = $st.laptop_path }
+    } catch {}
+}
+
+function Save-State($p) {
+    $script:CurrentPath = $p
+    if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
+    @{ laptop_path = $p; label = (Split-Path $p -Leaf) } | ConvertTo-Json | Set-Content $StateFile -Encoding UTF8
+}
+
+function Pick-Folder-Dialog($initial) {
+    $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dlg.Description = "Chon thu muc tren Laptop de Sync 1:1 voi ComfyUI Mockin R2"
+    $dlg.ShowNewFolderButton = $true
+    if ($initial -and (Test-Path $initial)) { $dlg.SelectedPath = $initial }
+    $form = New-Object System.Windows.Forms.Form
+    $form.TopMost = $true
+    $res = $dlg.ShowDialog($form)
+    $form.Dispose()
+    if ($res -eq [System.Windows.Forms.DialogResult]::OK -and $dlg.SelectedPath) {
+        Save-State $dlg.SelectedPath
+        return $dlg.SelectedPath
+    }
+    return $null
+}
+
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "  MOCKIN R2 LAPTOP 1:1 SYNC AGENT (Chay tren Laptop)" -ForegroundColor Cyan
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "Thu muc Sync hien tai: $CurrentPath" -ForegroundColor Green
+Write-Host "Dang mo bang chon thu muc tren Laptop (bam Cancel neu giu nguyen)..." -ForegroundColor Yellow
+$picked = Pick-Folder-Dialog $CurrentPath
+if ($picked) {
+    Write-Host "-> Da chon thu muc: $CurrentPath" -ForegroundColor Green
+}
+
+$listener = New-Object System.Net.HttpListener
+$listener.Prefixes.Add("http://127.0.0.1:18189/")
+try {
+    $listener.Start()
+    Write-Host "San sang! Quay lai trinh duyet ComfyUI va bam Sync / Set Project." -ForegroundColor Green
+} catch {
+    Write-Host "Cong 18189 dang chay san tren Laptop." -ForegroundColor Yellow
+    exit
+}
+
+while ($listener.IsListening) {
+    $ctx = $listener.GetContext()
+    $req = $ctx.Request
+    $resp = $ctx.Response
+    $resp.Headers.Add("Access-Control-Allow-Origin", "*")
+    $resp.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    $resp.Headers.Add("Access-Control-Allow-Headers", "*")
+    $resp.Headers.Add("Access-Control-Allow-Private-Network", "true")
+
+    if ($req.HttpMethod -eq "OPTIONS") {
+        $resp.StatusCode = 204
+        $resp.Close()
+        continue
+    }
+
+    $bodyObj = @{}
+    if ($req.HasEntityBody) {
+        $reader = New-Object System.IO.StreamReader($req.InputStream, [System.Text.Encoding]::UTF8)
+        $raw = $reader.ReadToEnd()
+        $reader.Close()
+        if ($raw) { try { $bodyObj = $raw | ConvertFrom-Json } catch {} }
+    }
+
+    $action = $req.Url.AbsolutePath.Trim("/")
+    if ($bodyObj.action) { $action = $bodyObj.action }
+    $out = @{ ok = $true; laptop_path = $CurrentPath; label = (Split-Path $CurrentPath -Leaf) }
+
+    try {
+        if ($action -eq "pick_folder") {
+            $p = Pick-Folder-Dialog $CurrentPath
+            if ($p) {
+                $out = @{ ok = $true; laptop_path = $CurrentPath; label = (Split-Path $CurrentPath -Leaf) }
+            } else {
+                $out = @{ ok = $false; cancelled = $true; laptop_path = $CurrentPath; label = (Split-Path $CurrentPath -Leaf) }
+            }
+        } elseif ($action -eq "set_folder") {
+            if ($bodyObj.laptop_path) { Save-State $bodyObj.laptop_path }
+            $out = @{ ok = $true; laptop_path = $CurrentPath; label = (Split-Path $CurrentPath -Leaf) }
+        } elseif ($action -eq "open_explorer") {
+            Start-Process explorer.exe -ArgumentList $CurrentPath
+            $out = @{ ok = $true; laptop_path = $CurrentPath; label = (Split-Path $CurrentPath -Leaf) }
+        } elseif ($action -eq "sync_pull") {
+            $apiBase = if ($bodyObj.api_base) { $bodyObj.api_base.TrimEnd("/") } else { "__DEFAULT_API_BASE__" }
+            $code = if ($bodyObj.code) { $bodyObj.code } else { "__DEFAULT_CODE__" }
+            $roomId = if ($bodyObj.room_id) { $bodyObj.room_id } else { "R-6ZZP" }
+            $remPath = if ($bodyObj.remote_path) { $bodyObj.remote_path.Trim("/") } else { "" }
+            $targetRoot = if ($bodyObj.laptop_path) { $bodyObj.laptop_path } else { $CurrentPath }
+            Save-State $targetRoot
+
+            Write-Host "[Sync] Dang tai '$remPath' (Room $roomId) -> $targetRoot ..." -ForegroundColor Cyan
+            $dlCount = 0
+            $skCount = 0
+            $unpackedViaZip = $false
+
+            if ($bodyObj.h200_zip_url -and $bodyObj.mode -ne "file") {
+                try {
+                    $tmpZip = Join-Path $env:TEMP ("mockin_sync_" + [guid]::NewGuid().ToString("N") + ".zip")
+                    Invoke-WebRequest -Uri $bodyObj.h200_zip_url -OutFile $tmpZip -UseBasicParsing -TimeoutSec 180
+                    $za = [System.IO.Compression.ZipFile]::OpenRead($tmpZip)
+                    foreach ($entry in $za.Entries) {
+                        if (-not $entry.Name) { continue }
+                        $rel = $entry.FullName -replace "/", "\"
+                        $destFile = Join-Path $targetRoot $rel
+                        $destDir = Split-Path $destFile -Parent
+                        if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                        if ($bodyObj.skip_existing -and (Test-Path $destFile)) {
+                            $localSz = (Get-Item $destFile).Length
+                            if ($entry.Length -gt 0 -and $localSz -eq $entry.Length) {
+                                $skCount++
+                                continue
+                            }
+                        }
+                        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destFile, $true)
+                        $dlCount++
+                    }
+                    $za.Dispose()
+                    Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue
+                    $unpackedViaZip = $true
+                } catch {
+                    if ($tmpZip -and (Test-Path $tmpZip)) { Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue }
+                }
+            }
+
+            if (-not $unpackedViaZip) {
+                $mfUrl = "$apiBase/$roomId/fs/manifest?path=$([uri]::EscapeDataString($remPath))"
+                $mfResp = Invoke-RestMethod -Uri $mfUrl -Headers @{ "X-Room-Code" = $code } -Method Get -TimeoutSec 30
+                $files = $mfResp.files
+                $folderBase = if ($remPath) { Split-Path $remPath -Leaf } else { "" }
+
+                foreach ($f in $files) {
+                    $fPath = $f.path.TrimStart("/")
+                    $rel = if ($f.relative_path) { $f.relative_path.TrimStart("/") } else { Split-Path $fPath -Leaf }
+                    if ($files.Count -gt 1 -and $folderBase -and (-not $rel.StartsWith("$folderBase/"))) {
+                        $rel = "$folderBase/$rel"
+                    }
+                    $destFile = Join-Path $targetRoot ($rel -replace "/", "\")
+                    $destDir = Split-Path $destFile -Parent
+                    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                    if ($bodyObj.skip_existing -and (Test-Path $destFile)) {
+                        $localSz = (Get-Item $destFile).Length
+                        if ($f.size -gt 0 -and $localSz -eq $f.size) {
+                            $skCount++
+                            continue
+                        }
+                    }
+                    $dlUrl = if ($f.direct_download_url) { $f.direct_download_url } else { "$apiBase/$roomId/fs/download?path=$([uri]::EscapeDataString($fPath))" }
+                    $hdrs = if ($f.direct_download_url) { @{} } else { @{ "X-Room-Code" = $code } }
+                    Invoke-WebRequest -Uri $dlUrl -Headers $hdrs -OutFile $destFile -UseBasicParsing -TimeoutSec 180
+                    $dlCount++
+                    Write-Host "  + $rel" -ForegroundColor Gray
+                }
+            }
+            Write-Host "[Hoan tat] Da luu $dlCount file moi ($skCount file da co) vao: $targetRoot" -ForegroundColor Green
+            Start-Process explorer.exe -ArgumentList $targetRoot
+            $out = @{
+                ok = $true
+                laptop_path = $targetRoot
+                label = (Split-Path $targetRoot -Leaf)
+                downloaded_count = $dlCount
+                skipped_count = $skCount
+            }
+        }
+    } catch {
+        $out = @{ ok = $false; error = $_.Exception.Message; laptop_path = $CurrentPath }
+    }
+
+    $jsonBytes = [System.Text.Encoding]::UTF8.GetBytes(($out | ConvertTo-Json -Compress))
+    $resp.ContentType = "application/json; charset=utf-8"
+    $resp.ContentLength64 = $jsonBytes.Length
+    $resp.OutputStream.Write($jsonBytes, 0, $jsonBytes.Length)
+    $resp.Close()
+}
+""".replace("__DEFAULT_API_BASE__", api_base).replace("__DEFAULT_CODE__", code).strip()
+    return ps_script
+
+
+def build_laptop_sync_agent_bat_content(api_base: str = DEFAULT_R2_API_BASE, code: str = DEFAULT_R2_CODE) -> str:
+    ps_script = build_laptop_sync_agent_ps1_content(api_base, code)
+    b64_ps = base64.b64encode(ps_script.encode("utf-16le")).decode("ascii")
+    return (
+        "@echo off\r\n"
+        "title Mockin R2 Laptop 1:1 Sync Agent\r\n"
+        f"powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -EncodedCommand {b64_ps}\r\n"
+    )
+
+
 def r2_sync_upload(
     room_id: str,
     local_source_path: str,
@@ -756,6 +1046,48 @@ try:
             except Exception as e:
                 return web.json_response({"ok": False, "error": str(e)}, status=400)
 
+        @routes.get("/mockin/r2/stream_folder_zip")
+        async def get_r2_stream_folder_zip_route(request):
+            cfg = load_r2_config()
+            api_base = request.query.get("api_base") or cfg["r2_api_base"]
+            code = request.query.get("code") or cfg["r2_code"]
+            room_id = (request.query.get("room_id") or cfg["default_room_id"]).strip()
+            remote_path = (request.query.get("path") or request.query.get("remote_path") or "").strip().strip("/")
+            include_root = request.query.get("include_root", "1") != "0"
+            try:
+                zip_bytes, zip_fname, packed_count = await asyncio.to_thread(
+                    r2_build_folder_zip_bytes,
+                    room_id=room_id,
+                    remote_path=remote_path,
+                    api_base=api_base,
+                    code=code,
+                    include_root=include_root,
+                )
+                headers = {
+                    "Content-Disposition": f'attachment; filename="{zip_fname}"',
+                    "X-File-Count": str(packed_count),
+                    "Cache-Control": "no-cache",
+                }
+                return web.Response(body=zip_bytes, content_type="application/zip", headers=headers)
+            except Exception as e:
+                return web.json_response({"ok": False, "error": str(e)}, status=400)
+
+        @routes.get("/mockin/r2/laptop_sync_agent.ps1")
+        async def get_r2_laptop_sync_agent_ps1_route(request):
+            cfg = load_r2_config()
+            ps_content = build_laptop_sync_agent_ps1_content(cfg["r2_api_base"], cfg["r2_code"])
+            return web.Response(body=ps_content.encode("utf-8"), content_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-cache"})
+
+        @routes.get("/mockin/r2/laptop_sync_agent.bat")
+        async def get_r2_laptop_sync_agent_bat_route(request):
+            cfg = load_r2_config()
+            bat_content = build_laptop_sync_agent_bat_content(cfg["r2_api_base"], cfg["r2_code"])
+            headers = {
+                "Content-Disposition": 'attachment; filename="Mockin_Laptop_Sync.bat"',
+                "Cache-Control": "no-cache",
+            }
+            return web.Response(body=bat_content.encode("utf-8"), content_type="application/octet-stream", headers=headers)
+
         @routes.post("/mockin/r2/upload_blob")
         async def post_r2_upload_blob_route(request):
             upload_url = request.headers.get("X-Upload-Url", "").strip()
@@ -792,32 +1124,44 @@ try:
             code = data.get("code") or cfg["r2_code"]
             action = str(data.get("action") or "get_status").strip()
 
+            rm_res = await asyncio.to_thread(
+                r2_api_request,
+                "GET",
+                f"/{BRIDGE_ROOM_ID}",
+                api_base=api_base,
+                code=code,
+                timeout=6,
+            )
+            agent_alive = False
+            latest_parsed = None
+            if rm_res.get("ok") and isinstance(rm_res.get("data"), dict):
+                rm_data = rm_res["data"]
+                notes = rm_data.get("notes") or []
+                res_note = next((n for n in notes if isinstance(n, dict) and n.get("id") == BRIDGE_NOTE_RES), None)
+                for candidate in [res_note.get("text") if res_note else "", rm_data.get("text") or ""]:
+                    s = str(candidate or "").strip()
+                    if s.startswith("{"):
+                        try:
+                            parsed = json.loads(s)
+                            latest_parsed = parsed
+                            ts_val = float(parsed.get("ts") or 0)
+                            if ts_val > 0 and (time.time() - ts_val) < 45.0:
+                                agent_alive = True
+                            break
+                        except Exception:
+                            pass
+
             if action == "get_status":
-                rm_res = await asyncio.to_thread(
-                    r2_api_request,
-                    "GET",
-                    f"/{BRIDGE_ROOM_ID}",
-                    api_base=api_base,
-                    code=code,
-                    timeout=10,
-                )
-                if rm_res.get("ok") and isinstance(rm_res.get("data"), dict):
-                    rm_data = rm_res["data"]
-                    notes = rm_data.get("notes") or []
-                    res_note = next((n for n in notes if isinstance(n, dict) and n.get("id") == BRIDGE_NOTE_RES), None)
-                    for candidate in [res_note.get("text") if res_note else "", rm_data.get("text") or ""]:
-                        s = str(candidate or "").strip()
-                        if s.startswith("{"):
-                            try:
-                                parsed = json.loads(s)
-                                if parsed.get("laptop_path"):
-                                    return web.json_response({
-                                        "ok": True,
-                                        "laptop_path": parsed["laptop_path"],
-                                        "label": parsed.get("label") or os.path.basename(parsed["laptop_path"].rstrip("\\/")),
-                                    })
-                            except Exception:
-                                pass
+                if agent_alive and latest_parsed and latest_parsed.get("laptop_path"):
+                    return web.json_response({
+                        "ok": True,
+                        "laptop_path": latest_parsed["laptop_path"],
+                        "label": latest_parsed.get("label") or os.path.basename(latest_parsed["laptop_path"].rstrip("\\/")),
+                    })
+                return web.json_response({"ok": False, "no_agent": True})
+
+            if not agent_alive:
+                return web.json_response({"ok": False, "no_agent": True, "error": "Laptop Agent not running"})
 
             cmd_id = f"cmd_{int(time.time() * 1000)}_{os.urandom(2).hex()}"
             cmd_payload = {**data, "action": action, "cmd_id": cmd_id}

@@ -1438,8 +1438,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 15: ComfyUI-Nukomfy-Suite + Lightricks LTX-2.5 Nuke Bridge (NukomfyLTX25BakeIn / NukomfyLTX25UnbakeOut)
-VSTONE_RUNTIME_PATCH_VER = 15
+# 16: ComfyUI-Mockin-Node single-stream folder bundle + 1:1 unpack + instant Laptop Bridge check
+VSTONE_RUNTIME_PATCH_VER = 16
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
