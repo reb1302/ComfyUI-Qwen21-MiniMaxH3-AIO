@@ -120,6 +120,23 @@ def _bootstrap_bundled_assets():
             except Exception:
                 pass
 
+    # 5. Ensure custom_nodes/ComfyUI-Nukomfy-Suite is synced from bundled ComfyUI-Nukomfy-Suite
+    src_nukomfy = os.path.join(pkg_dir, "ComfyUI-Nukomfy-Suite")
+    dst_nukomfy = os.path.join(comfy_root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
+    if os.path.isdir(src_nukomfy):
+        for root, dirs, files in os.walk(src_nukomfy):
+            dirs[:] = [d for d in dirs if d != "__pycache__" and not d.startswith(".")]
+            rel = os.path.relpath(root, src_nukomfy)
+            target_dir = os.path.join(dst_nukomfy, rel) if rel != "." else dst_nukomfy
+            os.makedirs(target_dir, exist_ok=True)
+            for f in files:
+                if f.endswith((".pyc", ".tmp")):
+                    continue
+                try:
+                    _safe_atomic_copy(os.path.join(root, f), os.path.join(target_dir, f), min_bytes=20)
+                except Exception:
+                    pass
+
 try:
     _bootstrap_bundled_assets()
 except Exception:
