@@ -5909,6 +5909,7 @@ a.btn{color:inherit;text-decoration:none}
       <hr>
       <button class="ibtn" id="selectTool" type="button" title="Chọn vật bằng SAM 3.1: kéo khung hoặc bấm lên vật" aria-label="Chọn vật" aria-pressed="false" data-icon="select"></button>
       <button class="ibtn" id="lightTool" type="button" title="Ánh sáng: đặt đèn, trình duyệt tính sáng, Qwen 2.1 vẽ lại" aria-label="Ánh sáng" aria-pressed="false" data-icon="sun"></button>
+      <button class="ibtn" id="depthTool" type="button" title="Z-depth: Marigold V2 tính độ sâu, xem bản màu, tải EXR 32-bit" aria-label="Z-depth" aria-pressed="false" data-icon="depth"></button>
       <div class="tiles" id="layerTiles"></div>
       <label class="ibtn" title="Thêm layer từ ảnh khác"><span data-icon="layerAdd"></span><input class="sr" id="layerFile" type="file" accept="image/*" aria-label="Thêm layer từ ảnh khác"></label>
       <hr>
@@ -6097,6 +6098,13 @@ a.btn{color:inherit;text-decoration:none}
         <button class="viewchip" type="button" id="lightDel">Xoá đèn</button>
       </div>
       </div>
+      <div class="selwrap" id="depthWrap" hidden>
+      <div class="floatbar" id="depthBar">
+        <button class="viewchip" type="button" id="depthRun">Tạo Z-depth</button>
+        <span id="depthInfo">Gần đỏ, xa xanh. File tải về là độ sâu dạng số (EXR 32-bit, 1 kênh).</span>
+        <button class="viewchip" type="button" id="depthSave" disabled>Tải EXR</button>
+      </div>
+      </div>
       <div class="floatbar" id="layerBar" hidden>
         <div class="viewchips" id="layerMode" role="group" aria-label="Cách chỉnh layer">
           <button class="viewchip" type="button" data-mode="transform" aria-pressed="true" title="Kéo để dời, kéo góc để bẻ phối cảnh, Shift + kéo góc để đổi cỡ, kéo nút tròn để xoay">Biến dạng</button>
@@ -6236,6 +6244,7 @@ const ICONS = {
   check: 'M4 10l4 4 8-9',
   select: 'M3 6V3h3M9 3h2M14 3h3v3M3 9v2M3 14v3h3M10 10l7 3-3 1.2-1.2 3z',
   layerAdd: 'M3 8l6.5-3.5L16 8l-6.5 3.5zM3 12l6.5 3.5 2.5-1.300M15.5 12.500v5M13 15h5',
+  depth: 'M10 3l7 3-7 3-7-3zM3 10l7 3 7-3M3 14l7 3 7-3',
   sun: 'M10 6.5a3.5 3.5 0 110 7 3.5 3.5 0 010-7zM10 2v2M10 16v2M2 10h2M16 10h2M4.3 4.3l1.4 1.4M14.3 14.3l1.4 1.4M4.3 15.7l1.4-1.4M14.3 5.7l1.4-1.4',
 };
 const icon = name => `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
@@ -7385,11 +7394,13 @@ function drawMaskStroke(g, s, b) {
 let toolDrag = null;
 function drawOverlays(g) {
   const selecting = S.tool === 'select';
-  if (!Layers.list.length && !selecting && !Light.preview && S.tool !== 'light') return;
+  const depthShown = S.tool === 'depth' && Depth.color && Depth.for === S.base;
+  if (!Layers.list.length && !selecting && !Light.preview && S.tool !== 'light' && !depthShown) return;
   const px = 1 / V.scale;
   g.save();
   g.translate(S.pads.left, S.pads.top);
   drawLightOverlay(g, px);
+  if (depthShown) g.drawImage(Depth.color, 0, 0, S.w, S.h);
   for (const L of Layers.list) if (L.hole && !L.keep) g.drawImage(holeGray(L), 0, 0);
   for (const L of Layers.list) drawLayer(g, L, 12, px);
   if (selecting) {
@@ -8063,6 +8074,7 @@ function syncSelUi() {
 function syncToolUi() {
   $('selectTool').setAttribute('aria-pressed', String(S.tool === 'select'));
   syncLightUi();
+  syncDepthUi();
   const L = S.tool === 'layer' && activeLayer();
   $('layerBar').hidden = !L;
   $('layerKeep').hidden = !(L && L.hole);
@@ -8131,6 +8143,7 @@ function sendLayer(tab) {
 }
 function bindLayerTools() {
   bindLightTools();
+  bindDepthTools();
   $('selectTool').addEventListener('click', () => {
     if (!S.base) {
       setStatus('Thêm ảnh gốc trước khi chọn vật.');
@@ -8644,6 +8657,122 @@ function syncLightUi() {
     $('lightHeight').value = L.height;
     $('lightRange').value = L.range;
   }
+}
+// ---------- Z-depth: Marigold V2 tính độ sâu, xem bằng bảng màu Turbo, tải về EXR 32-bit 1 kênh ----------
+const Depth = { for: null, color: null, exr: null, busy: false, error: '' };
+// Xấp xỉ đa thức của bảng màu Turbo (Google): 0 xanh đậm, 1 đỏ đậm.
+function turbo(t) {
+  const p = c => c.reduceRight((acc, k) => acc * t + k, 0);
+  return [p([0.13572138, 4.6153926, -42.66032258, 132.13108234, -152.94239396, 59.28637943]), p([0.09140261, 2.19418839, 4.84296658, -14.18503333, 4.27729857, 2.82956604]), p([0.1066733, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973])]
+    .map(v => Math.round(Math.min(1, Math.max(0, v)) * 255));
+}
+// Ảnh depth xám (gần sáng) thành bản màu: gần đỏ, xa xanh.
+function colorizeDepth(gray) {
+  const w = gray.width, h = gray.height, out = newCanvas(w, h);
+  const src = gray.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const img = out.getContext('2d').createImageData(w, h);
+  const lut = Array.from({ length: 256 }, (_, i) => turbo(i / 255));
+  for (let i = 0; i < src.length; i += 4) {
+    const [r, g, b] = lut[src[i]];
+    img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
+  }
+  out.getContext('2d').putImageData(img, 0, 0);
+  return out;
+}
+// Đúng các node của template image_marigold_v2_depth_estimation (Comfy-Org), thêm 1 PNG để xem và 1 EXR 32-bit để tải.
+const MARIGOLD = {
+  unet: 'qwen_image_edit_2509_int8_convrot.safetensors',
+  lora: 'marigold_v2_depth_log_stage2.safetensors',
+  vae: 'marigold_v2_depth_log_stage2_vae.safetensors',
+  cond: 'marigold_v2_depth_conditioning.safetensors',
+};
+function buildMarigoldGraph(image, stamp) {
+  return {
+    1: { class_type: 'UNETLoader', inputs: { unet_name: MARIGOLD.unet, weight_dtype: 'default' } },
+    2: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: MARIGOLD.lora, strength_model: 1 } },
+    3: { class_type: 'ModelSamplingAuraFlow', inputs: { model: ['2', 0], shift: 1.73, sampling: 'img_to_img_velocity' } },
+    4: { class_type: 'ConditioningLoader', inputs: { conditioning_name: MARIGOLD.cond } },
+    5: { class_type: 'VAELoader', inputs: { vae_name: MARIGOLD.vae } },
+    6: { class_type: 'LoadImage', inputs: { image } },
+    7: { class_type: 'VAEEncode', inputs: { pixels: ['6', 0], vae: ['5', 0] } },
+    8: { class_type: 'DisableNoise', inputs: {} },
+    9: { class_type: 'KSamplerSelect', inputs: { sampler_name: 'euler' } },
+    10: { class_type: 'BasicGuider', inputs: { model: ['3', 0], conditioning: ['4', 0] } },
+    11: { class_type: 'ManualSigmas', inputs: { sigmas: '0.5, 0' } },
+    12: { class_type: 'SamplerCustomAdvanced', inputs: { noise: ['8', 0], guider: ['10', 0], sampler: ['9', 0], sigmas: ['11', 0], latent_image: ['7', 0] } },
+    13: { class_type: 'VAEDecode', inputs: { samples: ['12', 0], vae: ['5', 0] } },
+    14: { class_type: 'MarigoldV2PostProcess', inputs: { image: ['13', 0], prediction: 'depth' } },
+    15: { class_type: 'PreviewImage', inputs: { images: ['14', 0] } },
+    // linear: ghi đúng số độ sâu 0-1 (gần là 1), không đổi gamma sRGB.
+    16: { class_type: 'SaveImageAdvanced', inputs: { images: ['14', 0], filename_prefix: `concept_zdepth/${stamp}`, format: 'exr', 'format.bit_depth': '32-bit float', 'format.input_color_space': 'linear' } },
+  };
+}
+async function marigoldDepth() {
+  const res = await fetch('/api/object_info/MarigoldV2PostProcess').catch(() => null);
+  if (!res || !res.ok) throw new Error('Không hỏi được ComfyUI.');
+  if (!(await res.json()).MarigoldV2PostProcess) throw new Error('ComfyUI trên máy này chưa có node Marigold V2, cần cập nhật ComfyUI.');
+  await requireLoras([MARIGOLD.lora], 'LoRA Marigold');
+  const stamp = Date.now().toString(36);
+  const name = await uploadCanvas(imageToCanvas(S.base), `${stamp}_zdepth.png`);
+  const id = await queueGraph(buildMarigoldGraph(name, stamp));
+  const [preview] = await waitHelperNodes(id, ['15']);
+  const entry = (await fetch(`/api/history/${id}`).then(r => r.json()))[id];
+  const saved = Object.values((entry.outputs || {})['16'] || {}).find(v => Array.isArray(v) && v[0] && v[0].filename);
+  if (!saved) throw new Error('ComfyUI không trả về file EXR.');
+  const { img } = await loadOutput(preview);
+  return { gray: imageToCanvas(img), exr: { url: viewUrl(saved[0]), name: saved[0].filename } };
+}
+async function runDepth() {
+  if (!S.base || Depth.busy) return;
+  const base = S.base;
+  Object.assign(Depth, { busy: true, error: '' });
+  syncDepthUi();
+  try {
+    // Ngoài ComfyUI: độ sâu giả từ độ sáng ảnh, không có EXR.
+    const out = ON_COMFY ? await marigoldDepth() : { gray: fakeGeometry().depth, exr: null };
+    if (S.base !== base) return;
+    Object.assign(Depth, { for: base, color: colorizeDepth(out.gray), exr: out.exr });
+    setStatus(ON_COMFY ? 'Đã có Z-depth. Bấm Tải EXR để lấy độ sâu dạng số.' : 'Bản xem trước: Z-depth giả từ độ sáng ảnh. Trên ComfyUI dùng Marigold V2.');
+  } catch (e) {
+    Depth.error = e.message;
+  } finally {
+    Depth.busy = false;
+    syncDepthUi();
+    schedule();
+  }
+}
+function syncDepthUi() {
+  const on = S.tool === 'depth', ready = Depth.color && Depth.for === S.base;
+  $('depthTool').setAttribute('aria-pressed', String(on));
+  $('depthWrap').hidden = !on;
+  $('depthRun').disabled = Depth.busy;
+  $('depthRun').textContent = Depth.busy ? 'Đang tính...' : ready ? 'Tính lại' : 'Tạo Z-depth';
+  $('depthSave').disabled = !(ready && Depth.exr);
+  $('depthSave').title = ready && !Depth.exr ? 'Bản xem trước không có EXR, trên ComfyUI mới tải được' : 'Tải độ sâu dạng số, EXR 32-bit 1 kênh';
+  $('depthInfo').textContent = Depth.error ? `Lỗi: ${Depth.error}` : 'Gần đỏ, xa xanh. File tải về là độ sâu dạng số (EXR 32-bit, 1 kênh).';
+  $('depthInfo').dataset.kind = Depth.error ? 'error' : '';
+}
+function bindDepthTools() {
+  $('depthTool').addEventListener('click', () => {
+    if (!S.base) {
+      setStatus('Thêm ảnh gốc trước khi tạo Z-depth.');
+      return;
+    }
+    S.tool = S.tool === 'depth' ? null : 'depth';
+    clearSelection();
+    Layers.active = null;
+    closePop();
+    renderLayerTiles();
+    syncToolUi();
+  });
+  $('depthRun').addEventListener('click', runDepth);
+  $('depthSave').addEventListener('click', () => {
+    if (!Depth.exr) return;
+    const a = document.createElement('a');
+    a.href = Depth.exr.url;
+    a.download = Depth.exr.name;
+    a.click();
+  });
 }
 function bindLightTools() {
   $('lightTool').addEventListener('click', () => {
