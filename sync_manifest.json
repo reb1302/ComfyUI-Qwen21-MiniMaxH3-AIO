@@ -555,6 +555,192 @@
       "filename": "depth_pro.fp16.safetensors",
       "url": "https://huggingface.co/spacepxl/ml-depth-pro/resolve/main/depth_pro.fp16.safetensors",
       "folder": "depth/ml-depth-pro"
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-outpaint.safetensors",
+      "url": "https://huggingface.co/oumoumad/LTX-2.3-22b-IC-LoRA-Outpaint/resolve/main/ltx-2.3-22b-ic-lora-outpaint.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients/ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-day-to-night-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Day-To-Night/ltx-2.3-22b-ic-lora-day-to-night-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Deblur/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-decompression-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Decompression/ltx-2.3-22b-ic-lora-decompression-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-colorization-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Colorization/ltx-2.3-22b-ic-lora-colorization-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-water-simulation-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Water-Simulation/ltx-2.3-22b-ic-lora-water-simulation-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-HDR/ltx-2.3-22b-ic-lora-hdr-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-hdr-scene-emb.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-HDR/ltx-2.3-22b-ic-lora-hdr-scene-emb.safetensors",
+      "folder": "embeddings",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-instant-shave-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Instant-Shave/ltx-2.3-22b-ic-lora-instant-shave-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-lipdub-0.9.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-LipDub/ltx-2.3-22b-ic-lora-lipdub-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Motion-Track-Control/ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+      "url": "https://huggingface.co/buckets/raubatz/ltx/resolve/Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+      "url": "https://huggingface.co/thinklikeajew2/ltx23-cinemagraph-mirror/resolve/main/ltx-2.3-22b-lora-cinemagraph-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors",
+      "url": "https://huggingface.co/yuvraj108c/LTX-2.5-22b-IC-LoRA-BBox-Control/resolve/main/ltx-2.5-22b-ic-lora-bbox-control-3000-rank-32.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Day-To-Night/resolve/main/ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Clean-Plate/resolve/main/ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Water-Simulation/resolve/main/ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Pixel-Spatial-Upscaler/resolve/main/ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Deblur/resolve/main/ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-decompression-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Decompression/resolve/main/ltx-2.5-22b-ic-lora-decompression-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-colorization-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Colorization/resolve/main/ltx-2.5-22b-ic-lora-colorization-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-lora-cinemagraph-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Cinemagraph/resolve/main/ltx-2.5-22b-lora-cinemagraph-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-LoRA-Slow-Motion-Control/resolve/main/ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Ingredients/resolve/main/ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-SDR-To-HDR/resolve/main/ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-SDR-To-HDR/resolve/main/ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors",
+      "folder": "embeddings",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Layout-To-Render/resolve/main/ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Refine-Details/resolve/main/ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-restore-1.0.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Restore/resolve/main/ltx-2.5-22b-ic-lora-restore-1.0.safetensors",
+      "folder": "loras",
+      "page": true
+    },
+    {
+      "filename": "ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors",
+      "url": "https://huggingface.co/Lightricks/LTX-2.5-22b-IC-LoRA-Alpha-Gen/resolve/main/ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors",
+      "folder": "loras",
+      "page": true
     }
   ],
   "workflows": [
@@ -657,16 +843,9 @@
     "workflows/05_MiniMax_H3_Loop_And_Native/05_H3_First_Last_Frame_Transition_Native.json",
     "workflows/minimax_h3/video_minimax_h3_first_last_frame_transition.json",
     "workflows/H3_First_Last_Frame_Transition.json",
-    "workflows/lighttrick/00_Lightricks_Creative_Lab_1Click_Install_H200.json",
-    "workflows/lighttrick/AutoDetect_Wire_Object_Removal_SAM31_LTX25_BFS_AutoCrop.json",
-    "workflows/lighttrick/Biosal Clip Upscale VOSR2 SeedVR2.json",
-    "workflows/lighttrick/EditAnything_LTX25_With_Ref_Or_Motion_Transfer.json",
     "workflows/lighttrick/LTX-2.5_A2V_Two_Stage_Distilled.json",
-    "workflows/lighttrick/LTX-2.5_CreativeLab_All_In_One_V2V_Selector.json",
-    "workflows/lighttrick/LTX-2.5_I2V_Speed_Control_SlowMo_Cinemagraph.json",
     "workflows/lighttrick/LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
-    "workflows/lighttrick/LTX-2.5_ICLoRA_Layout_To_Render_Two_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_ICLoRA_Motion_Track_Distilled.json",
     "workflows/lighttrick/LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_ICLoRA_Union_Control_Distilled.json",
@@ -676,15 +855,27 @@
     "workflows/lighttrick/LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_Native_4K_8K.json",
     "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_Upscale.json",
-    "workflows/lighttrick/LTX25_Cai_Dat_1_Click.json",
-    "workflows/lighttrick/LTX25_Outpaint_Official.json",
-    "workflows/lighttrick/Official_EditAnything_LTX25.json",
-    "workflows/lighttrick/Official_Qwen_Image_2_1_Edit.json",
-    "workflows/lighttrick/qwenedit.json",
-    "workflows/lighttrick/stoneV_LTX25_Outpaint_TwoStage_Pro_H200.json",
-    "workflows/lighttrick/Nukomfy_LTX25_CreativeLab_AllInOne_V2V.json",
-    "workflows/lighttrick/Nukomfy_LTX25_AlphaGen_Pro_Matte.json",
-    "workflows/lighttrick/Nukomfy_LTX25_CleanPlate_ObjectRemoval.json",
-    "workflows/lighttrick/Nukomfy_LTX25_Outpaint_TwoStage_Pro.json"
+    "workflows/lighttrick/LTX-2.5_I2V_HDR_Two_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_Inpaint_HDR_Two_Stage_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json",
+    "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json",
+    "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_I2V_HDR_Two_Stage_Distilled.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_ICLoRA_Inpaint_HDR_Two_Stage_Distilled.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_DubIt_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_HDR_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Ingredients_Single_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Inpaint_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Motion_Track_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Pixel_Spatial_Upscaler_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Union_Control_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_T2A_Single_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_T2V_I2V_Single_Stage_Distilled_Full.json",
+    "workflows/lighttrick/2.3/LTX-2.3_T2V_I2V_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_V2V_ICLoRA_Single_Stage_Distilled.json"
   ]
 }

@@ -683,9 +683,6 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/ltx_2.5/LTX25_Outpaint_Official.json",
     "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/ltx_2.5/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
-    "workflows/lighttrick/00_Lightricks_Creative_Lab_1Click_Install_H200.json",
-    "workflows/lighttrick/LTX25_Cai_Dat_1_Click.json",
-    "workflows/lighttrick/LTX25_Outpaint_Official.json",
     "workflows/lighttrick/LTX-2.5_A2V_Two_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json",
     "workflows/lighttrick/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
@@ -703,9 +700,23 @@ DEFAULT_SYNC_WORKFLOWS = [
     "workflows/lighttrick/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json",
     "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json",
     "workflows/lighttrick/LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json",
-    "workflows/lighttrick/AutoDetect_Wire_Object_Removal_SAM31_LTX25_BFS_AutoCrop.json",
-    "workflows/lighttrick/EditAnything_LTX25_With_Ref_Or_Motion_Transfer.json",
-    "workflows/lighttrick/Official_EditAnything_LTX25.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_I2V_HDR_Two_Stage_Distilled.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_ICLoRA_Inpaint_HDR_Two_Stage_Distilled.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json",
+    "workflows/lighttrick/HDR_workflows/LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_DubIt_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_HDR_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Ingredients_Single_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Inpaint_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Motion_Track_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Outpaint_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Pixel_Spatial_Upscaler_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_ICLoRA_Union_Control_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_T2A_Single_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_T2V_I2V_Single_Stage_Distilled_Full.json",
+    "workflows/lighttrick/2.3/LTX-2.3_T2V_I2V_Two_Stage_Distilled.json",
+    "workflows/lighttrick/2.3/LTX-2.3_V2V_ICLoRA_Single_Stage_Distilled.json",
     "workflows/upscale_pro/image_rtx_vsr_pro_ultrasharp_16k.json",
     "workflows/upscale_pro/video_rtx_vsr_pro_ultrasharp_4k.json",
     "workflows/minimax_h3/minimaxH3SEEDHUNTERLatent_v251.json",
@@ -932,7 +943,25 @@ def _ensure_ltx_video_custom_node(comfy_root: str | None = None, force_reinstall
                         pass
 
         if all(os.path.isfile(os.path.join(ltx_dir, rf)) for rf in ltx_required_files):
-            setattr(sys, "_vstone_ltx_clean_reinstall_ver", 20)
+            setattr(sys, "_vstone_ltx_clean_reinstall_ver", 21)
+
+        # Chép nguyên bản 100% example_workflows/2.5 và 2.3 từ repo Lightricks gốc vào user/default/workflows/lighttrick
+        try:
+            wf_lt_dest = os.path.join(root, "user", "default", "workflows", "lighttrick")
+            os.makedirs(wf_lt_dest, exist_ok=True)
+            ex25 = os.path.join(ltx_dir, "example_workflows", "2.5")
+            if os.path.isdir(ex25):
+                shutil.copytree(ex25, wf_lt_dest, dirs_exist_ok=True)
+                hdr25 = os.path.join(ex25, "HDR_workflows")
+                if os.path.isdir(hdr25):
+                    for _hf in os.listdir(hdr25):
+                        if _hf.endswith(".json"):
+                            shutil.copy2(os.path.join(hdr25, _hf), os.path.join(wf_lt_dest, _hf))
+            ex23 = os.path.join(ltx_dir, "example_workflows", "2.3")
+            if os.path.isdir(ex23):
+                shutil.copytree(ex23, os.path.join(wf_lt_dest, "2.3"), dirs_exist_ok=True)
+        except Exception:
+            pass
 
         _purge_fake_ltx_nodes_and_shims_from_ram()
         try:
@@ -948,6 +977,23 @@ def _ensure_ltx_video_custom_node(comfy_root: str | None = None, force_reinstall
                         _hot_load_custom_node_pack(pack_d)
         except Exception:
             pass
+
+        # Tự động tải ngầm toàn bộ 28 IC-LoRAs & LoRAs Lightricks (Deblur, Day-To-Night, Clean-Plate, Water, Colorization, v.v.)
+        if getattr(sys, "_vstone_ltx_lora_dl_ver", 0) < 21:
+            setattr(sys, "_vstone_ltx_lora_dl_ver", 21)
+
+            def _fast_dl_lightricks_loras():
+                for _item in LIGHTRICKS_CREATIVE_LAB_MODELS:
+                    _fld = _item.get("folder", "")
+                    _fn = _item.get("filename", "")
+                    _u = _item.get("url", "")
+                    if _fld in ("loras", "embeddings") and _fn and _u:
+                        try:
+                            download_file_to_comfy_models(_fld, _fn, _u, page=True)
+                        except Exception:
+                            pass
+
+            threading.Thread(target=_fast_dl_lightricks_loras, name="_fast_dl_lightricks_loras", daemon=True).start()
 
         return f"[LTX-2.5] Đã cài đặt nguyên bản 100% Lightricks/ComfyUI-LTXVideo tại: {ltx_dir}"
     finally:
@@ -1540,7 +1586,12 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
                     if _w not in wf_list:
                         wf_list.append(_w)
             if isinstance(manifest_data.get("loras"), list):
-                lora_list = manifest_data["loras"]
+                existing_keys = {(x.get("folder", "loras"), x.get("filename", "")) for x in lora_list}
+                for _l in manifest_data["loras"]:
+                    _lk = (_l.get("folder", "loras"), _l.get("filename", ""))
+                    if _lk not in existing_keys:
+                        lora_list.append(_l)
+                        existing_keys.add(_lk)
         except Exception:
             pass
 
@@ -1732,8 +1783,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 20: Clean 100% original Lightricks/ComfyUI-LTXVideo reinstall (GIT_LFS_SKIP_SMUDGE=1), purge all fake/stub nodes
-VSTONE_RUNTIME_PATCH_VER = 20
+# 21: Sync all 29 original Lightricks 2.5 + 2.3 workflows & fast-track download all 28 Lightricks IC-LoRAs (Deblur, Day-To-Night, etc.)
+VSTONE_RUNTIME_PATCH_VER = 21
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
