@@ -6285,7 +6285,7 @@ a.btn{color:inherit;text-decoration:none}
       <option value="0">Gen ở cỡ gốc</option>
     </select>
     <span class="qstate" id="qState" title="Hàng đợi chung của ComfyUI trên H200, mọi họa sĩ dùng chung, chạy từng việc một"><span class="qdot" aria-hidden="true"></span><span id="qText">Chưa kết nối ComfyUI</span></span>
-    <select class="field model" id="model" aria-label="Model" title="Flux 3 Klein dùng cho lượt Sửa bằng cọ. Kéo rộng, Ghép và Ánh sáng vẫn chạy Qwen 2.1.">
+    <select class="field model" id="model" aria-label="Model" autocomplete="off" title="Flux 3 Klein dùng cho lượt Sửa bằng cọ. Kéo rộng, Ghép và Ánh sáng vẫn chạy Qwen 2.1.">
       <option value="qwen">Qwen 2.1</option>
       <option value="flux3">Flux 3 Klein</option>
     </select>
@@ -9263,6 +9263,8 @@ function buildEnvBox() {
     $('envLora').querySelectorAll('.viewchip').forEach(c => c.setAttribute('aria-pressed', String(c === chip)));
     renderPanel();
   });
+  // Trình duyệt có thể giữ lựa chọn cũ của ô model khi tải lại trang mà không báo change, nên lấy lại giá trị đang hiện.
+  S.model = $('model').value;
   // Prompt sửa tay theo model cũ (viền màu hay khung <obj_N>) không hợp model mới, nên bỏ.
   $('model').addEventListener('change', e => {
     S.model = e.target.value;
