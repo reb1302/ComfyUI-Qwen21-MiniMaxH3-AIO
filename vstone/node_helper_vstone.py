@@ -782,136 +782,287 @@ _MOCKIN_DEFAULT_CFG_DICT = {
 }
 
 
+def _cleanup_nukomfy_suite_runtime_and_disk() -> None:
+    """Clean up all Nukomfy Suite threads, send_sync wrappers, prompt hooks, web extensions, and custom_nodes folder."""
+    try:
+        import nodes
+        for _ext_k in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).keys()):
+            if "nukomfy" in _ext_k.lower():
+                nodes.EXTENSION_WEB_DIRS.pop(_ext_k, None)
+        for _nk_cls in (
+            "NukomfyRead",
+            "NukomfyWrite",
+            "NukomfyOCIOColorSpace",
+            "NukomfyMultiLayerPack",
+            "NukomfyMultiLayerUnpack",
+            "NukomfyLTX25BakeIn",
+            "NukomfyLTX25UnbakeOut",
+        ):
+            getattr(nodes, "NODE_CLASS_MAPPINGS", {}).pop(_nk_cls, None)
+            getattr(nodes, "NODE_DISPLAY_NAME_MAPPINGS", {}).pop(_nk_cls, None)
+    except Exception:
+        pass
+
+    # Stop all orphaned nukomfy-history-poll threads via their closure/module globals
+    try:
+        for _t in list(threading.enumerate()):
+            if "nukomfy" in getattr(_t, "name", "").lower():
+                _tgt = getattr(_t, "_target", None)
+                _globs = getattr(_tgt, "__globals__", None)
+                if isinstance(_globs, dict):
+                    _ev = _globs.get("_polling_stop")
+                    if _ev is not None and hasattr(_ev, "set"):
+                        try:
+                            _ev.set()
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+
+    # Unwrap PromptServer.instance.send_sync (deleting instance attribute restores class method) & clean prompt handlers
+    try:
+        import server
+        ps = getattr(server, "PromptServer", None)
+        ps_inst = getattr(ps, "instance", None) if ps else None
+        if ps_inst is not None:
+            if hasattr(ps_inst, "__dict__") and "send_sync" in ps_inst.__dict__:
+                ps_inst.__dict__.pop("send_sync", None)
+            if hasattr(ps_inst, "on_prompt_handlers") and isinstance(ps_inst.on_prompt_handlers, list):
+                ps_inst.on_prompt_handlers[:] = [
+                    h for h in ps_inst.on_prompt_handlers
+                    if "nukomfy" not in str(getattr(h, "__module__", "")).lower()
+                    and getattr(h, "__name__", "") != "_on_prompt"
+                ]
+    except Exception:
+        pass
+
+    # Stop any _polling_stop in sys.modules and remove nukomfy modules
+    try:
+        for _mname, _mobj in list(sys.modules.items()):
+            if "nukomfy" in _mname.lower():
+                _pstop = getattr(_mobj, "_polling_stop", None)
+                if _pstop is not None and hasattr(_pstop, "set"):
+                    try:
+                        _pstop.set()
+                    except Exception:
+                        pass
+                sys.modules.pop(_mname, None)
+    except Exception:
+        pass
+
+    # Delete ComfyUI/custom_nodes/ComfyUI-Nukomfy-Suite on disk so restart never loads it
+    try:
+        _c_root = _get_comfy_root()
+        if _c_root:
+            _nk_dir = os.path.join(_c_root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
+            if os.path.isdir(_nk_dir):
+                shutil.rmtree(_nk_dir, ignore_errors=True)
+    except Exception:
+        pass
+
+
+def _restore_real_minimax_h3_nodes() -> None:
+    """Ensure real SolAttnPatch, MiniMaxH3MemoryEfficientSolAttentionPatch, and MiniMaxH3ChunkFeedForward are never replaced by Compat stubs."""
+    try:
+        import nodes
+        target_keys = ("SolAttnPatch", "MiniMaxH3MemoryEfficientSolAttentionPatch", "MiniMaxH3ChunkFeedForward")
+        need_restore = [
+            k for k in target_keys
+            if k not in nodes.NODE_CLASS_MAPPINGS
+            or "Compat" in getattr(nodes.NODE_CLASS_MAPPINGS.get(k), "__name__", "")
+        ]
+        if not need_restore:
+            return
+        for _mname, _mobj in list(sys.modules.items()):
+            if _mobj is None or "mockin" in _mname.lower():
+                continue
+            _cmap = getattr(_mobj, "NODE_CLASS_MAPPINGS", None)
+            if isinstance(_cmap, dict):
+                for k in list(need_restore):
+                    cand = _cmap.get(k)
+                    if cand is not None and "Compat" not in getattr(cand, "__name__", ""):
+                        nodes.NODE_CLASS_MAPPINGS[k] = cand
+                        need_restore.remove(k)
+            for k in list(need_restore):
+                cand = getattr(_mobj, k, None)
+                if isinstance(cand, type) and "Compat" not in getattr(cand, "__name__", ""):
+                    nodes.NODE_CLASS_MAPPINGS[k] = cand
+                    need_restore.remove(k)
+    except Exception:
+        pass
+
+
+def _is_comfy_server_routes_mounted(app: Any = None) -> bool:
+    """Return True only AFTER PromptServer.add_routes() has completed at startup."""
+    try:
+        if app is None:
+            import server
+            ps = getattr(server, "PromptServer", None)
+            ps_inst = getattr(ps, "instance", None) if ps else None
+            app = getattr(ps_inst, "app", None) if ps_inst else None
+        if app is None:
+            return False
+        resources = list(getattr(app.router, "_resources", []))
+        return any(str(getattr(r, "canonical", "")) == "/history" for r in resources)
+    except Exception:
+        return False
+
+
 def _mount_mockin_routes_and_web_live(web_dir: str = "") -> None:
-    """Mount /mockin/..., /api/mockin/..., and all /extensions/* live onto aiohttp app router, keeping PlainResource('/') first and StaticResource('/') last."""
+    """Mount /mockin/..., /api/mockin/..., and all /extensions/* live onto aiohttp app router safely on the event loop thread."""
     try:
         from aiohttp import web
         import nodes
         import server
+
+        _cleanup_nukomfy_suite_runtime_and_disk()
+        _restore_real_minimax_h3_nodes()
+
         if web_dir and os.path.isdir(web_dir):
             nodes.EXTENSION_WEB_DIRS["ComfyUI-Mockin-Node"] = os.path.abspath(web_dir)
 
-        # Clean up any Nukomfy Suite web extension or send_sync wrapper on H200 so /extensions never 404s
-        for _ext_k in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).keys()):
-            if "nukomfy" in _ext_k.lower():
-                nodes.EXTENSION_WEB_DIRS.pop(_ext_k, None)
-
         ps = getattr(server, "PromptServer", None)
         ps_inst = getattr(ps, "instance", None) if ps else None
-        if ps_inst is not None:
-            for _mname, _mobj in list(sys.modules.items()):
-                if "nukomfy" in _mname.lower():
-                    _orig_ss = getattr(_mobj, "_original_send_sync", None)
-                    if callable(_orig_ss):
-                        ps_inst.send_sync = _orig_ss
-                    _pstop = getattr(_mobj, "_polling_stop", None)
-                    if _pstop is not None and hasattr(_pstop, "set"):
-                        try:
-                            _pstop.set()
-                        except Exception:
-                            pass
-        try:
-            _c_root = _get_comfy_root()
-            if _c_root:
-                _nk_dir = os.path.join(_c_root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
-                if os.path.isdir(_nk_dir):
-                    shutil.rmtree(_nk_dir, ignore_errors=True)
-        except Exception:
-            pass
-
         app = getattr(ps_inst, "app", None) if ps_inst else None
         routes = getattr(ps_inst, "routes", None) if ps_inst else None
         if app is None or routes is None:
             return
-        was_frozen = getattr(app, "_frozen", False)
-        was_router_frozen = getattr(app.router, "_frozen", False)
-        try:
-            app._frozen = False
-            app.router._frozen = False
 
-            route_map = {}
-            res_map = {}
-            for rt in app.router.routes():
-                canon = getattr(rt.resource, "canonical", "")
-                if canon:
-                    route_map[(rt.method, canon)] = rt
-                    res_map[canon] = rt.resource
+        # Never touch app.router during ComfyUI startup before PromptServer.add_routes() has completed!
+        if not _is_comfy_server_routes_mounted(app):
+            return
 
-            for r in list(routes):
-                if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
-                    if (r.method, r.path) in route_map:
-                        try:
-                            route_map[(r.method, r.path)]._handler = r.handler
-                        except Exception:
-                            pass
-                    elif r.path in res_map and hasattr(res_map[r.path], "add_route"):
-                        try:
-                            new_rt = res_map[r.path].add_route(r.method, r.handler)
-                            route_map[(r.method, r.path)] = new_rt
-                        except Exception:
-                            pass
-                    else:
-                        try:
-                            new_rts = app.add_routes([r])
-                            if new_rts:
-                                route_map[(r.method, r.path)] = new_rts[0]
-                                res_map[r.path] = new_rts[0].resource
-                        except Exception:
-                            pass
-                    api_p = "/api" + r.path
-                    if (r.method, api_p) in route_map:
-                        try:
-                            route_map[(r.method, api_p)]._handler = r.handler
-                        except Exception:
-                            pass
-                    elif api_p in res_map and hasattr(res_map[api_p], "add_route"):
-                        try:
-                            new_api_rt = res_map[api_p].add_route(r.method, r.handler)
-                            route_map[(r.method, api_p)] = new_api_rt
-                        except Exception:
-                            pass
-                    else:
-                        try:
-                            api_def = web.RouteDef(r.method, api_p, r.handler, r.kwargs.copy())
-                            new_api_rts = app.add_routes([api_def])
-                            if new_api_rts:
-                                route_map[(r.method, api_p)] = new_api_rts[0]
-                                res_map[api_p] = new_api_rts[0].resource
-                        except Exception:
-                            pass
+        # Read-only check first: only touch app.router if a route/extension is missing or resource order is wrong
+        resources_snapshot = list(app.router._resources)
+        existing_route_keys = {
+            (rt.method, str(getattr(rt.resource, "canonical", "")))
+            for rt in list(app.router.routes())
+            if getattr(rt, "resource", None) is not None
+        }
+        existing_canonicals = {str(getattr(r, "canonical", "")).rstrip("/") for r in resources_snapshot}
 
-            # Ensure EVERY directory in nodes.EXTENSION_WEB_DIRS has a mounted StaticResource on app.router so GET /extensions never returns a 404 module!
-            canonicals = {str(getattr(r, "canonical", "")).rstrip("/") for r in app.router.resources()}
-            for ext_name, ext_dir in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).items()):
-                if not ext_dir or not os.path.isdir(ext_dir) or "nukomfy" in ext_name.lower():
-                    nodes.EXTENSION_WEB_DIRS.pop(ext_name, None)
-                    continue
-                ext_prefix = f"/extensions/{ext_name}".rstrip("/")
-                if ext_prefix not in canonicals:
-                    try:
-                        app.add_routes([web.static(f"/extensions/{ext_name}", os.path.abspath(ext_dir), follow_symlinks=True)])
-                        canonicals.add(ext_prefix)
-                    except Exception:
-                        pass
-        finally:
+        mockin_routes_missing = False
+        for r in list(routes):
+            if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
+                if (r.method, r.path) not in existing_route_keys or (r.method, "/api" + r.path) not in existing_route_keys:
+                    mockin_routes_missing = True
+                    break
+
+        ext_missing = False
+        for ext_name, ext_dir in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).items()):
+            if not ext_dir or not os.path.isdir(ext_dir) or "nukomfy" in ext_name.lower():
+                continue
+            if f"/extensions/{ext_name}".rstrip("/") not in existing_canonicals:
+                ext_missing = True
+                break
+
+        order_wrong = False
+        if resources_snapshot:
+            first_r = resources_snapshot[0]
+            last_r = resources_snapshot[-1]
+            if not (first_r.__class__.__name__ == "PlainResource" and str(getattr(first_r, "canonical", "")) == "/"):
+                order_wrong = True
+            if not (last_r.__class__.__name__ == "StaticResource" and str(getattr(last_r, "canonical", "")).rstrip("/") == ""):
+                order_wrong = True
+
+        if not mockin_routes_missing and not ext_missing and not order_wrong and not web_dir:
+            return
+
+        def _apply_router_changes() -> None:
+            was_frozen = getattr(app, "_frozen", False)
+            was_router_frozen = getattr(app.router, "_frozen", False)
             try:
-                exact_root_res = [
-                    r for r in app.router._resources
-                    if r.__class__.__name__ == "PlainResource" and str(getattr(r, "canonical", "")) == "/"
-                ]
-                catchall_static_root_res = [
-                    r for r in app.router._resources
-                    if r.__class__.__name__ == "StaticResource" and str(getattr(r, "canonical", "")).rstrip("/") == ""
-                ]
-                normal_res = [
-                    r for r in app.router._resources
-                    if r not in exact_root_res and r not in catchall_static_root_res
-                ]
-                app.router._resources[:] = exact_root_res + normal_res + catchall_static_root_res
-            except Exception:
-                pass
-            app._frozen = was_frozen
-            app.router._frozen = was_router_frozen
+                app._frozen = False
+                app.router._frozen = False
+
+                route_map = {}
+                res_map = {}
+                for rt in list(app.router.routes()):
+                    canon = getattr(rt.resource, "canonical", "")
+                    if canon:
+                        route_map[(rt.method, canon)] = rt
+                        res_map[canon] = rt.resource
+
+                for r in list(routes):
+                    if isinstance(r, web.RouteDef) and r.path.startswith("/mockin"):
+                        if (r.method, r.path) in route_map:
+                            try:
+                                route_map[(r.method, r.path)]._handler = r.handler
+                            except Exception:
+                                pass
+                        elif r.path in res_map and hasattr(res_map[r.path], "add_route"):
+                            try:
+                                new_rt = res_map[r.path].add_route(r.method, r.handler)
+                                route_map[(r.method, r.path)] = new_rt
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                new_rts = app.add_routes([r])
+                                if new_rts:
+                                    route_map[(r.method, r.path)] = new_rts[0]
+                                    res_map[r.path] = new_rts[0].resource
+                            except Exception:
+                                pass
+                        api_p = "/api" + r.path
+                        if (r.method, api_p) in route_map:
+                            try:
+                                route_map[(r.method, api_p)]._handler = r.handler
+                            except Exception:
+                                pass
+                        elif api_p in res_map and hasattr(res_map[api_p], "add_route"):
+                            try:
+                                new_api_rt = res_map[api_p].add_route(r.method, r.handler)
+                                route_map[(r.method, api_p)] = new_api_rt
+                            except Exception:
+                                pass
+                        else:
+                            try:
+                                api_def = web.RouteDef(r.method, api_p, r.handler, r.kwargs.copy())
+                                new_api_rts = app.add_routes([api_def])
+                                if new_api_rts:
+                                    route_map[(r.method, api_p)] = new_api_rts[0]
+                                    res_map[api_p] = new_api_rts[0].resource
+                            except Exception:
+                                pass
+
+                canonicals = {str(getattr(r, "canonical", "")).rstrip("/") for r in list(app.router.resources())}
+                for ext_name, ext_dir in list(getattr(nodes, "EXTENSION_WEB_DIRS", {}).items()):
+                    if not ext_dir or not os.path.isdir(ext_dir) or "nukomfy" in ext_name.lower():
+                        nodes.EXTENSION_WEB_DIRS.pop(ext_name, None)
+                        continue
+                    ext_prefix = f"/extensions/{ext_name}".rstrip("/")
+                    if ext_prefix not in canonicals:
+                        try:
+                            app.add_routes([web.static(f"/extensions/{ext_name}", os.path.abspath(ext_dir), follow_symlinks=True)])
+                            canonicals.add(ext_prefix)
+                        except Exception:
+                            pass
+            finally:
+                try:
+                    exact_root_res = [
+                        r for r in app.router._resources
+                        if r.__class__.__name__ == "PlainResource" and str(getattr(r, "canonical", "")) == "/"
+                    ]
+                    catchall_static_root_res = [
+                        r for r in app.router._resources
+                        if r.__class__.__name__ == "StaticResource" and str(getattr(r, "canonical", "")).rstrip("/") == ""
+                    ]
+                    normal_res = [
+                        r for r in app.router._resources
+                        if r not in exact_root_res and r not in catchall_static_root_res
+                    ]
+                    app.router._resources[:] = exact_root_res + normal_res + catchall_static_root_res
+                except Exception:
+                    pass
+                app._frozen = was_frozen
+                app.router._frozen = was_router_frozen
+
+        ev_loop = getattr(ps_inst, "loop", None)
+        if ev_loop is not None and getattr(ev_loop, "is_running", lambda: False)() and threading.current_thread() is not threading.main_thread():
+            ev_loop.call_soon_threadsafe(_apply_router_changes)
+        else:
+            _apply_router_changes()
     except Exception as e:
         print(f"[VStone Mockin] Live route mount note: {e}", flush=True)
 
@@ -925,9 +1076,10 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
     web_dir = os.path.join(mockin_dir, "web")
     os.makedirs(web_dir, exist_ok=True)
 
-    ref = commit_ref or _get_latest_commit_sha()
-    raw_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ref}/ComfyUI-Mockin-Node"
-    ts = int(time.time())
+    local_bundled_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "ComfyUI-Mockin-Node",
+    )
 
     sync_files = [
         ("__init__.py", 1000),
@@ -937,13 +1089,25 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
         ("web/mockin_timeline.js", 1000),
     ]
     wrote_any = False
+    raw_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{commit_ref}/ComfyUI-Mockin-Node" if commit_ref else ""
+    ts = int(time.time())
+
     for rel_f, min_sz in sync_files:
         dst_f = os.path.join(mockin_dir, rel_f.replace("/", os.sep))
         data = b""
-        try:
-            data = _http_get_bytes(f"{raw_base}/{rel_f}?_t={ts}", timeout=15)
-        except Exception:
-            data = b""
+        if raw_base:
+            try:
+                data = _http_get_bytes(f"{raw_base}/{rel_f}?_t={ts}", timeout=15)
+            except Exception:
+                data = b""
+        if not data or len(data) < min_sz:
+            local_src = os.path.join(local_bundled_dir, rel_f.replace("/", os.sep))
+            if os.path.isfile(local_src) and os.path.getsize(local_src) >= min_sz:
+                try:
+                    with open(local_src, "rb") as lf:
+                        data = lf.read()
+                except Exception:
+                    data = b""
         if data and len(data) >= min_sz:
             if _atomic_write_bytes(dst_f, data, min_bytes=min_sz):
                 wrote_any = True
@@ -956,13 +1120,20 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
 
     try:
         import nodes
+        if os.path.isdir(web_dir):
+            nodes.EXTENSION_WEB_DIRS["ComfyUI-Mockin-Node"] = os.path.abspath(web_dir)
+
+        # During ComfyUI startup (before PromptServer.add_routes() has completed), let ComfyUI load custom_nodes natively
+        if not _is_comfy_server_routes_mounted():
+            _restore_real_minimax_h3_nodes()
+            return ""
+
         need_load = (
             wrote_any
             or "MockinR2CloudDriveNode" not in nodes.NODE_CLASS_MAPPINGS
             or "MockinTimelineNode" not in nodes.NODE_CLASS_MAPPINGS
         )
         if need_load and os.path.isfile(os.path.join(mockin_dir, "__init__.py")):
-            # Preserve real Triton SolAttn nodes if already loaded on H200
             saved_real_nodes = {}
             for _k in ("SolAttnPatch", "MiniMaxH3MemoryEfficientSolAttentionPatch", "MiniMaxH3ChunkFeedForward"):
                 _existing = nodes.NODE_CLASS_MAPPINGS.get(_k)
@@ -985,191 +1156,13 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
                 nodes.NODE_CLASS_MAPPINGS[_k] = _cls
                 if _disp:
                     nodes.NODE_DISPLAY_NAME_MAPPINGS[_k] = _disp
+            _restore_real_minimax_h3_nodes()
 
-        _mount_mockin_routes_and_web_live(web_dir)
+        _mount_mockin_routes_and_web_live(web_dir if wrote_any else "")
         if wrote_any or need_load:
             return f"Synced & hot-loaded ComfyUI-Mockin-Node ({mockin_dir})"
     except Exception as e:
         return f"ComfyUI-Mockin-Node load warning: {e}"
-    return ""
-
-
-def _mount_nukomfy_routes_and_web_live(web_dir: str) -> None:
-    """Mount /nukomfy/* HTTP routes & web extension directory live onto PromptServer.instance.app without server restart."""
-    try:
-        import nodes
-        import server
-        if hasattr(nodes, "EXTENSION_WEB_DIRS") and os.path.isdir(web_dir):
-            nodes.EXTENSION_WEB_DIRS["ComfyUI-Nukomfy-Suite"] = web_dir
-        ps = getattr(server, "PromptServer", None)
-        inst = getattr(ps, "instance", None) if ps else None
-        if inst is None:
-            return
-        app = getattr(inst, "app", None)
-        routes = getattr(inst, "routes", None)
-        if app is None or routes is None or not hasattr(routes, "_items"):
-            return
-
-        existing_paths: set[tuple[str, str]] = set()
-        for r in app.router.routes():
-            res = getattr(r, "resource", None)
-            canonical = getattr(res, "canonical", "") if res else ""
-            if canonical:
-                existing_paths.add((getattr(r, "method", "*"), canonical))
-
-        for item in list(routes._items):
-            p = getattr(item, "path", "")
-            m = getattr(item, "method", "*")
-            if p.startswith("/nukomfy") and (m, p) not in existing_paths:
-                try:
-                    app.router.add_route(m, p, item.handler, **getattr(item, "kwargs", {}))
-                    existing_paths.add((m, p))
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-
-def _ensure_nukomfy_suite_custom_node(comfy_root: str | None = None, commit_ref: str | None = None) -> str:
-    """
-    Tự động đồng bộ & nạp nóng ComfyUI-Nukomfy-Suite (kèm NukomfyLTX25BakeIn / NukomfyLTX25UnbakeOut cho Foundry Nuke)
-    vào ComfyUI/custom_nodes/ComfyUI-Nukomfy-Suite trên máy H200:
-    1. Đảm bảo OpenImageIO và fileseq đã được cài đặt trên môi trường Python của H200.
-    2. Tải từ GitHub (hoặc bản gói sẵn trong ComfyUI_Qwen21_MiniMaxH3_AIO/ComfyUI-Nukomfy-Suite) và nạp nóng cả 7 node Nukomfy + HTTP routes /nukomfy/*.
-    """
-    root = comfy_root or _get_comfy_root()
-    if not root:
-        return ""
-    nukomfy_dir = os.path.join(root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
-    web_dir = os.path.join(nukomfy_dir, "web")
-    os.makedirs(os.path.join(nukomfy_dir, "nodes"), exist_ok=True)
-    os.makedirs(os.path.join(nukomfy_dir, "server"), exist_ok=True)
-    os.makedirs(web_dir, exist_ok=True)
-
-    for mod_name, pip_spec in (("OpenImageIO", "OpenImageIO>=3.1.0"), ("fileseq", "fileseq>=2.0.0")):
-        try:
-            __import__(mod_name)
-        except Exception:
-            try:
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "--quiet", pip_spec],
-                    capture_output=True,
-                    text=True,
-                    timeout=180,
-                    check=False,
-                )
-            except Exception:
-                pass
-
-    ref = commit_ref or _get_latest_commit_sha()
-    raw_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ref}/ComfyUI-Nukomfy-Suite"
-    ts = int(time.time())
-    wrote_any = False
-
-    nukomfy_files = (
-        ("__init__.py", 200),
-        ("version.py", 10),
-        ("requirements.txt", 10),
-        ("pyproject.toml", 50),
-        ("nodes/__init__.py", 200),
-        ("nodes/_backends.py", 200),
-        ("nodes/_io_helpers.py", 200),
-        ("nodes/_sequence.py", 200),
-        ("nodes/io_read.py", 500),
-        ("nodes/io_write.py", 500),
-        ("nodes/ltx25_bridge.py", 1000),
-        ("nodes/multilayer_pack.py", 500),
-        ("nodes/ocio_colorspace.py", 200),
-        ("server/__init__.py", 200),
-        ("server/activity.py", 200),
-        ("server/activity_config.py", 200),
-        ("server/auth.py", 200),
-        ("server/integrity.py", 200),
-        ("server/job_history.py", 500),
-        ("server/job_history_config.py", 200),
-        ("server/job_history_db.py", 500),
-        ("server/node_status.py", 100),
-        ("server/paths.py", 200),
-        ("server/progress_relay.py", 200),
-        ("server/reboot.py", 100),
-        ("server/routes.py", 500),
-        ("server/state.py", 200),
-        ("server/tamper_tracked.py", 200),
-        ("web/api.js", 200),
-        ("web/history_section.js", 500),
-        ("web/icon.svg", 50),
-        ("web/io_raw_data_toggle.js", 200),
-        ("web/io_read_dynamic.js", 200),
-        ("web/json_faithful.js", 200),
-        ("web/modal.js", 200),
-        ("web/multilayer_pack_dynamic.js", 200),
-        ("web/multilayer_unpack_dynamic.js", 200),
-        ("web/nukomfy_manager.js", 100),
-        ("web/ocio_dynamic.js", 200),
-        ("web/sidebar_tab.js", 500),
-        ("web/styles.css", 500),
-    )
-
-    for rel_path, min_sz in nukomfy_files:
-        dst = os.path.join(nukomfy_dir, rel_path.replace("/", os.sep))
-        data = _http_get_bytes(f"{raw_base}/{rel_path}?_t={ts}", timeout=15)
-        if not data or len(data) < min_sz:
-            local_bundled = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "ComfyUI-Nukomfy-Suite",
-                rel_path.replace("/", os.sep),
-            )
-            if os.path.isfile(local_bundled) and os.path.getsize(local_bundled) >= min_sz:
-                try:
-                    with open(local_bundled, "rb") as lf:
-                        data = lf.read()
-                except Exception:
-                    pass
-        if data and len(data) >= min_sz:
-            if _atomic_write_bytes(dst, data, min_bytes=min_sz):
-                wrote_any = True
-
-    try:
-        import nodes
-        required_nodes = (
-            "NukomfyRead",
-            "NukomfyWrite",
-            "NukomfyOCIOColorSpace",
-            "NukomfyMultiLayerPack",
-            "NukomfyMultiLayerUnpack",
-            "NukomfyLTX25BakeIn",
-            "NukomfyLTX25UnbakeOut",
-        )
-        need_load = wrote_any or any(rn not in nodes.NODE_CLASS_MAPPINGS for rn in required_nodes)
-        if need_load and os.path.isfile(os.path.join(nukomfy_dir, "__init__.py")):
-            _hot_load_custom_node_pack(nukomfy_dir)
-            try:
-                if nukomfy_dir not in sys.path:
-                    sys.path.insert(0, nukomfy_dir)
-                import importlib
-                spec = importlib.util.spec_from_file_location(
-                    "ComfyUI_Nukomfy_Suite_pkg",
-                    os.path.join(nukomfy_dir, "__init__.py"),
-                    submodule_search_locations=[nukomfy_dir],
-                )
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    sys.modules["ComfyUI_Nukomfy_Suite_pkg"] = mod
-                    spec.loader.exec_module(mod)
-                    cls_map = getattr(mod, "NODE_CLASS_MAPPINGS", {}) or {}
-                    disp_map = getattr(mod, "NODE_DISPLAY_NAME_MAPPINGS", {}) or {}
-                    if cls_map:
-                        nodes.NODE_CLASS_MAPPINGS.update(cls_map)
-                    if disp_map:
-                        nodes.NODE_DISPLAY_NAME_MAPPINGS.update(disp_map)
-            except Exception:
-                pass
-
-        _mount_nukomfy_routes_and_web_live(web_dir)
-        if wrote_any or need_load:
-            return f"Synced & hot-loaded ComfyUI-Nukomfy-Suite + LTX-2.5 Nuke Bridge ({nukomfy_dir})"
-    except Exception as e:
-        return f"ComfyUI-Nukomfy-Suite load warning: {e}"
     return ""
 
 
@@ -1501,8 +1494,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 17: Restore aiohttp router PlainResource('/') & StaticResource('/') ordering + mount all EXTENSION_WEB_DIRS live
-VSTONE_RUNTIME_PATCH_VER = 17
+# 18: Clean up all Nukomfy threads/send_sync/hooks, wait for PromptServer.add_routes() at boot, and protect disk space
+VSTONE_RUNTIME_PATCH_VER = 18
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -2538,27 +2531,13 @@ def apply_comfy_runtime_fixes() -> str:
     except Exception as e:
         print(f"[VStone Runtime] Warning hooking SAM3: {e}")
 
-    # 4. Auto-install & hot-load Portable Workflow Pack custom nodes in background (once per session, not on every patch bump)
+    # 4. Clean up Nukomfy runtime/disk & restore real MiniMax H3 nodes
     try:
-        if getattr(sys, "_vstone_portable_pack_bg_ver", 0) < 1:
-            if not any("_bg_portable_pack_installer" in t.name for t in threading.enumerate()):
-                setattr(sys, "_vstone_portable_pack_bg_ver", VSTONE_RUNTIME_PATCH_VER)
-
-                def _bg_install_packs():
-                    try:
-                        res_msg = install_portable_workflow_pack(unique_id=None, allow_restart=False)
-                        print(f"[VStone Auto-Pack] {res_msg.splitlines()[0] if res_msg else 'Done'}", flush=True)
-                    except Exception as _bg_err:
-                        print(f"[VStone Auto-Pack] Warning: {_bg_err}", flush=True)
-
-                threading.Thread(target=_bg_install_packs, name="_bg_portable_pack_installer", daemon=True).start()
-                all_notes_bg = "Started background update & hot-load for 28 Custom Node Packs"
-            else:
-                all_notes_bg = ""
-        else:
-            all_notes_bg = ""
+        _cleanup_nukomfy_suite_runtime_and_disk()
+        _restore_real_minimax_h3_nodes()
     except Exception:
-        all_notes_bg = ""
+        pass
+    all_notes_bg = ""
 
     # 4a. Auto-sync & hot-load ComfyUI-Mockin-Node (R2 Cloud Drive + Timeline Director + Live HTTP/JS Routes)
     try:
@@ -2686,6 +2665,15 @@ def download_file_to_comfy_models(folder_type: str, filename: str, url: str, pag
                 os.remove(target_path)
             except Exception:
                 pass
+
+        try:
+            free_bytes = shutil.disk_usage(target_dir).free
+            if free_bytes < 8 * 1024 * 1024 * 1024:
+                msg_low = f"[VStone Downloader] Skipped {filename}: Low disk space ({free_bytes // (1024**3)} GB free < 8 GB safety reserve)."
+                print(msg_low, flush=True)
+                return msg_low
+        except Exception:
+            pass
 
         # page=True: hàng tải của trang concept, file tạm riêng để không ghi chung 1 file .part với hàng chung.
         tmp_name = f"{filename}.page.part" if page else f"{filename}.part"
@@ -4090,7 +4078,11 @@ def _start_background_sync_daemon(interval_sec: int = 30):
     setattr(sys_mod, "_vstone_sync_daemon_started", True)
 
     def _loop():
-        time.sleep(3)
+        # Wait until ComfyUI finishes nodes.init_extra_nodes() and PromptServer.add_routes() at startup
+        for _ in range(45):
+            time.sleep(2)
+            if _is_comfy_server_routes_mounted():
+                break
         try:
             apply_comfy_runtime_fixes()
         except Exception:

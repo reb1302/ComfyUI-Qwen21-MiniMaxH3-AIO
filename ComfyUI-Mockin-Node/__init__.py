@@ -677,9 +677,6 @@ from .mockin_r2_nodes import R2_NODE_CLASS_MAPPINGS, R2_NODE_DISPLAY_NAME_MAPPIN
 
 NODE_CLASS_MAPPINGS = {
     "MockinTimelineNode": MockinTimelineNode,
-    "SolAttnPatch": SolAttnPatchCompat,
-    "MiniMaxH3MemoryEfficientSolAttentionPatch": SolAttnPatchCompat,
-    "MiniMaxH3ChunkFeedForward": MiniMaxH3ChunkFeedForwardCompat,
     "String": StringCompatNode,
     "JoyEcho_LLMEnhance": JoyEchoLLMEnhanceCompat,
     **R2_NODE_CLASS_MAPPINGS,
@@ -687,9 +684,6 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MockinTimelineNode": "🎬 Mockin Node - Timeline & DeepSeek Prompt",
-    "SolAttnPatch": "SolAttnPatch (Compat)",
-    "MiniMaxH3MemoryEfficientSolAttentionPatch": "MiniMaxH3 SolAttention (Compat)",
-    "MiniMaxH3ChunkFeedForward": "MiniMaxH3 ChunkFeedForward (Compat)",
     "String": "String (Compat)",
     "JoyEcho_LLMEnhance": "JoyEcho LLM Enhance (Mockin Uncensored)",
     **R2_NODE_DISPLAY_NAME_MAPPINGS,
