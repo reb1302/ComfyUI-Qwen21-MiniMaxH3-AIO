@@ -8062,10 +8062,9 @@ async function requireBlendLora() {
 }
 
 // ---------- Đổi ánh sáng: MoGe-3 cho normal map và độ sâu, trình duyệt tính ánh sáng, Qwen 2.1 vẽ lại ----------
-// Normal map theo template utility_moge3_geometry_estimation của ComfyUI. Qwen chạy kèm LoRA Consistency của ausboss
-// với cài đặt tác giả khuyên: strength 1, 25 bước, CFG 1, euler simple, latent của encoder.
+// Normal map theo template utility_moge3_geometry_estimation của ComfyUI. Qwen chạy không LoRA Consistency: LoRA đó ép
+// kết quả trùng ảnh dẫn hướng nên không vẽ thêm bóng đổ, còn tác giả đo đổi sáng không LoRA chỉ lệch trung vị 0.7 px.
 const MOGE_MODEL = 'moge_3_vitl_fp16.safetensors';
-const CONSISTENCY_LORA = 'qwen-image-2.1-consistency.safetensors';
 // Như IC-Light chọn hướng đèn: sampler bắt đầu từ ảnh đã tính sáng (VAE encode) thay vì latent trống, denoise 0.9 như lowres_denoise của IC-Light.
 const RELIGHT_DENOISE = 0.9;
 const LIGHT_MAX = 3;
@@ -8073,8 +8072,8 @@ const LIGHT_PREVIEW_PX = 1600;
 const LIGHT_DEFAULT = { color: '#FFB46B', power: 1.2, soft: 0.4, height: 0.5, range: 1.2 };
 const LIGHT_MODES = { post: 'Hậu kỳ', ref: 'Ảnh mẫu', prompt: 'Chỉ prompt' };
 const RELIGHT = {
-  post: { en: '<image1> shows the new lighting of <image2>. Keep the lighting of <image1> exactly: the same light directions, light colors, bright areas and dark areas. Do not bring back the old lighting of <image2>.', vi: '<image1> là ánh sáng mới của <image2>. Giữ đúng ánh sáng của <image1>: cùng hướng đèn, màu đèn, vùng sáng và vùng tối. Không lấy lại ánh sáng cũ của <image2>.' },
-  postReal: { en: 'Make the light look real: natural shading, cast and contact shadows, specular highlights, rim light and bounce light, keeping the contrast between lit and dark areas as strong as in <image1>. Take only details and textures from <image2>, not its lighting, shadows or color cast.', vi: 'Làm ánh sáng thật: đổ khối tự nhiên, bóng đổ và bóng tiếp xúc, điểm bắt sáng, rim light, ánh hắt, giữ độ tương phản sáng tối mạnh như <image1>. Chỉ lấy chi tiết và chất liệu từ <image2>, không lấy ánh sáng, bóng hay ám màu của nó.' },
+  post: { en: '<image1> is a lighting guide for <image2>. Follow its light directions, light colors, bright areas and dark areas. The guide has no cast shadows yet. Do not bring back the old lighting of <image2>.', vi: '<image1> là ảnh dẫn hướng ánh sáng cho <image2>. Theo hướng đèn, màu đèn, vùng sáng và vùng tối của nó. Ảnh dẫn hướng chưa có bóng đổ. Không lấy lại ánh sáng cũ của <image2>.' },
+  postReal: { en: 'Make the light look real and add what the guide lacks: cast shadows of people and objects falling away from each light, contact shadows, specular highlights, rim light and bounce light, with the contrast between lit and dark areas as strong as in <image1>. Take only details and textures from <image2>, not its lighting, shadows or color cast.', vi: 'Làm ánh sáng thật và vẽ thêm phần ảnh dẫn hướng còn thiếu: bóng đổ của người và đồ vật ngả ra xa từng đèn, bóng tiếp xúc, điểm bắt sáng, rim light, ánh hắt, độ tương phản sáng tối mạnh như <image1>. Chỉ lấy chi tiết và chất liệu từ <image2>, không lấy ánh sáng, bóng hay ám màu của nó.' },
   postKeep: { en: 'Keep the composition, people, poses and every object exactly as in <image2>.', vi: 'Giữ bố cục, người, tư thế và mọi đồ vật đúng như <image2>.' },
   ref: { en: 'Remove the original lighting of <image1> and relight <image1> to match the lighting of <image2>: the same light directions, light colors, brightness distribution, shadows, highlights and rim light.', vi: 'Bỏ ánh sáng cũ của <image1> và đổi ánh sáng <image1> theo ánh sáng của <image2>: cùng hướng đèn, màu đèn, phân bố sáng tối, bóng đổ, điểm bắt sáng và rim light.' },
   prompt: { en: 'Remove the original lighting of <image1> and relight it.', vi: 'Bỏ ánh sáng cũ của <image1> và đổi ánh sáng.' },
@@ -11141,7 +11140,6 @@ async function generate() {
       if (run.cancelled) throw new Error('Đã dừng.');
       run.promptId = null;
       startPass(passLabel(total, relight.name));
-      await requireLoras([CONSISTENCY_LORA], 'LoRA');
       const plan = planShot(snap.w, snap.h, megapixels);
       const shot = cropCanvas(current, plan);
       let lit = null;
@@ -11154,7 +11152,7 @@ async function generate() {
       const refs = relightJob.mode === 'post' ? [fitReference(current, 2)] : relightJob.mode === 'ref' ? [fitReference(lit, 2)] : [];
       const image1 = await uploadCanvas(main, `${stamp}_relight.png`);
       const refNames = await uploadAll(refs, `${stamp}_relight_ref`);
-      const graph = buildApiPrompt({ image1, refs: refNames, text: relightJob.text, resolution: 0, seed: randomSeed(), lora: CONSISTENCY_LORA });
+      const graph = buildApiPrompt({ image1, refs: refNames, text: relightJob.text, resolution: 0, seed: randomSeed(), lora: null });
       if (lit) {
         // Ảnh tính sáng cùng cỡ image_1 (bội số 32), nên latent của nó khớp cỡ latent của encoder.
         if (relightJob.mode !== 'post') graph[50] = { class_type: 'LoadImage', inputs: { image: await uploadCanvas(lit, `${stamp}_relight_start.png`) } };
