@@ -6551,7 +6551,7 @@ a.btn{color:inherit;text-decoration:none}
       <option value="0">Gen ở cỡ gốc</option>
     </select>
     <span class="qstate" id="qState" title="Hàng đợi chung của ComfyUI trên H200, mọi họa sĩ dùng chung, chạy từng việc một"><span class="qdot" aria-hidden="true"></span><span id="qText">Chưa kết nối ComfyUI</span></span>
-    <select class="field model" id="model" aria-label="Model" autocomplete="off" title="Flux 3 Klein dùng cho lượt Sửa bằng cọ. Kéo rộng, Ghép và Ánh sáng vẫn chạy Qwen 2.1.">
+    <select class="field model" id="model" aria-label="Model" autocomplete="off" title="Flux 3 Klein dùng cho Sửa bằng cọ, Kéo rộng, Upscale và Char sheet. Ghép, Ánh sáng, Xoay và Đổi người vẫn chạy Qwen 2.1 vì Flux 3 chưa có LoRA cho các việc này.">
       <option value="qwen">Qwen 2.1</option>
       <option value="flux3">Flux 3 Klein</option>
     </select>
@@ -6731,7 +6731,13 @@ function buildEditPass(marks, problems, model) {
 function buildPasses({ marks, expanded, scene, envCount, expandLora, layers, blendLora, light, model }) {
   const problems = [];
   const passes = [];
-  if (expanded) {
+  if (expanded && model === 'flux3') {
+    // Như workflow Flux 3 của ausboss: Qwen3-VL 4B tả ảnh, lời của họa sĩ được thêm vào yêu cầu tả, ảnh môi trường không dùng.
+    const s = scene.trim();
+    const out = [{ ...PROMPTS.outpaint }, { en: 'Scene: <written by Qwen3-VL 4B from the picture>', vi: `Mô tả cảnh: Qwen3-VL 4B tự viết từ ảnh${s ? `, có thêm: ${s}` : ''}.` }];
+    if (envCount) out.push({ en: 'Environment images are not used with FLUX 3 Klein.', vi: 'Ảnh môi trường chỉ dùng với Qwen 2.1, Flux 3 không dùng.' });
+    passes.push({ kind: 'expand', name: `Kéo rộng (Flux 3 Klein, LoRA ${String(FLUX3_OUTPAINT.strength).replace('.', ',')})`, lines: out, slots: [], model: 'flux3' });
+  } else if (expanded) {
     const out = [{ ...PROMPTS.outpaint }];
     const s = scene.trim().replace(/[.\s]+$/, '');
     if (s) out.push({ en: PROMPTS.scene.en(s), vi: PROMPTS.scene.vi(s) });
@@ -7242,7 +7248,7 @@ function renderPanel() {
     slots.className = 'slots';
     if (pass.kind === 'sheet') {
       Sheet.slots.filter(s => s.ref).forEach((slot, n) => {
-        slots.append(slotFigure(`image_${n + 1}`, slot.label, cv => paintRefThumb(cv, slot.ref)));
+        slots.append(slotFigure(pass.model === 'flux3' ? `ref_image_${n}` : `image_${n + 1}`, slot.label, cv => paintRefThumb(cv, slot.ref)));
       });
     } else if (pass.kind === 'rotate') {
       slots.append(slotFigure('image_1', 'Ảnh chính', cv => paintRefThumb(cv, Rotate.slots[0].ref)));
@@ -7267,8 +7273,12 @@ function renderPanel() {
       else slots.append(slotFigure('image_1', 'Ảnh gốc', shot));
     } else if (pass.kind === 'merge') {
       slots.append(slotFigure('image_1', 'Cả shot với layer đã đặt: vùng lấp viền đỏ, vùng ghép viền xanh', cv => paintMergeThumb(cv)));
+    } else if (pass.kind === 'upscale' && pass.model === 'flux3') {
+      slots.append(slotFigure('ref_image_0', 'Từng ô khoảng 2 MP của ảnh đã qua SeedVR2, vẽ lại lần lượt', cv => paintRefThumb(cv, Up.slots[0].ref)));
     } else if (pass.kind === 'upscale') {
       slots.append(slotFigure('image_1', 'Từng ô khoảng 2 MP của ảnh đã phóng to, vẽ lại lần lượt', cv => paintRefThumb(cv, Up.slots[0].ref)));
+    } else if (pass.kind === 'expand' && pass.model === 'flux3') {
+      slots.append(slotFigure('ref_image_0', 'Ảnh + vùng xám, đưa về khoảng 1 MP như workflow', cv => paintThumb(cv)));
     } else if (pass.kind === 'expand') {
       slots.append(slotFigure('image_1', 'Ảnh + vùng xám', cv => paintThumb(cv)));
       S.env.filter(s => s.ref).forEach((slot, n) => {
@@ -9407,7 +9417,6 @@ const Sheet = {
   views: new Set(SHEET_VIEWS.filter(v => v.on).map(v => v.id)),
   note: '',
 };
-const imageTags = numbers => numbers.map(n => `<image${n}>`);
 const joinList = (items, word) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} ${word} ${items[items.length - 1]}` : items[0]);
 
 // Ô đã có ảnh được đánh số image theo thứ tự, ô trống không chiếm số.
@@ -9416,7 +9425,10 @@ function buildSheetPasses() {
   if (!filled.length) return { passes: [], problems: [] };
   const picked = SHEET_VIEWS.filter(v => v.en && Sheet.views.has(v.id));
   if (!picked.length) return { passes: [], problems: [{ brush: null, text: 'Chọn ít nhất một góc nhìn' }] };
-  const tags = imageTags(filled.map(f => f.n));
+  // Flux 3 Klein gọi ảnh tham chiếu là <ref_image_0>, <ref_image_1>... thay cho <image1>, <image2>... của Qwen.
+  const flux = S.model === 'flux3';
+  const tag = n => (flux ? `<ref_image_${n - 1}>` : `<image${n}>`);
+  const tags = filled.map(f => tag(f.n));
   const allEn = joinList(tags, 'and'), allVi = joinList(tags, 'và');
   const lines = [{
     en: `Using the character in ${allEn}, create a character reference sheet on a plain light gray background: ${picked.map(v => v.en).join(', ')}, full body, same scale, evenly spaced in one row.`,
@@ -9425,9 +9437,9 @@ function buildSheetPasses() {
   if (filled.length > 1) {
     lines.push({ en: `${allEn} show the same character.`, vi: `${allVi} là cùng một nhân vật.` });
     const body = filled.find(f => f.role === 'body'), face = filled.find(f => f.role === 'face');
-    if (body) lines.push({ en: `Take the body and outfit from <image${body.n}>.`, vi: `Lấy vóc dáng và trang phục từ <image${body.n}>.` });
-    if (face) lines.push({ en: `Take the face and hair from <image${face.n}>.`, vi: `Lấy mặt và tóc từ <image${face.n}>.` });
-    const extra = imageTags(filled.filter(f => f.role === 'extra').map(f => f.n));
+    if (body) lines.push({ en: `Take the body and outfit from ${tag(body.n)}.`, vi: `Lấy vóc dáng và trang phục từ ${tag(body.n)}.` });
+    if (face) lines.push({ en: `Take the face and hair from ${tag(face.n)}.`, vi: `Lấy mặt và tóc từ ${tag(face.n)}.` });
+    const extra = filled.filter(f => f.role === 'extra').map(f => tag(f.n));
     if (extra.length) lines.push({ en: `Use ${joinList(extra, 'and')} for more details of the same character.`, vi: `Dùng ${joinList(extra, 'và')} để lấy thêm chi tiết của nhân vật.` });
   }
   lines.push(
@@ -9437,7 +9449,7 @@ function buildSheetPasses() {
   if (Sheet.views.has('face')) lines.push({ en: 'Add a close-up of the face.', vi: 'Thêm một ô cận mặt.' });
   const note = Sheet.note.trim().replace(/[.\s]+$/, '');
   if (note) lines.push({ en: `${note}.`, vi: `${note}.` });
-  return { passes: [{ kind: 'sheet', name: 'Char sheet', lines, slots: [] }], problems: [] };
+  return { passes: [{ kind: 'sheet', name: flux ? 'Char sheet (Flux 3 Klein)' : 'Char sheet', lines, slots: [], model: flux ? 'flux3' : 'qwen' }], problems: [] };
 }
 function syncSlotBoxes(containerId, slots) {
   document.querySelectorAll(`#${containerId} .sheetwrap`).forEach((wrap, i) => {
@@ -9531,11 +9543,12 @@ function buildEnvBox() {
   });
   // Trình duyệt có thể giữ lựa chọn cũ của ô model khi tải lại trang mà không báo change, nên lấy lại giá trị đang hiện.
   S.model = $('model').value;
-  // Prompt sửa tay theo model cũ (viền màu hay khung <obj_N>) không hợp model mới, nên bỏ.
+  // Prompt sửa tay theo model cũ (viền màu hay khung <obj_N>, <imageN> hay <ref_image_N>) không hợp model mới, nên bỏ.
   $('model').addEventListener('change', e => {
     S.model = e.target.value;
-    S.overrides = { ...S.overrides, edit: null };
-    setStatus(S.model === 'flux3' ? 'Flux 3 Klein dùng cho lượt Sửa bằng cọ. Kéo rộng, Ghép và Ánh sáng vẫn chạy Qwen 2.1.' : 'Mọi lượt chạy Qwen 2.1.');
+    S.overrides = { ...S.overrides, edit: null, expand: null, sheet: null };
+    setStatus(S.model === 'flux3' ? 'Flux 3 Klein dùng cho Sửa bằng cọ, Kéo rộng, Upscale và Char sheet. Ghép, Ánh sáng, Xoay và Đổi người vẫn chạy Qwen 2.1.' : 'Mọi lượt chạy Qwen 2.1.');
+    syncUpscale();
     renderPanel();
   });
 }
@@ -10971,6 +10984,7 @@ const UPSCALE_PROMPT = {
   vi: 'Phục hồi ảnh: bỏ mờ, nhiễu và vết nén, lấy lại chi tiết sắc nét, tự nhiên, giữ nguyên bố cục, người và màu.',
 };
 const UPSCALE_HINT = 'Qwen 2.1 vẽ lại ảnh nét hơn ở cỡ lớn: chia thành các ô khoảng 2 MP, vẽ từng ô rồi ghép, mỗi ô giữ màu ảnh gốc. Chi tiết nhỏ là vẽ thêm cho hợp, mặt nhỏ có thể đổi, chữ nhỏ có thể sai. Ảnh đã to và nét thì được thêm ít. Dùng workflow Tiled Upscale và Restore LoRA của AusBoss.';
+const UPSCALE_HINT_FLUX3 = 'Flux 3 Klein: SeedVR2 làm sạch và phóng to cả ảnh trước, rồi Flux 3 với LoRA Restore vẽ lại từng ô khoảng 2 MP, 8 bước, mỗi ô giữ màu ảnh gốc. Dùng workflow Upscale Flux 3 Klein của AusBoss.';
 const UPSCALE_LORAS = { restore: 'qwen-image-2.1-restore.safetensors', turbo: 'Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors' };
 // Các giá trị của node Tiled Upscale trong workflow tác giả: ô 2 MP, chồng 128 px, cạnh chia hết 32, vẽ lại tối đa gấp 8 lần cỡ gốc.
 const UPSCALE_TILE = { tile_megapixels: 2, overlap: 128, multiple: 32, max_growth: 8 };
@@ -11146,6 +11160,9 @@ function syncUpscale() {
   syncSlotBoxes('upscaleSlots', Up.slots);
   $('upscaleSize').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(Number(chip.dataset.mp) === Up.mp)));
   $('upscaleSpeed').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String((chip.dataset.fast === '1') === Up.fast)));
+  // Nhanh/Kỹ là công tắc Viggle Turbo của bản Qwen; workflow Flux 3 luôn vẽ mỗi ô 8 bước.
+  $('upscaleSpeed').hidden = S.model === 'flux3';
+  $('upscaleHint').textContent = S.model === 'flux3' ? UPSCALE_HINT_FLUX3 : UPSCALE_HINT;
   drawUpscale();
 }
 function takeUpscaleFiles(fileList, start) {
@@ -11166,7 +11183,8 @@ function syncUpscaleFromBase() {
 }
 function buildUpscalePasses() {
   if (!Up.slots[0].ref) return { passes: [], problems: [] };
-  return { passes: [{ kind: 'upscale', name: `Upscale ${Up.mp} MP`, lines: [UPSCALE_PROMPT], slots: [] }], problems: [] };
+  const flux = S.model === 'flux3';
+  return { passes: [{ kind: 'upscale', name: `Upscale ${Up.mp} MP${flux ? ' (Flux 3 Klein)' : ''}`, lines: [UPSCALE_PROMPT], slots: [], model: flux ? 'flux3' : 'qwen' }], problems: [] };
 }
 function buildUpscalePanel() {
   buildSlotBoxes('upscaleSlots', Up.slots, takeUpscaleFiles, syncUpscale);
@@ -11234,9 +11252,14 @@ async function generateUpscale() {
   beginRun();
   try {
     startPass(pass.name);
-    await requireUpscaleParts(fast);
+    if (pass.model === 'flux3') {
+      await requireFlux3([FLUX3.unet, FLUX3.clip, FLUX3.vae, FLUX3_UPSCALE.lora, FLUX3_UPSCALE.seedvr2, FLUX3_UPSCALE.seedvr2Vae], ['AUSBOSS_NODES_TiledUpscale', 'AUSBOSS_NODES_TiledUpscaleStitch', 'AUSBOSS_NODES_MathExpression', 'AUSBOSS_NODES_ImageResize', 'SeedVR2Preprocess', 'SeedVR2Conditioning', 'SeedVR2PostProcessing', 'ReferenceMultiLatent']);
+    } else {
+      await requireUpscaleParts(fast);
+    }
     const names = await uploadAll([source], `${stamp}_upscale`);
-    run.promptId = await queueGraph(buildUpscaleGraph({ image: names[0], text, seed: randomSeed(), mp, fast }));
+    const graphArgs = { image: names[0], text, seed: randomSeed(), mp, fast };
+    run.promptId = await queueGraph(pass.model === 'flux3' ? buildFlux3UpscaleGraph(graphArgs) : buildUpscaleGraph(graphArgs));
     advanceJob('queue');
     renderJob();
     const { img, url } = await loadOutput(await waitForImage(run.promptId));
@@ -11618,14 +11641,87 @@ function buildFlux3EditGraph({ shot, refs, text, boxes, w, h, seed }) {
   });
   return graph;
 }
+// ---------- Flux 3 Klein Kéo rộng: theo workflow flux-3-image-klein-outpaint của ausboss ----------
+// Bỏ node đệm và ghép của AusBoss vì trang đã đệm xám và ghép lại ảnh gốc như lượt Qwen. Ảnh cho Qwen3-VL tả là ảnh gốc
+// (workflow cắt lấy phần ảnh thật bằng Crop For Inpaint). LoRA 1,5 như tác giả khuyên cho bản distilled.
+const FLUX3_OUTPAINT = { lora: 'flux-3-image-klein-outpaint.safetensors', strength: 1.5 };
+const FLUX3_OUTPAINT_ASK = 'Write the text-to-image prompt that would generate this exact picture. One paragraph of 50 to 90 words. Begin with the medium and style in a few words, such as "Photograph", "Smartphone photo", "Anime illustration", "Oil painting" or "3D render". Then describe the subject, the setting, and what fills every part of the frame from edge to edge, including the background and the areas near the borders. Any flat mid-gray parts, such as corners or a background, are blank space that will be painted to continue the scene: describe the scene as if it filled the whole frame, and don\'t describe a border, frame or vignette around it. Include materials, colours, lighting, time of day, camera angle and framing. Quote any readable text exactly. Use plain factual language; do not start with \'The image\' or \'This picture\' and do not give opinions. Output only the prompt.';
+// Như node RegexReplace của workflow: luôn mở đầu bằng "Also include in the prompt: ", rồi tới lời của họa sĩ.
+const flux3OutpaintWords = scene => `Also include in the prompt: ${scene.replace(/^\s*(?:also include in the prompt\s*:?\s*)?/i, '')}`;
+function buildFlux3OutpaintGraph({ canvas, picture, scene, seed }) {
+  return {
+    1: { class_type: 'UNETLoader', inputs: { unet_name: FLUX3.unet, weight_dtype: 'default' } },
+    2: { class_type: 'CLIPLoader', inputs: { clip_name: FLUX3.clip, type: 'flux3', device: 'default' } },
+    3: { class_type: 'VAELoader', inputs: { vae_name: FLUX3.vae } },
+    4: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: FLUX3_OUTPAINT.lora, strength_model: FLUX3_OUTPAINT.strength } },
+    11: { class_type: 'LoadImage', inputs: { image: canvas } },
+    12: { class_type: 'LoadImage', inputs: { image: picture } },
+    120: { class_type: 'CLIPLoader', inputs: { clip_name: FLUX3.clip, type: 'krea2', device: 'default' } },
+    103: { class_type: 'StringConcatenate', inputs: { string_a: FLUX3_OUTPAINT_ASK, string_b: flux3OutpaintWords(scene), delimiter: ' ' } },
+    104: { class_type: 'TextGenerate', inputs: { clip: ['120', 0], image: ['12', 0], prompt: ['103', 0], max_length: 300, sampling_mode: 'on', 'sampling_mode.temperature': 0.3, 'sampling_mode.top_k': 64, 'sampling_mode.top_p': 0.95, 'sampling_mode.min_p': 0.05, 'sampling_mode.repetition_penalty': 1.05, 'sampling_mode.seed': 20260925, 'sampling_mode.presence_penalty': 0, thinking: true, use_default_template: true, mtp: 'auto' } },
+    105: { class_type: 'StringConcatenate', inputs: { string_a: PROMPTS.outpaint.en, string_b: ['104', 0], delimiter: ' Scene: ' } },
+    121: { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: ['105', 0] } },
+    122: { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['121', 0] } },
+    123: { class_type: 'ReferenceMultiLatent', inputs: { positive: ['121', 0], negative: ['122', 0], vae: ['3', 0], resolution: 'keep resolution', 'images.image0': ['11', 0] } },
+    114: { class_type: 'KSampler', inputs: { model: ['4', 0], positive: ['123', 0], negative: ['123', 1], latent_image: ['123', 2], seed, steps: 16, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
+    115: { class_type: 'VAEDecode', inputs: { samples: ['114', 0], vae: ['3', 0] } },
+    116: { class_type: 'SaveImage', inputs: { filename_prefix: 'Concept_outpaint_flux3', images: ['115', 0] } },
+  };
+}
+// ---------- Flux 3 Klein Upscale: theo workflow flux-3-image-klein-upscale của ausboss, các công tắc để mặc định ----------
+// Mặc định: không model upscale (4x-UltraSharpV2 bị tắt), SeedVR2 làm sạch và phóng to cả ảnh, không vẽ lại cả ảnh trước,
+// rồi Flux 3 với LoRA Restore vẽ lại từng ô 2 MP, 8 bước. Bỏ node xem, so sánh và đo giờ.
+const FLUX3_UPSCALE = { lora: 'flux-3-image-klein-restore.safetensors', seedvr2: 'seedvr2_3b_int8_convrot.safetensors', seedvr2Vae: 'seedvr2_ema_vae_fp16.safetensors' };
+function buildFlux3UpscaleGraph({ image, text, seed, mp }) {
+  const tiled = { tile_size: 512, overlap: 128, temporal_size: 4096, temporal_overlap: 8 };
+  return {
+    8: { class_type: 'UNETLoader', inputs: { unet_name: FLUX3.unet, weight_dtype: 'default' } },
+    6: { class_type: 'CLIPLoader', inputs: { clip_name: FLUX3.clip, type: 'flux3', device: 'default' } },
+    7: { class_type: 'VAELoader', inputs: { vae_name: FLUX3.vae } },
+    9: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['8', 0], lora_name: FLUX3_UPSCALE.lora, strength_model: 1 } },
+    10: { class_type: 'UNETLoader', inputs: { unet_name: FLUX3_UPSCALE.seedvr2, weight_dtype: 'default' } },
+    11: { class_type: 'VAELoader', inputs: { vae_name: FLUX3_UPSCALE.seedvr2Vae } },
+    2: { class_type: 'LoadImage', inputs: { image } },
+    3: { class_type: 'AUSBOSS_NODES_TiledUpscale', inputs: { image: ['2', 0], megapixels: mp, ...UPSCALE_TILE } },
+    82: { class_type: 'GetImageSize', inputs: { image: ['2', 0] } },
+    83: { class_type: 'AUSBOSS_NODES_MathExpression', inputs: { expression: 'min(12, max(a * c, 9 * b * b * c / a) / 1000000)', a: ['3', 3], b: ['82', 0], c: ['3', 4] } },
+    84: { class_type: 'AUSBOSS_NODES_ImageResize', inputs: { image: ['2', 0], target_mode: 'megapixels', width: 0, height: 0, edge_length: 1024, megapixels: ['83', 0], scale_factor: 0.5, keep_proportion: 'fit', fill_color: '#000000', divisible_by: 32, interpolation: 'lanczos' } },
+    85: { class_type: 'SeedVR2Preprocess', inputs: { resized_images: ['84', 0] } },
+    86: { class_type: 'VAEEncodeTiled', inputs: { pixels: ['85', 0], vae: ['11', 0], ...tiled } },
+    87: { class_type: 'SeedVR2Conditioning', inputs: { model: ['10', 0], vae_conditioning: ['86', 0] } },
+    88: { class_type: 'KSampler', inputs: { model: ['10', 0], positive: ['87', 0], negative: ['87', 1], latent_image: ['86', 0], seed, steps: 1, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
+    89: { class_type: 'VAEDecodeTiled', inputs: { samples: ['88', 0], vae: ['11', 0], ...tiled } },
+    90: { class_type: 'SeedVR2PostProcessing', inputs: { images: ['89', 0], original_resized_images: ['84', 0], color_correction_method: 'lab' } },
+    91: { class_type: 'ImageScale', inputs: { image: ['90', 0], upscale_method: 'lanczos', width: ['3', 3], height: ['3', 4], crop: 'disabled' } },
+    92: { class_type: 'AUSBOSS_NODES_TiledUpscale', inputs: { image: ['91', 0], megapixels: 0, ...UPSCALE_TILE } },
+    63: { class_type: 'StringTrim', inputs: { string: text, mode: 'Both' } },
+    32: { class_type: 'CLIPTextEncode', inputs: { clip: ['6', 0], text: ['63', 0] } },
+    69: { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['32', 0] } },
+    70: { class_type: 'ReferenceMultiLatent', inputs: { positive: ['32', 0], negative: ['69', 0], vae: ['7', 0], resolution: 'keep resolution', 'images.image0': ['92', 0] } },
+    36: { class_type: 'KSampler', inputs: { model: ['9', 0], positive: ['70', 0], negative: ['70', 1], latent_image: ['70', 2], seed: seed + 1, steps: 8, cfg: 1, sampler_name: 'euler', scheduler: 'simple', denoise: 1 } },
+    37: { class_type: 'VAEDecode', inputs: { samples: ['36', 0], vae: ['7', 0] } },
+    38: { class_type: 'AUSBOSS_NODES_TiledUpscaleStitch', inputs: { tiles: ['37', 0], stitcher: ['92', 1], keep_colors: 1 } },
+    16: { class_type: 'SaveImage', inputs: { filename_prefix: 'Concept_upscale_flux3', images: ['38', 0] } },
+  };
+}
+// Char sheet với Flux 3 Klein: graph sửa ảnh của template với mọi ảnh nhân vật là ảnh tham chiếu, không khung,
+// và latent cỡ bảng từ node Empty Flux 2 Latent có sẵn trong template thay cho latent cỡ ảnh đầu.
+function buildFlux3SheetGraph({ refs, text, w, h, seed }) {
+  const graph = buildFlux3EditGraph({ shot: refs[0], refs: refs.slice(1), text, boxes: [], w, h, seed });
+  graph[44] = { class_type: 'EmptyFlux2LatentImage', inputs: { width: w, height: h, batch_size: 1 } };
+  graph[7].inputs.latent_image = ['44', 0];
+  return graph;
+}
 const comboList = spec => (spec ? (Array.isArray(spec[0]) ? spec[0] : (spec[1] && spec[1].options) || []) : []);
-async function requireFlux3() {
+const FLUX3_EDIT_NODES = ['Flux3LayoutPrompt', 'CreateBoundingBoxes', 'ReferenceMultiLatent', 'TextGenerate', 'ComfySwitchNode', 'BatchImagesNode'];
+async function requireFlux3(files = Object.values(FLUX3), nodeIds = FLUX3_EDIT_NODES) {
   const info = await fetch('/api/object_info').then(r => (r.ok ? r.json() : {}), () => ({}));
-  const nodesMissing = ['Flux3LayoutPrompt', 'CreateBoundingBoxes', 'ReferenceMultiLatent', 'TextGenerate', 'ComfySwitchNode', 'BatchImagesNode'].filter(n => !info[n]);
-  if (nodesMissing.length) throw new Error(`ComfyUI trên máy này chưa có node của Flux 3 Klein (${nodesMissing.join(', ')}), cần cập nhật ComfyUI.`);
-  const have = [...comboList(info.UNETLoader && info.UNETLoader.input.required.unet_name), ...comboList(info.CLIPLoader && info.CLIPLoader.input.required.clip_name), ...comboList(info.VAELoader && info.VAELoader.input.required.vae_name)];
-  const missing = Object.values(FLUX3).filter(f => !have.includes(f));
-  if (missing.length) throw new Error(`Chưa có model Flux 3 Klein: ${missing.join(', ')}. Bấm mục 1 của stoneV_CloudSyncHub (cần token Hugging Face cho repo của BFL), tải xong Gen lại.`);
+  const nodesMissing = nodeIds.filter(n => !info[n]);
+  if (nodesMissing.length) throw new Error(`ComfyUI chưa có node ${nodesMissing.join(', ')}. Node AUSBOSS_NODES_ cần chạy mục 4 của stoneV_CloudSyncHub, node khác cần cập nhật ComfyUI.`);
+  const req = (node, input) => comboList(info[node] && info[node].input.required[input]);
+  const have = [...req('UNETLoader', 'unet_name'), ...req('CLIPLoader', 'clip_name'), ...req('VAELoader', 'vae_name'), ...req('LoraLoaderModelOnly', 'lora_name')];
+  const missing = files.filter(f => !have.includes(f));
+  if (missing.length) throw new Error(`Chưa có model ${missing.join(', ')}. Bấm mục 1 của stoneV_CloudSyncHub (file Flux 3 của BFL cần token Hugging Face), tải xong Gen lại.`);
 }
 
 async function uploadCanvas(canvas, name) {
@@ -11896,7 +11992,18 @@ async function generate() {
   beginRun();
   try {
     let current = snap.padded;
-    if (expand) {
+    if (expand && expand.model === 'flux3') {
+      startPass(passLabel(1, 'Kéo rộng (Flux 3 Klein)'));
+      await requireFlux3([FLUX3.unet, FLUX3.clip, FLUX3.vae, FLUX3_OUTPAINT.lora], ['ReferenceMultiLatent', 'TextGenerate', 'StringConcatenate']);
+      // Như node Image Crop Rotate Pad của workflow: cả khung đã đệm xám đưa về khoảng 1 MP, cạnh chia hết 32.
+      const canvas = await uploadCanvas(cropCanvas(current, planShot(snap.w, snap.h, 1)), `${stamp}_outpaint.png`);
+      const picture = await uploadCanvas(fitReference(snap.base, 1), `${stamp}_outpaint_picture.png`);
+      run.promptId = await queueGraph(buildFlux3OutpaintGraph({ canvas, picture, scene: S.scene.trim(), seed: randomSeed() }));
+      advanceJob('queue');
+      renderJob();
+      const { img } = await loadOutput(await waitForImage(run.promptId));
+      current = stitchOriginal(img, snap);
+    } else if (expand) {
       startPass(passLabel(1, 'Kéo rộng'));
       const name = await uploadCanvas(current, `${stamp}_outpaint.png`);
       const refs = await uploadAll(envRefs, `${stamp}_env`);
@@ -12038,10 +12145,13 @@ async function generateSheet() {
   const stamp = Date.now().toString(36);
   beginRun();
   try {
-    startPass('Char sheet');
+    startPass(pass.name);
+    if (pass.model === 'flux3') await requireFlux3([...Object.values(FLUX3)], [...FLUX3_EDIT_NODES, 'EmptyFlux2LatentImage']);
     const names = [];
     for (let i = 0; i < references.length; i++) names.push(await uploadCanvas(references[i], `${stamp}_sheet${i + 1}.png`));
-    run.promptId = await queueGraph(buildApiPrompt({ image1: names[0], refs: names.slice(1), text, resolution: 1024, seed: randomSeed(), lora: null, latent: { w, h } }));
+    run.promptId = await queueGraph(pass.model === 'flux3'
+      ? buildFlux3SheetGraph({ refs: names, text, w, h, seed: randomSeed() })
+      : buildApiPrompt({ image1: names[0], refs: names.slice(1), text, resolution: 1024, seed: randomSeed(), lora: null, latent: { w, h } }));
     advanceJob('queue');
     renderJob();
     const { img, url } = await loadOutput(await waitForImage(run.promptId));
