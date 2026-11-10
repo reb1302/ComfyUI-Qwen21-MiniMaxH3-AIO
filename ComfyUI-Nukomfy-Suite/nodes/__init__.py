@@ -16,7 +16,6 @@ from .io_read import NukomfyRead
 from .io_write import NukomfyWrite
 from .ocio_colorspace import NukomfyOCIOColorSpace
 from .multilayer_pack import NukomfyMultiLayerPack, NukomfyMultiLayerUnpack
-from .ltx25_bridge import NukomfyLTX25BakeIn, NukomfyLTX25UnbakeOut
 
 
 _NODES = [
@@ -25,8 +24,6 @@ _NODES = [
     NukomfyOCIOColorSpace,
     NukomfyMultiLayerPack,
     NukomfyMultiLayerUnpack,
-    NukomfyLTX25BakeIn,
-    NukomfyLTX25UnbakeOut,
 ]
 
 for _node_cls in _NODES:
@@ -54,8 +51,6 @@ NODE_CLASS_MAPPINGS = {
     "NukomfyOCIOColorSpace": NukomfyOCIOColorSpace,
     "NukomfyMultiLayerPack": NukomfyMultiLayerPack,
     "NukomfyMultiLayerUnpack": NukomfyMultiLayerUnpack,
-    "NukomfyLTX25BakeIn": NukomfyLTX25BakeIn,
-    "NukomfyLTX25UnbakeOut": NukomfyLTX25UnbakeOut,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -64,8 +59,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "NukomfyOCIOColorSpace": "Nukomfy OCIO ColorSpace",
     "NukomfyMultiLayerPack": "Nukomfy Multilayer Pack",
     "NukomfyMultiLayerUnpack": "Nukomfy Multilayer Unpack",
-    "NukomfyLTX25BakeIn": "Nukomfy LTX-2.5 Sequence -> MP4 Bake",
-    "NukomfyLTX25UnbakeOut": "Nukomfy LTX-2.5 MP4 -> Sequence Restore",
 }
 
 

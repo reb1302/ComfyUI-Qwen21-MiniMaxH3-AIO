@@ -1,99 +1,154 @@
-# Lightricks LTX-2.5 & LTX-2.5 Creative Lab — Thư Mục Chuyên Dụng (`lighttrick`)
+# LTX-2.5 example workflows
 
-Thư mục này gom toàn bộ **25 Workflows chính thức & nâng cao**, **Script cài đặt phụ thuộc (`ComfyUI-LTXVideo`, `ComfyUI-KJNodes`, `pip`)**, và **Trình tải trọn bộ Core LTX-2.5 22B + 15 bộ IC-LoRA/LoRA Creative Lab** dành cho cả **Thư viện H200 VStone** và **Windows Portable**.
+These graphs generate video (and usually audio) with the **LTX-2.5 distilled** model. They share the same subgraph layout — load models, set inputs, preprocess, sample, decode — so you can switch files without relearning the graph.
 
----
+All of them use the distilled transformer (`ltx-2.5-22b-distilled-transformer-bf16.safetensors`): a few sampling steps, meant for fast iteration. Two-stage graphs add a 2× spatial upscale and a short refine pass; single-stage graphs skip that.
 
-## 1. Cách Cài Đặt 1-Click Trên Server H200 (Không Cần Gõ Lệnh)
+Default values are tuned for lower-VRAM machines. If you have more memory, you can speed things up by increasing the **decode tile size** — see the Decode notes inside each graph (fewer, larger tiles run faster but need more VRAM).
 
-1. Mở ComfyUI trên H200 -> vào thư mục **`workflows/lighttrick/`** -> mở workflow:
-   - **`00_Lightricks_Creative_Lab_1Click_Install_H200.json`**
-2. **Bấm Queue lần 1:**
-   - Node `stoneV_CloudSyncHub` với chế độ **`0B. Cài Lightricks Creative Lab đầy đủ (Pack + Core 22B + 15 Creative Lab IC-LoRAs, tự khởi động lại)`** sẽ tự động clone/cập nhật `Lightricks/ComfyUI-LTXVideo` và `kijai/ComfyUI-KJNodes`, cài đặt `requirements.txt` an toàn (không đè PyTorch), nạp nóng node và tự khởi động lại ComfyUI.
-3. **Chờ 1–2 phút, nhấn F5 rồi bấm Queue lần 2:**
-   - Hệ thống tự động tải bằng `aria2c` 16 luồng toàn bộ **Core LTX-2.5 22B** + **15 bộ IC-LoRA / LoRA Creative Lab** vào đúng các thư mục `models/diffusion_models`, `models/text_encoders`, `models/vae`, `models/latent_upscale_models`, `models/loras`, `models/embeddings`.
-   - **Hỗ trợ cả Ungated Mirror (Không cần Token) lẫn HuggingFace Token:**
-     - Để trống ô `custom_url`: Tự động tải qua các **Mirror Ungated HTTP 200** (`yuvraj108c/LTX-2.5`, `buckets/raubatz/ltx`, `Comfy-Org/gemma-4`).
-     - Dán mã `hf_xxxx` vào ô `custom_url`: Tự động lưu `HF_TOKEN` vào `~/.cache/huggingface/token` và tải trực tiếp từ các repo Gated chính chủ `Lightricks/LTX-2.5-22b-*`.
+## Getting started
 
----
+This assumes ComfyUI is already installed. If not, see the [ComfyUI download page](https://www.comfy.org/download), the [ComfyUI setup guide](https://docs.ltx.io/open-source-model/integration-tools/comfy-ui), and the [system requirements](https://docs.ltx.io/open-source-model/getting-started/system-requirements).
 
-## 2. Cách Chạy Script Cài Đặt Độc Lập (CLI)
+1. Open ComfyUI.
+2. Load a workflow from this folder (**Workflow** → **Open**, or drag the `.json` onto the canvas). The built-in ComfyUI **Templates** search for **LTX-2.5** is the same family of graphs if you prefer that entry point.
+3. Open the **Workflow Overview** panel. On first use it lists **Missing Models**.
+4. Click **Download all** to fetch the files into the right `ComfyUI/models/` folders. You only do this once — later runs reuse them.
+5. Fill in the left-hand **Inputs** (prompt, optional image, duration, and anything the graph asks for such as audio or a reference video).
+6. Click **Run**.
 
-### Trên Server H200 Linux:
-```bash
-bash lighttrick/download_lighttrick_h200.sh /workspace/ComfyUI
-# Hoặc truyền kèm HF_TOKEN nếu đã Accept Terms trên HuggingFace:
-bash lighttrick/download_lighttrick_h200.sh /workspace/ComfyUI hf_xxxxxxxxxxxxxxxxx
+Weights also live on the [LTX-2.5 Hugging Face repo](https://huggingface.co/Lightricks/LTX-2.5) if you want to download them by hand. Each graph’s **Model Links** note lists the exact files it needs, including any IC-LoRA.
+
+Prompting tips: [prompting guide](https://docs.ltx.io/open-source-model/usage-guides/prompting-guide). A beginner walkthrough of text-to-video: [Text-to-Video workflow](https://docs.ltx.io/open-source-model/usage-guides/text-to-video).
+
+Frame count must be `1 + a multiple of 8`. Duration in the graphs is converted from fps × seconds and may land slightly off the number you typed.
+
+## Workflows
+
+### Generation
+
+| Workflow | What it does |
+| -------- | ------------ |
+| [LTX-2.5_T2V_I2V_Two_Stage_Distilled.json](./LTX-2.5_T2V_I2V_Two_Stage_Distilled.json) | **Start here.** Text-to-video, optional first-frame image. Stage 1 at base resolution, 2× spatial upscale, then a 3-step refine. Generates video and audio together. |
+| [LTX-2.5_T2V_I2V_Single_Stage_Distilled.json](./LTX-2.5_T2V_I2V_Single_Stage_Distilled.json) | Same text / image inputs, one distilled pass, no upscaler. Faster and lighter; lower spatial detail than two-stage. |
+| [LTX-2.5_A2V_Two_Stage_Distilled.json](./LTX-2.5_A2V_Two_Stage_Distilled.json) | Audio-to-video. Encodes an input clip (with start + duration trim), **freezes** those tokens in both stages, and muxes the original waveform into the output (no audio decode). Optional first-frame image. |
+| [LTX-2.5_T2A_Single_Stage_Distilled.json](./LTX-2.5_T2A_Single_Stage_Distilled.json) | Text-to-audio only. No video VAE or upscaler. |
+
+### IC-LoRA (control and edit)
+
+These keep the distilled 2.5 backbone and add an IC-LoRA so a guide (video, image sheet, tracks, or mask) steers generation.
+
+| Workflow | What it does |
+| -------- | ------------ |
+| [LTX-2.5_ICLoRA_Union_Control_Distilled.json](./LTX-2.5_ICLoRA_Union_Control_Distilled.json) | Video-to-video from a **depth / canny / pose** annotator on a reference clip. Depth is wired by default; switch the annotator inside the graph. |
+| [LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json](./LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json) | Video-to-video using the source frames as IC-LoRA guides. Ships with the Instant Shave LoRA as the example; swap the LoRA for other identity/edit LoRAs. Original audio is frozen through. |
+| [LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json](./HDR_workflows/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json) | **SDR→HDR**: SDR MP4 → ACEScct IDT → HDR IC-LoRA → EXR + HLG. |
+| [LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json](./LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json) | Generate from a **reference sheet** (characters, props, wardrobe, location laid out in one image). Describe each element in the prompt by its place on the sheet. |
+| [LTX-2.5_ICLoRA_Motion_Track_Distilled.json](./LTX-2.5_ICLoRA_Motion_Track_Distilled.json) | Image-to-video with **sparse motion tracks** you draw on the first frame. Optional still as the opening frame. |
+| [LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json](./LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json) | Fill masked regions of a reference video (two-stage). Source audio can stay frozen. |
+| [LTX-2.5_ICLoRA_Inpaint_HDR_Two_Stage_Distilled.json](./HDR_workflows/LTX-2.5_ICLoRA_Inpaint_HDR_Two_Stage_Distilled.json) | Same inpaint, but **HDR→HDR**: EXR sequence + mask video → EXR + HLG out. |
+| [LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json](./LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json) | Extend the canvas of a reference video (two-stage). Same in/outpaint LoRA as inpaint. |
+| [LTX-2.5_I2V_HDR_Two_Stage_Distilled.json](./HDR_workflows/LTX-2.5_I2V_HDR_Two_Stage_Distilled.json) | **HDR still → HDR video**: EXR still → float32 VAE → EXR + HLG out. |
+
+### Tiled Fusion (large-canvas IC-LoRA)
+
+These keep one latent canvas and fuse overlapping spatial tiles after every denoise step (`LTXVTiledFusionSampler`). Use them when the canvas is larger than the LoRA window. They share the same subgraph layout as the other 2.5 graphs (Load Models, Inputs, Preprocess, Generate, Decode). **Get Tiling Sizes** and the canvas resize live inside **Preprocess**; the size combos (`tile_size` / `initial_canvas_size` = qHD / HD / FullHD, `output_size` = FullHD / 4K / 8K) are widgets on that subgraph. Source frames come from Load Video, or from Load EXR still on the native HDR→HDR graph. The node emits model-legal canvases (multiples of 32, `tile_frames` = 8n+1); a **Tiling sizes** preview sits below Preprocess. There is no first-frame still / `use image input` / I2V bypass. `use_tiled_encode` on the guide node stays **false**; `use_streaming` is on so each temporal window gets a fresh IC-LoRA encode.
+
+Upscale prompts should describe **look and style** (lighting, palette, film stock, sharpness, grade), not named objects, people, or props — anything you name can stamp into every spatial tile after upscale. Native and HDR: the stage-1 prompt describes the **change** you want on the input video or HDR plate (plus enhance / API / [prompting guide](https://docs.ltx.io/open-source-model/usage-guides/prompting-guide)); the stage-2 prompt is look/style only, because only that pass uses spatial tiling. The negative prompt is used as written.
+
+| Workflow | What it does |
+| -------- | ------------ |
+| [LTX-2.5_V2V_TiledFusion_Upscale.json](./LTX-2.5_V2V_TiledFusion_Upscale.json) | **V2V upscale.** Preprocess resizes the guide to `output_size` (FullHD / 4K / 8K), then 8 fused steps with the detail refiner. Tiles come from `tile_size` (HD). |
+| [LTX-2.5_V2V_TiledFusion_Native_4K_8K.json](./LTX-2.5_V2V_TiledFusion_Native_4K_8K.json) | **V2V native / dynamic 4K/8K.** Stage 1 at `initial_canvas_size` FullHD (8 steps, Day-To-Night IC-LoRA). Latent ×2 (×4 when `output_size` is 8K), then 3 fused steps with a fresh prompt and the original clip resized to output. Optional second IC-LoRA on stage 2. |
+| [LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json](./LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json) | Same recipe as Native, with the HDR IC-LoRA. SDR MP4 → ACEScct; EXR via `LTXVHDRDecodePostprocess`, HLG via core Create Video / Save Video. |
+| [LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json](./LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json) | **Native HDR→HDR refine.** EXR still (ACEScct, float32 VAE, `img_compression` 0) with the detail refiner instead of the HDR IC-LoRA. Same 4K/8K tiled ladder; EXR + HLG out. |
+
+## Which workflow should I use?
+
+```text
+Do you only need audio (no picture)?
+├─ YES → LTX-2.5_T2A_Single_Stage_Distilled.json
+│
+Do you have an audio file the video should follow?
+├─ YES → LTX-2.5_A2V_Two_Stage_Distilled.json
+│         (optional still as the first frame)
+│
+Do you have an existing video to edit or follow?
+├─ YES → What kind of control?
+│  ├─ Depth / edges / pose from the clip
+│  │    → LTX-2.5_ICLoRA_Union_Control_Distilled.json
+│  ├─ Keep the footage, change appearance (identity / style LoRA)
+│  │    → LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json
+│  ├─ Upgrade SDR footage to HDR (ACEScct IC-LoRA)
+│  │    → HDR_workflows/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json
+│  ├─ Upscale an existing clip at full HD / 4K / 8K (tiled fusion)
+│  │    → LTX-2.5_V2V_TiledFusion_Upscale.json
+│  ├─ Viewport-style 4K/8K ladder (full HD, then ×2 / ×4)
+│  │    → LTX-2.5_V2V_TiledFusion_Native_4K_8K.json
+│  ├─ Upgrade SDR footage to HDR (ACEScct IC-LoRA)
+│  │    → LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json (tiled 4K/8K ladder)
+│  │    → ../2.3/LTX-2.3_ICLoRA_HDR_Distilled.json (single-stage)
+│  ├─ Refine HDR stills / EXR (native ACEScct I/O, refine LoRA)
+│  │    → LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json
+│  ├─ Fill a masked region
+│  │    → LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json (SDR)
+│  │    → HDR_workflows/LTX-2.5_ICLoRA_Inpaint_HDR_Two_Stage_Distilled.json (HDR EXR)
+│  └─ Grow the frame / canvas
+│       → LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json
+│
+Do you have stills rather than a video?
+├─ YES → HDR EXR still → video?
+│  ├─ YES → HDR_workflows/LTX-2.5_I2V_HDR_Two_Stage_Distilled.json
+│  └─ NO  → A sheet of characters / props / locations?
+│     ├─ YES → LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json
+│     └─ NO  → Draw motion paths on a first frame?
+│        ├─ YES → LTX-2.5_ICLoRA_Motion_Track_Distilled.json
+│        └─ NO  → Text-to-video with an optional opening still
+│                 (see below)
+│
+Text-to-video (optional image)?
+├─ Want 2× spatial upscale and a refine pass?
+│  └─ YES → LTX-2.5_T2V_I2V_Two_Stage_Distilled.json  (recommended)
+└─ Want the fastest / lightest run?
+   └─ YES → LTX-2.5_T2V_I2V_Single_Stage_Distilled.json
 ```
 
-### Trên Windows Portable:
-- Chạy trực tiếp file **`DOWNLOAD_LIGHTTRICK_ALL.bat`**, hoặc trong PowerShell:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\lighttrick\download_lighttrick_models.ps1
-```
+Two-stage is the better default when you care about spatial detail. Single-stage is for previews and tighter VRAM.
 
----
+## Comparison
 
-## 3. Danh Sách 25 Workflows Trong `lighttrick/workflows/`
+| Workflow | Stages | Upsample | Main conditioning | Best for |
+| -------- | ------ | -------- | ----------------- | -------- |
+| T2V / I2V two-stage | 2 | 2× spatial | Text + optional image | Default generation |
+| T2V / I2V single-stage | 1 | — | Text + optional image | Fast previews |
+| A2V two-stage | 2 | 2× spatial | Audio (frozen) + optional image | Video that must match a soundtrack |
+| T2A single-stage | 1 | — | Text | Audio-only clips |
+| Union Control | 1 | — | Reference video (depth / canny / pose) | Structure-following v2v |
+| V2V IC-LoRA | 1 | — | Source video (+ frozen audio) | Appearance edits on existing footage |
+| [SDR→HDR IC-LoRA](./HDR_workflows/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json) | 1 | — | SDR video (+ frozen audio) | SDR→ACEScct HDR; EXR + HLG out |
+| Ingredients | 1 | — | Reference sheet | Cast / props / location from one image |
+| Motion Track | 1 | — | Image + drawn tracks | Directed motion from a still |
+| Inpaint two-stage | 2 | 2× spatial | Video + mask (+ frozen audio) | Replacing a region |
+| Outpaint two-stage | 2 | 2× spatial | Video + target size (+ frozen audio) | Extending the frame |
+| [I2V HDR two-stage](./HDR_workflows/LTX-2.5_I2V_HDR_Two_Stage_Distilled.json) | 2 | 2× spatial | EXR still (ACEScct) | HDR still → HDR video; EXR + HLG out |
+| [Inpaint HDR two-stage](./HDR_workflows/LTX-2.5_ICLoRA_Inpaint_HDR_Two_Stage_Distilled.json) | 2 | 2× spatial | EXR sequence + mask video | HDR inpaint; EXR + HLG out |
+| Tiled Fusion upscale | 1 | — | Source video as IC-LoRA guide | Detail-refine at full HD / 4K / 8K |
+| Tiled Fusion native 4K/8K | 2 | 2× or 4× latent | Stage 1 Day-To-Night + stage 2 original@x2 | Large-canvas V2V ladder |
+| Tiled Fusion SDR→HDR | 2 | 2× or 4× latent | Same as native, HDR IC-LoRA | SDR→ACEScct 4K/8K; EXR + HLG |
+| Tiled Fusion HDR→HDR | 2 | 2× or 4× latent | HDR EXR still + refine IC-LoRA | Native ACEScct refine; EXR + HLG |
 
-| STT | Tên File Workflow | Chức năng chính |
-|---|---|---|
-| 1 | `00_Lightricks_Creative_Lab_1Click_Install_H200.json` | **Cài đặt 1-Click** toàn bộ Pack + Core 22B + 15 Creative Lab IC-LoRAs trên H200 |
-| 2 | `LTX25_Cai_Dat_1_Click.json` | Cài đặt nhanh bộ LTX-2.5 Outpaint tiêu chuẩn |
-| 3 | `LTX-2.5_CreativeLab_All_In_One_V2V_Selector.json` | **All-in-One Creative Lab V2V** (Day-To-Night, Clean-Plate, Water, Deblur, Decompression, Colorization, SDR-To-HDR, Refine-Details, Restore, Alpha-Gen) |
-| 4 | `LTX-2.5_I2V_Speed_Control_SlowMo_Cinemagraph.json` | **Creative Lab I2V:** Slow-Motion-Control (`-1.0` -> `1.0`) & Cinemagraph |
-| 5 | `LTX-2.5_ICLoRA_Layout_To_Render_Two_Stage_Distilled.json` | **Creative Lab Layout-To-Render:** Biến bản dựng 3D Viewport / Clay thành video chân thực 2-Stage |
-| 6 | `LTX25_Outpaint_Official.json` | Outpaint Video LTX-2.5 chuẩn Official |
-| 7 | `stoneV_LTX25_Outpaint_TwoStage_Pro_H200.json` | Outpaint Video LTX-2.5 2-Stage Pro tích hợp `stoneV_LTX25_Outpaint_Loader` |
-| 8 | `LTX-2.5_ICLoRA_Outpaint_Two_Stage_Distilled.json` | Official LTX-2.5 Outpaint 2-Stage Distilled |
-| 9 | `LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json` | Official LTX-2.5 Inpaint 2-Stage Distilled |
-| 10 | `LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json` | Official LTX-2.5 Ingredients (Ghép đa ảnh tham chiếu vào 1 cảnh video) |
-| 11 | `LTX-2.5_ICLoRA_Motion_Track_Distilled.json` | Official LTX-2.5 Motion Track Control |
-| 12 | `LTX-2.5_ICLoRA_Union_Control_Distilled.json` | Official LTX-2.5 Union Control (Depth / Pose / Canny / Edge) |
-| 13 | `LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json` | Official LTX-2.5 Video-to-Video IC-LoRA Single Stage |
-| 14 | `LTX-2.5_V2V_TiledFusion_Native_4K_8K.json` | Official LTX-2.5 TiledFusion Native 4K/8K (`Day-To-Night` + `Refine-Details`) |
-| 15 | `LTX-2.5_V2V_TiledFusion_Upscale.json` | Official LTX-2.5 TiledFusion Upscale (`Deblur` + `Refine-Details`) |
-| 16 | `LTX-2.5_T2V_I2V_Single_Stage_Distilled.json` | Official LTX-2.5 Text/Image-to-Video Single Stage |
-| 17 | `LTX-2.5_T2V_I2V_Two_Stage_Distilled.json` | Official LTX-2.5 Text/Image-to-Video Two Stage |
-| 18 | `LTX-2.5_A2V_Two_Stage_Distilled.json` | Official LTX-2.5 Audio-to-Video Two Stage |
-| 19 | `LTX-2.5_T2A_Single_Stage_Distilled.json` | Official LTX-2.5 Text-to-Audio Single Stage |
-| 20 | `Official_EditAnything_LTX25.json` | EditAnything LTX-2.5 |
-| 21 | `EditAnything_LTX25_With_Ref_Or_Motion_Transfer.json` | EditAnything LTX-2.5 kèm ảnh Ref / Motion Transfer |
-| 22 | `AutoDetect_Wire_Object_Removal_SAM31_LTX25_BFS_AutoCrop.json` | Xóa dây cáp / vật thể tự động bằng SAM 3.1 + LTX-2.5 |
-| 23 | `Biosal Clip Upscale VOSR2 SeedVR2.json` | Upscale Video kết hợp LTX-2.5 & SeedVR2 |
-| 24 | `Official_Qwen_Image_2_1_Edit.json` | Sửa frame đầu bằng Qwen Image 2.1 trước khi đưa vào LTX-2.5 |
-| 25 | `qwenedit.json` | Workflow phụ trợ Qwen Edit frame đầu |
+Native HDR I/O: [LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json](./LTX-2.5_V2V_TiledFusion_HDR_to_HDR.json) — `LTXVLoadEXRSequence` → ACEScct → `LTXVVAEForceFloat32` → refine IC-LoRA tiled fusion → EXR via `LTXVHDRDecodePostprocess` (`transfer=acescct`, EXR=`acescg`); HLG via Convert Image Color Space (`HDR ACEScct` → `HDR`) → Create Video (`HDR`) → Save Video. `img_compression = 0`. Same idea as pipelines `--hdr` on Distilled / IC-LoRA.
 
----
+SDR→HDR IC-LoRA (separate from native EXR HDR): [LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json](./LTX-2.5_V2V_TiledFusion_SDR_to_HDR.json) (tiled 4K/8K ladder): `LoadVideo` → Convert Image Color Space (`sRGB` → `HDR ACEScct`) → HDR IC-LoRA guide → float32 VAE decode → EXR via `LTXVHDRDecodePostprocess` (`transfer=acescct`, EXR=`acescg`); HLG via Convert Image Color Space (`HDR ACEScct` → `HDR`) → Create Video (`HDR`) → Save Video. Sampler **euler**; original audio frozen/muxed. Same idea as pipelines `hdr_ic_lora --text-embeddings`. For a single-stage pass, [LTX-2.3_ICLoRA_HDR_Distilled.json](../2.3/LTX-2.3_ICLoRA_HDR_Distilled.json) is the older LogC3 graph: `LTXVHDRDecodePostprocess` (`transfer=logc3`) writes a linear EXR, without the core HDR nodes.
 
-## 4. Danh Mục Đầy Đủ Model Được Tải Vào Thư Viện H200
+For native HDR, set **`img_compression = 0`** (Python `--hdr` EXR conditioning skips JPEG/CRF; CRF on ACEScct darkens highlights). Turn **prompt enhancer off** when matching goldens. I2V stage-2 distilled sigmas should be `0.909375, 0.725, 0.421875, 0.0` (not `0.85, …`). Inpaint keeps its own 2-step stage-2 schedule.
 
-### A. Core Models (`diffusion_models`, `text_encoders`, `vae`, `latent_upscale_models`)
-- `diffusion_models/ltx-2.5-22b-distilled-transformer-bf16.safetensors` (~46 GB)
-- `diffusion_models/ltx-2.5-22b-dev-transformer-bf16.safetensors` (~46 GB)
-- `loras/ltx-2.5-22b-distilled-lora-450-bf16.safetensors` (~3.8 GB)
-- `text_encoders/gemma4-12b-with-proj-ltx-2.5-bf16.safetensors` (~26.5 GB)
-- `text_encoders/gemma4_e2b_it_bf16.safetensors` (~9.2 GB)
-- `vae/ltx-2.5-video-vae-bf16.safetensors` (~2.38 GB)
-- `vae/ltx-2.5-audio-vae-bf16.safetensors` (~215 MB)
-- `latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors` (~950 MB)
-- `latent_upscale_models/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors` (~250 MB)
+HDR graphs live under [`HDR_workflows/`](./HDR_workflows/). They use core Convert Image Color Space and HDR Create Video / Save Video, so they need ComfyUI v0.38.0 or newer.
 
-### B. 15 Bộ IC-LoRA & LoRA Trong `Lightricks/ltx-25-creative-lab` (`models/loras` & `models/embeddings`)
-1. `ltx-2.5-22b-ic-lora-day-to-night-0.9.safetensors` (327 MB)
-2. `ltx-2.5-22b-ic-lora-clean-plate-1.0.safetensors` (327 MB)
-3. `ltx-2.5-22b-ic-lora-water-simulation-0.9.safetensors` (906 MB)
-4. `ltx-2.5-22b-ic-lora-pixel-spatial-upscaler-x2-1.0.safetensors` (327 MB)
-5. `ltx-2.5-22b-ic-lora-deblur-0.9.safetensors` (906 MB)
-6. `ltx-2.5-22b-ic-lora-decompression-0.9.safetensors` (906 MB)
-7. `ltx-2.5-22b-ic-lora-colorization-0.9.safetensors` (906 MB)
-8. `ltx-2.5-22b-lora-cinemagraph-0.9.safetensors` (201 MB)
-9. `ltx-2.5-22b-lora-slow-motion-control-1.0.safetensors` (655 MB)
-10. `ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors` (1.31 GB)
-11. `ltx-2.5-22b-ic-lora-sdr-to-hdr-1.0.safetensors` (1.31 GB) + `embeddings/ltx-2.5-22b-ic-lora-sdr-to-hdr-scene-emb.safetensors` (12.6 MB)
-12. `ltx-2.5-22b-ic-lora-layout-to-render-1.0.safetensors` (1.31 GB)
-13. `ltx-2.5-22b-ic-lora-refine-details-1.0.safetensors` (1.31 GB)
-14. `ltx-2.5-22b-ic-lora-restore-1.0.safetensors` (1.71 GB)
-15. `ltx-2.5-22b-ic-lora-alpha-gen-0.9.safetensors` (1.31 GB)
-*(Kèm đầy đủ các bản `ltx-2.3-22b-ic-lora-*` Ungated tương thích 100% với toàn bộ Official Workflows).*
+Native HDR I/O: `LTXVLoadEXRSequence` → float32 VAE → EXR via `LTXVHDRDecodePostprocess` (`transfer=acescct`, EXR=`acescg`); HLG via Convert Image Color Space (`HDR ACEScct` → `HDR`) → Create Video (`HDR`) → Save Video. Same idea as pipelines `--hdr` on Distilled / IC-LoRA.
+
+SDR→HDR IC-LoRA (separate from native EXR HDR): [LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json](./HDR_workflows/LTX-2.5_ICLoRA_SDR_to_HDR_Distilled.json) — `LoadVideo` → Convert Image Color Space (`sRGB` → `HDR ACEScct`) → `Resize Image/Mask` (scale to multiple 32) → **fixed scene embeddings** (`LTXVLoadConditioning`, not a free-text prompt) → HDR IC-LoRA guide → float32 VAE decode → EXR via `LTXVHDRDecodePostprocess` (`transfer=acescct`, EXR=`acescg`); HLG via Convert Image Color Space (`HDR ACEScct` → `HDR`) → Create Video (`HDR`) → Save Video. Sampler **euler**; original audio frozen/muxed. Same idea as pipelines `hdr_ic_lora --text-embeddings`. Conditioning fps snaps to 60 when source fps is above 30 (playback fps unchanged for decode/export).
+
+For native HDR, set **`img_compression = 0`** (Python `--hdr` EXR conditioning skips JPEG/CRF; CRF on ACEScct darkens highlights). Turn **prompt enhancer off** when matching goldens. I2V stage-2 distilled sigmas should be `0.909375, 0.725, 0.421875, 0.0` (not `0.85, …`). Inpaint keeps its own 2-step stage-2 schedule.
+
+Python / pipeline equivalents of these ideas live in [pipeline-selection.md](https://github.com/Lightricks/LTX-2/blob/main/packages/ltx-pipelines/docs/pipeline-selection.md) in the LTX-2 repo.

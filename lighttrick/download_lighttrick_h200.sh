@@ -64,14 +64,20 @@ install_or_update_node() {
     local dir_name="$1"
     local repo_url="$2"
     local branch="$3"
+    local check_file="${4:-__init__.py}"
     local target_dir="$CUSTOM_NODES_DIR/$dir_name"
 
-    echo "🔧 [Custom Node] Kiểm tra / Cài đặt $dir_name ($repo_url)..."
+    echo "🔧 [Custom Node] Cài đặt bản gốc 100% $dir_name ($repo_url)..."
+    if [ ! -f "$target_dir/$check_file" ]; then
+        rm -rf "$target_dir"
+    fi
     if [ -d "$target_dir/.git" ]; then
-        git -C "$target_dir" pull --ff-only || true
+        GIT_LFS_SKIP_SMUDGE=1 git -C "$target_dir" -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false reset --hard HEAD || true
+        GIT_LFS_SKIP_SMUDGE=1 git -C "$target_dir" -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false pull --ff-only || true
     else
         rm -rf "$target_dir"
-        git clone --depth 1 -b "$branch" "$repo_url" "$target_dir" || git clone --depth 1 "$repo_url" "$target_dir"
+        GIT_LFS_SKIP_SMUDGE=1 git -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false clone --depth 1 -b "$branch" "$repo_url" "$target_dir" || \
+        GIT_LFS_SKIP_SMUDGE=1 git -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false clone --depth 1 "$repo_url" "$target_dir"
     fi
 
     if [ -f "$target_dir/requirements.txt" ]; then
@@ -81,18 +87,19 @@ install_or_update_node() {
     fi
 }
 
-python3 -m pip install --prefer-binary "colour-science>=0.4.4" "OpenImageIO>=3.1.0" "fileseq>=2.0.0" einops kornia diffusers || true
+python3 -m pip install --prefer-binary "colour-science>=0.4.4" "OpenImageIO>=3.1.0" "fileseq>=2.0.0" einops kornia diffusers color-matcher || true
 
-install_or_update_node "ComfyUI-LTXVideo" "https://github.com/Lightricks/ComfyUI-LTXVideo.git" "master"
-install_or_update_node "ComfyUI-KJNodes" "https://github.com/kijai/ComfyUI-KJNodes.git" "main"
-install_or_update_node "ComfyUI-Video-Depth-Anything" "https://github.com/yuvraj108c/ComfyUI-Video-Depth-Anything.git" "main"
+install_or_update_node "ComfyUI-LTXVideo" "https://github.com/Lightricks/ComfyUI-LTXVideo.git" "master" "nodes_registry.py"
+install_or_update_node "ComfyUI-KJNodes" "https://github.com/kijai/ComfyUI-KJNodes.git" "main" "__init__.py"
+install_or_update_node "ComfyUI-Video-Depth-Anything" "https://github.com/yuvraj108c/ComfyUI-Video-Depth-Anything.git" "main" "__init__.py"
 
-# 4. Đồng bộ toàn bộ Workflows vào thư mục lighttrick của ComfyUI
+# 4. Đồng bộ toàn bộ Workflows gốc Lightricks 2.5 vào thư mục lighttrick của ComfyUI
 WF_DEST="$COMFY_ROOT/user/default/workflows/lighttrick"
 mkdir -p "$WF_DEST"
-if [ -d "$SCRIPT_DIR/workflows" ]; then
-    cp -f "$SCRIPT_DIR/workflows/"*.json "$WF_DEST/" 2>/dev/null || true
-    echo "✅ Đã chép toàn bộ Workflows vào: $WF_DEST"
+if [ -d "$SCRIPT_DIR/../workflows/lighttrick" ]; then
+    rm -rf "$WF_DEST"/*
+    cp -rf "$SCRIPT_DIR/../workflows/lighttrick/"* "$WF_DEST/" 2>/dev/null || true
+    echo "✅ Đã chép toàn bộ Workflows gốc Lightricks 2.5 vào: $WF_DEST"
 fi
 
 # 5. Hàm tải Model tốc độ cao (aria2c 16 luồng + Fallback Mirror Ungated)
