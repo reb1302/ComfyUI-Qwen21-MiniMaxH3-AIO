@@ -770,17 +770,16 @@ def _http_get_bytes(url: str, timeout: int = 15, extra_headers: dict[str, str] |
         return resp.read()
 
 
-_MOCKIN_DEFAULT_CFG_B64 = (
-    "ewogICJhcGlfa2V5IjogInNrLW9yLXYxLTk4OTI3ZGNjZGI3MDVjM2UwMDljMjBkMGJlNTZiMDk1"
-    "ZWJjZTJmMzUzYTVjYTJkM2U1NzFiOGEwN2Q0N2NjOWQiLAogICJpbmZlcmVuY2Vfa2V5IjogInNr"
-    "LW9yLXYxLTk4OTI3ZGNjZGI3MDVjM2UwMDljMjBkMGJlNTZiMDk1ZWJjZTJmMzUzYTVjYTJkM2U1"
-    "NzFiOGEwN2Q0N2NjOWQiLAogICJwcm92aXNpb25pbmdfa2V5IjogInNrLW9yLXYxLTM0YzYyMjI5"
-    "ZTMzNzQzZmZhMTRhNjZlYzYxYjU3MTIwNDM1Njg4MWY5YjQzOWU5MDU5M2RhNmExNDA0YjlmODki"
-    "LAogICJtb2RlbCI6ICJjb2duaXRpdmVjb21wdXRhdGlvbnMvZG9scGhpbi1taXN0cmFsLTI0Yi12"
-    "ZW5pY2UtZWRpdGlvbiIsCiAgImJhc2VfdXJsIjogImh0dHBzOi8vb3BlbnJvdXRlci5haS9hcGkv"
-    "djEiLAogICJyMl9hcGlfYmFzZSI6ICJodHRwczovL2FwaS5tb2NraW4uYXBwL2FwaS9yb29tIiwK"
-    "ICAicjJfY29kZSI6ICI5OTk5IiwKICAiZGVmYXVsdF9yb29tX2lkIjogIlItNlpaUCIKfQo="
-)
+_MOCKIN_DEFAULT_CFG_DICT = {
+    "api_key": "",
+    "inference_key": "",
+    "provisioning_key": "",
+    "model": "cognitivecomputations/dolphin-mistral-24b-venice-edition",
+    "base_url": "https://openrouter.ai/api/v1",
+    "r2_api_base": "https://api.mockin.app/api/room",
+    "r2_code": "9999",
+    "default_room_id": "R-6ZZP",
+}
 
 
 def _mount_mockin_routes_and_web_live(web_dir: str) -> None:
@@ -848,7 +847,6 @@ def _mount_mockin_routes_and_web_live(web_dir: str) -> None:
 
 def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | None = None) -> str:
     """Đồng bộ và nạp nóng ComfyUI-Mockin-Node (R2 Cloud Drive + Timeline Director) vào ComfyUI/custom_nodes/ComfyUI-Mockin-Node."""
-    import base64
     root = comfy_root or _get_comfy_root()
     if not root:
         return ""
@@ -858,7 +856,6 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
 
     ref = commit_ref or _get_latest_commit_sha()
     raw_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ref}/ComfyUI-Mockin-Node"
-    r2_dl_base = "https://api.mockin.app/api/room/R-6ZZP/fs/download"
     ts = int(time.time())
 
     sync_files = [
@@ -876,45 +873,15 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
             data = _http_get_bytes(f"{raw_base}/{rel_f}?_t={ts}", timeout=15)
         except Exception:
             data = b""
-        if not data or len(data) < min_sz:
-            try:
-                import urllib.parse as _up
-                q_path = _up.quote(f"customnote/ComfyUI-Mockin-Node/{rel_f}", safe="")
-                data = _http_get_bytes(f"{r2_dl_base}?path={q_path}", timeout=15, extra_headers={"X-Room-Code": "9999"})
-            except Exception:
-                data = b""
         if data and len(data) >= min_sz:
             if _atomic_write_bytes(dst_f, data, min_bytes=min_sz):
                 wrote_any = True
 
     cfg_dst = os.path.join(mockin_dir, "mockin_config.json")
-    need_cfg = not os.path.isfile(cfg_dst) or os.path.getsize(cfg_dst) < 50
-    if not need_cfg:
-        try:
-            with open(cfg_dst, "r", encoding="utf-8") as cf:
-                cur_cfg = json.load(cf)
-            if not cur_cfg.get("api_key") and not cur_cfg.get("inference_key"):
-                need_cfg = True
-        except Exception:
-            need_cfg = True
-    if need_cfg:
-        cfg_bytes = b""
-        try:
-            cfg_bytes = _http_get_bytes(
-                f"{r2_dl_base}?path=customnote%2FComfyUI-Mockin-Node%2Fmockin_config.json",
-                timeout=10,
-                extra_headers={"X-Room-Code": "9999"},
-            )
-        except Exception:
-            cfg_bytes = b""
-        if not cfg_bytes or len(cfg_bytes) < 50:
-            try:
-                cfg_bytes = base64.b64decode(_MOCKIN_DEFAULT_CFG_B64)
-            except Exception:
-                cfg_bytes = b""
-        if cfg_bytes and len(cfg_bytes) >= 50:
-            if _atomic_write_bytes(cfg_dst, cfg_bytes, min_bytes=50):
-                wrote_any = True
+    if not os.path.isfile(cfg_dst) or os.path.getsize(cfg_dst) < 20:
+        cfg_bytes = json.dumps(_MOCKIN_DEFAULT_CFG_DICT, indent=2, ensure_ascii=False).encode("utf-8")
+        if _atomic_write_bytes(cfg_dst, cfg_bytes, min_bytes=20):
+            wrote_any = True
 
     try:
         import nodes
@@ -1284,8 +1251,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 13: ComfyUI-Mockin-Node v2 (IPv4-first R2 + Laptop 1:1 Direct Folder Sync Bridge + Same-origin stream)
-VSTONE_RUNTIME_PATCH_VER = 13
+# 14: Fix loadedGraphNode widget hiding on non-Mockin nodes + remove base64 key & R2 code fallback
+VSTONE_RUNTIME_PATCH_VER = 14
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704

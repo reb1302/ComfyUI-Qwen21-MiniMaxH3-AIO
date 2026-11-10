@@ -99,6 +99,7 @@ function formatBytes(bytes) {
 
 function hideAllNativeWidgets(node) {
     if (!node?.widgets) return;
+    if (!NODE_KIND_MAP[node?.comfyClass || node?.type]) return;
     for (const w of node.widgets) {
         if (w.name?.startsWith("mockin_r2_")) continue;
         w.hidden = true;
@@ -2252,10 +2253,11 @@ app.registerExtension({
         attachMockinNodeUI(node);
     },
     async loadedGraphNode(node) {
+        const kind = NODE_KIND_MAP[node?.comfyClass || node?.type];
+        if (!kind) return;
         attachMockinNodeUI(node);
         sanitizeNodeWidgets(node);
         hideAllNativeWidgets(node);
-        const kind = NODE_KIND_MAP[node?.comfyClass || node?.type];
         if (kind === "main" && (node.size?.[1] > 720 || node.size?.[1] < 495)) {
             node.setSize([Math.max(640, node.size?.[0] || 640), 505]);
         }
