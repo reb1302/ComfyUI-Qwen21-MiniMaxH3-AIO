@@ -923,6 +923,185 @@ def _ensure_mockin_custom_node(comfy_root: str | None = None, commit_ref: str | 
     return ""
 
 
+def _mount_nukomfy_routes_and_web_live(web_dir: str) -> None:
+    """Mount /nukomfy/* HTTP routes & web extension directory live onto PromptServer.instance.app without server restart."""
+    try:
+        import nodes
+        import server
+        if hasattr(nodes, "EXTENSION_WEB_DIRS") and os.path.isdir(web_dir):
+            nodes.EXTENSION_WEB_DIRS["ComfyUI-Nukomfy-Suite"] = web_dir
+        ps = getattr(server, "PromptServer", None)
+        inst = getattr(ps, "instance", None) if ps else None
+        if inst is None:
+            return
+        app = getattr(inst, "app", None)
+        routes = getattr(inst, "routes", None)
+        if app is None or routes is None or not hasattr(routes, "_items"):
+            return
+
+        existing_paths: set[tuple[str, str]] = set()
+        for r in app.router.routes():
+            res = getattr(r, "resource", None)
+            canonical = getattr(res, "canonical", "") if res else ""
+            if canonical:
+                existing_paths.add((getattr(r, "method", "*"), canonical))
+
+        for item in list(routes._items):
+            p = getattr(item, "path", "")
+            m = getattr(item, "method", "*")
+            if p.startswith("/nukomfy") and (m, p) not in existing_paths:
+                try:
+                    app.router.add_route(m, p, item.handler, **getattr(item, "kwargs", {}))
+                    existing_paths.add((m, p))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+def _ensure_nukomfy_suite_custom_node(comfy_root: str | None = None, commit_ref: str | None = None) -> str:
+    """
+    Tự động đồng bộ & nạp nóng ComfyUI-Nukomfy-Suite (kèm NukomfyLTX25BakeIn / NukomfyLTX25UnbakeOut cho Foundry Nuke)
+    vào ComfyUI/custom_nodes/ComfyUI-Nukomfy-Suite trên máy H200:
+    1. Đảm bảo OpenImageIO và fileseq đã được cài đặt trên môi trường Python của H200.
+    2. Tải từ GitHub (hoặc bản gói sẵn trong ComfyUI_Qwen21_MiniMaxH3_AIO/ComfyUI-Nukomfy-Suite) và nạp nóng cả 7 node Nukomfy + HTTP routes /nukomfy/*.
+    """
+    root = comfy_root or _get_comfy_root()
+    if not root:
+        return ""
+    nukomfy_dir = os.path.join(root, "custom_nodes", "ComfyUI-Nukomfy-Suite")
+    web_dir = os.path.join(nukomfy_dir, "web")
+    os.makedirs(os.path.join(nukomfy_dir, "nodes"), exist_ok=True)
+    os.makedirs(os.path.join(nukomfy_dir, "server"), exist_ok=True)
+    os.makedirs(web_dir, exist_ok=True)
+
+    for mod_name, pip_spec in (("OpenImageIO", "OpenImageIO>=3.1.0"), ("fileseq", "fileseq>=2.0.0")):
+        try:
+            __import__(mod_name)
+        except Exception:
+            try:
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--quiet", pip_spec],
+                    capture_output=True,
+                    text=True,
+                    timeout=180,
+                    check=False,
+                )
+            except Exception:
+                pass
+
+    ref = commit_ref or _get_latest_commit_sha()
+    raw_base = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{ref}/ComfyUI-Nukomfy-Suite"
+    ts = int(time.time())
+    wrote_any = False
+
+    nukomfy_files = (
+        ("__init__.py", 200),
+        ("version.py", 10),
+        ("requirements.txt", 10),
+        ("pyproject.toml", 50),
+        ("nodes/__init__.py", 200),
+        ("nodes/_backends.py", 200),
+        ("nodes/_io_helpers.py", 200),
+        ("nodes/_sequence.py", 200),
+        ("nodes/io_read.py", 500),
+        ("nodes/io_write.py", 500),
+        ("nodes/ltx25_bridge.py", 1000),
+        ("nodes/multilayer_pack.py", 500),
+        ("nodes/ocio_colorspace.py", 200),
+        ("server/__init__.py", 200),
+        ("server/activity.py", 200),
+        ("server/activity_config.py", 200),
+        ("server/auth.py", 200),
+        ("server/integrity.py", 200),
+        ("server/job_history.py", 500),
+        ("server/job_history_config.py", 200),
+        ("server/job_history_db.py", 500),
+        ("server/node_status.py", 100),
+        ("server/paths.py", 200),
+        ("server/progress_relay.py", 200),
+        ("server/reboot.py", 100),
+        ("server/routes.py", 500),
+        ("server/state.py", 200),
+        ("server/tamper_tracked.py", 200),
+        ("web/api.js", 200),
+        ("web/history_section.js", 500),
+        ("web/icon.svg", 50),
+        ("web/io_raw_data_toggle.js", 200),
+        ("web/io_read_dynamic.js", 200),
+        ("web/json_faithful.js", 200),
+        ("web/modal.js", 200),
+        ("web/multilayer_pack_dynamic.js", 200),
+        ("web/multilayer_unpack_dynamic.js", 200),
+        ("web/nukomfy_manager.js", 100),
+        ("web/ocio_dynamic.js", 200),
+        ("web/sidebar_tab.js", 500),
+        ("web/styles.css", 500),
+    )
+
+    for rel_path, min_sz in nukomfy_files:
+        dst = os.path.join(nukomfy_dir, rel_path.replace("/", os.sep))
+        data = _http_get_bytes(f"{raw_base}/{rel_path}?_t={ts}", timeout=15)
+        if not data or len(data) < min_sz:
+            local_bundled = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "ComfyUI-Nukomfy-Suite",
+                rel_path.replace("/", os.sep),
+            )
+            if os.path.isfile(local_bundled) and os.path.getsize(local_bundled) >= min_sz:
+                try:
+                    with open(local_bundled, "rb") as lf:
+                        data = lf.read()
+                except Exception:
+                    pass
+        if data and len(data) >= min_sz:
+            if _atomic_write_bytes(dst, data, min_bytes=min_sz):
+                wrote_any = True
+
+    try:
+        import nodes
+        required_nodes = (
+            "NukomfyRead",
+            "NukomfyWrite",
+            "NukomfyOCIOColorSpace",
+            "NukomfyMultiLayerPack",
+            "NukomfyMultiLayerUnpack",
+            "NukomfyLTX25BakeIn",
+            "NukomfyLTX25UnbakeOut",
+        )
+        need_load = wrote_any or any(rn not in nodes.NODE_CLASS_MAPPINGS for rn in required_nodes)
+        if need_load and os.path.isfile(os.path.join(nukomfy_dir, "__init__.py")):
+            _hot_load_custom_node_pack(nukomfy_dir)
+            try:
+                if nukomfy_dir not in sys.path:
+                    sys.path.insert(0, nukomfy_dir)
+                import importlib
+                spec = importlib.util.spec_from_file_location(
+                    "ComfyUI_Nukomfy_Suite_pkg",
+                    os.path.join(nukomfy_dir, "__init__.py"),
+                    submodule_search_locations=[nukomfy_dir],
+                )
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules["ComfyUI_Nukomfy_Suite_pkg"] = mod
+                    spec.loader.exec_module(mod)
+                    cls_map = getattr(mod, "NODE_CLASS_MAPPINGS", {}) or {}
+                    disp_map = getattr(mod, "NODE_DISPLAY_NAME_MAPPINGS", {}) or {}
+                    if cls_map:
+                        nodes.NODE_CLASS_MAPPINGS.update(cls_map)
+                    if disp_map:
+                        nodes.NODE_DISPLAY_NAME_MAPPINGS.update(disp_map)
+            except Exception:
+                pass
+
+        _mount_nukomfy_routes_and_web_live(web_dir)
+        if wrote_any or need_load:
+            return f"Synced & hot-loaded ComfyUI-Nukomfy-Suite + LTX-2.5 Nuke Bridge ({nukomfy_dir})"
+    except Exception as e:
+        return f"ComfyUI-Nukomfy-Suite load warning: {e}"
+    return ""
+
+
 def _get_comfy_root() -> str | None:
     try:
         import folder_paths
@@ -1165,6 +1344,14 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
         except Exception as _mk_err:
             logs.append(f"Mockin Node sync note: {_mk_err}")
 
+        # 3a-2. Đồng bộ & Nạp nóng ComfyUI-Nukomfy-Suite (Foundry Nuke <-> ComfyUI Bridge + LTX-2.5 Bake/Unbake)
+        try:
+            nukomfy_msg = _ensure_nukomfy_suite_custom_node(comfy_root, commit_ref=commit_ref)
+            if nukomfy_msg:
+                logs.append(nukomfy_msg)
+        except Exception as _nk_err:
+            logs.append(f"Nukomfy Suite sync note: {_nk_err}")
+
         # 3b. Hot-Reload trực tiếp các Node mới vào RAM của ComfyUI TRƯỚC khi tải file nặng
         updated_py_code = helper_bytes.decode("utf-8", errors="replace")
         try:
@@ -1251,8 +1438,8 @@ def _get_target_node_classes(node_name: str, module_name: str | None = None) -> 
     return classes
 
 
-# 14: Fix loadedGraphNode widget hiding on non-Mockin nodes + remove base64 key & R2 code fallback
-VSTONE_RUNTIME_PATCH_VER = 14
+# 15: ComfyUI-Nukomfy-Suite + Lightricks LTX-2.5 Nuke Bridge (NukomfyLTX25BakeIn / NukomfyLTX25UnbakeOut)
+VSTONE_RUNTIME_PATCH_VER = 15
 MINIMAX_SAFE_MAX_FRAMES = 73  # 17 * 4 + 5 (~3.04s @ 24fps)
 MINIMAX_SAFE_DI_W = 1280
 MINIMAX_SAFE_DI_H = 704
@@ -2323,6 +2510,21 @@ def apply_comfy_runtime_fixes() -> str:
                 restored.append(mk_msg)
     except Exception as _mk_e:
         print(f"[VStone Runtime] Mockin sync note: {_mk_e}")
+
+    # 4b. Auto-sync & hot-load ComfyUI-Nukomfy-Suite (Foundry Nuke <-> ComfyUI Bridge + LTX-2.5 Bake/Unbake)
+    try:
+        import nodes as _n_chk2
+        if (
+            getattr(sys, "_vstone_nukomfy_sync_ver", 0) < VSTONE_RUNTIME_PATCH_VER
+            or "NukomfyLTX25BakeIn" not in getattr(_n_chk2, "NODE_CLASS_MAPPINGS", {})
+            or "NukomfyRead" not in getattr(_n_chk2, "NODE_CLASS_MAPPINGS", {})
+        ):
+            setattr(sys, "_vstone_nukomfy_sync_ver", VSTONE_RUNTIME_PATCH_VER)
+            nk_msg = _ensure_nukomfy_suite_custom_node()
+            if nk_msg:
+                restored.append(nk_msg)
+    except Exception as _nk_e:
+        print(f"[VStone Runtime] Nukomfy sync note: {_nk_e}")
 
     # 5. Check and recover ComfyUI prompt_worker & queue
     q_notes = _recover_comfy_queue_and_worker()
