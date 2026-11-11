@@ -531,9 +531,48 @@ async function unpackZipToDirectoryHandle(arrayBuffer, rootDirHandle, skipExisti
     return { written, skipped, total: totalEntries };
 }
 
+async function readResponseArrayBufferWithProgress(resp, label, onStatus) {
+    const total = parseInt(resp.headers.get("Content-Length") || "0", 10);
+    if (!resp.body || typeof resp.body.getReader !== "function") {
+        const ab = await resp.arrayBuffer();
+        if (onStatus) onStatus(`Downloaded ${label} (${formatBytes(ab.byteLength)})`);
+        return ab;
+    }
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    let lastReport = 0;
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+            chunks.push(value);
+            received += value.byteLength;
+            const now = performance.now();
+            if (onStatus && now - lastReport > 120) {
+                lastReport = now;
+                if (total > 0) {
+                    const pct = Math.min(99, Math.round((received / total) * 100));
+                    onStatus(`⬇ ${pct}% (${formatBytes(received)} / ${formatBytes(total)})`);
+                } else {
+                    onStatus(`⬇ ${formatBytes(received)}...`);
+                }
+            }
+        }
+    }
+    const out = new Uint8Array(received);
+    let offset = 0;
+    for (const c of chunks) {
+        out.set(c, offset);
+        offset += c.byteLength;
+    }
+    return out.buffer;
+}
+
 async function downloadSingleFileViaTunnel(apiBase, code, roomId, remotePath, fileName, onStatus) {
     const norm = normalizeR2Params(apiBase, code, roomId);
-    if (onStatus) onStatus(`Downloading ${fileName || remotePath}...`);
+    const shortName = fileName || remotePath.split("/").pop() || "file";
+    if (onStatus) onStatus(`⏳ Kết nối tải ${shortName}...`);
     try {
         let resp = await api.fetchApi("/mockin/r2/stream_file", {
             method: "POST",
@@ -550,25 +589,25 @@ async function downloadSingleFileViaTunnel(apiBase, code, roomId, remotePath, fi
             resp = await api.fetchApi(streamUrl);
         }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
+        const buf = await readResponseArrayBufferWithProgress(resp, shortName, onStatus);
+        const blob = new Blob([buf]);
         if (ACTIVE_PROJECT.mode === "device" && ACTIVE_PROJECT.dirHandle) {
-            const fName = fileName || remotePath.split("/").pop() || "file";
-            const fh = await ACTIVE_PROJECT.dirHandle.getFileHandle(fName, { create: true });
+            const fh = await ACTIVE_PROJECT.dirHandle.getFileHandle(shortName, { create: true });
             const wr = await fh.createWritable();
             await wr.write(blob);
             await wr.close();
-            if (onStatus) onStatus(`Saved 1:1 -> ${ACTIVE_PROJECT.dirHandle.name}/${fName}`);
+            if (onStatus) onStatus(`✓ Saved 1:1 -> ${ACTIVE_PROJECT.dirHandle.name}/${shortName}`);
             return true;
         }
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = blobUrl;
-        a.download = fileName || remotePath.split("/").pop() || "file";
+        a.download = shortName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-        if (onStatus) onStatus(`Saved ${fileName || remotePath}`);
+        if (onStatus) onStatus(`✓ Đã tải ${shortName} (${formatBytes(blob.size)})`);
         return true;
     } catch (e) {
         if (onStatus) onStatus(`Error: ${e.message || e}`);
@@ -580,7 +619,7 @@ async function downloadFolderBundleViaTunnel(apiBase, code, roomId, remotePath, 
     const norm = normalizeR2Params(apiBase, code, roomId);
     const cleanPath = (remotePath || "").replace(/^\/+|\/+$/g, "");
     const folderLabel = cleanPath ? cleanPath.split("/").pop() : norm.roomId;
-    if (onStatus) onStatus(`Bundling '${folderLabel}' on H200 (16x parallel)...`);
+    if (onStatus) onStatus(`⏳ Đang gom '${folderLabel}' từ R2...`);
     try {
         let resp = await api.fetchApi("/mockin/r2/stream_folder_zip", {
             method: "POST",
@@ -599,15 +638,15 @@ async function downloadFolderBundleViaTunnel(apiBase, code, roomId, remotePath, 
         }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const fileCount = parseInt(resp.headers.get("X-File-Count") || "1", 10);
+        const buf = await readResponseArrayBufferWithProgress(resp, `${folderLabel}.zip`, onStatus);
 
         if (ACTIVE_PROJECT.mode === "device" && ACTIVE_PROJECT.dirHandle) {
-            const buf = await resp.arrayBuffer();
             const unp = await unpackZipToDirectoryHandle(buf, ACTIVE_PROJECT.dirHandle, skipExisting, onStatus);
-            if (onStatus) onStatus(`Synced 1:1 -> ${ACTIVE_PROJECT.dirHandle.name} (${unp.written} new, ${unp.skipped} ok)`);
+            if (onStatus) onStatus(`✓ Synced 1:1 -> ${ACTIVE_PROJECT.dirHandle.name} (${unp.written} new, ${unp.skipped} ok)`);
             return { ok: true, downloaded_count: unp.written, skipped_count: unp.skipped };
         }
 
-        const blob = await resp.blob();
+        const blob = new Blob([buf], { type: "application/zip" });
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = blobUrl;
@@ -616,7 +655,7 @@ async function downloadFolderBundleViaTunnel(apiBase, code, roomId, remotePath, 
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(blobUrl), 25000);
-        if (onStatus) onStatus(`Downloaded '${folderLabel}.zip' (${fileCount} files, ${formatBytes(blob.size)})`);
+        if (onStatus) onStatus(`✓ Đã tải '${folderLabel}.zip' (${fileCount} files, ${formatBytes(blob.size)})`);
         return { ok: true, downloaded_count: fileCount, skipped_count: 0 };
     } catch (e) {
         if (onStatus) onStatus(`Error: ${e.message || e}`);
@@ -1764,11 +1803,26 @@ function setupMainDriveNode(node) {
                 actWrap.style.cssText = "margin-top:auto; display:flex; flex-direction:column; gap:5px;";
 
                 const dlMainBtn = document.createElement("button");
-                dlMainBtn.textContent = selectedItem.isFolder ? "⬇ Tải Folder về Laptop" : "⬇ Tải File về Laptop";
+                const origDlText = selectedItem.isFolder ? "⬇ Tải Folder về Laptop" : "⬇ Tải File về Laptop";
+                dlMainBtn.textContent = origDlText;
                 dlMainBtn.style.cssText = "background:#38bdf8; color:#09090b; font-weight:700; border:none; border-radius:5px; padding:6px; font-size:11px; cursor:pointer; width:100%;";
                 dlMainBtn.onclick = async () => {
                     const m = selectedItem.isFolder ? "folder" : "file";
-                    await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, selectedItem.path, m, true, (msg) => updateStatus(msg, true));
+                    dlMainBtn.disabled = true;
+                    dlMainBtn.style.opacity = "0.85";
+                    dlMainBtn.textContent = "⏳ Đang chuẩn bị tải...";
+                    try {
+                        await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, selectedItem.path, m, true, (msg) => {
+                            updateStatus(msg, !String(msg).startsWith("Error"));
+                            dlMainBtn.textContent = msg;
+                        });
+                    } finally {
+                        dlMainBtn.disabled = false;
+                        dlMainBtn.style.opacity = "1";
+                        setTimeout(() => {
+                            if (dlMainBtn.isConnected) dlMainBtn.textContent = origDlText;
+                        }, 2500);
+                    }
                 };
                 actWrap.appendChild(dlMainBtn);
 
@@ -2111,11 +2165,21 @@ function setupMainDriveNode(node) {
             const mode = selectedItem && !selectedItem.isFolder ? "file" : "folder";
 
             if (ACTIVE_PROJECT.mode !== "server") {
-                const res = await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, target, mode, true, (m) => {
-                    updateStatus(m, true);
-                });
-                if (res) {
-                    setW("selected_content", JSON.stringify(res, null, 2));
+                syncBtn.disabled = true;
+                syncBtn.textContent = "⏳ Đang tải...";
+                try {
+                    const res = await syncOrSaveToLaptop(c.apiBase, c.code, c.roomId, target, mode, true, (m) => {
+                        updateStatus(m, !String(m).startsWith("Error"));
+                        syncBtn.textContent = String(m).slice(0, 24);
+                    });
+                    if (res) {
+                        setW("selected_content", JSON.stringify(res, null, 2));
+                    }
+                } finally {
+                    syncBtn.disabled = false;
+                    setTimeout(() => {
+                        if (syncBtn.isConnected) syncBtn.textContent = "Sync";
+                    }, 2200);
                 }
                 return;
             }

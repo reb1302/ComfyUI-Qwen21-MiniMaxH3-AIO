@@ -587,11 +587,16 @@ def r2_relay_poller_loop():
     """Polls R-LAPTOP-BRIDGE on R2 so even when ComfyUI is opened via an insecure HTTP tunnel
     where Chrome blocks 127.0.0.1 Private Network Access, commands from H200 UI still execute on Laptop."""
     last_cmd_id = ""
-    # Ensure bridge room exists and has initial status
+    last_hb = 0.0
     init_state = load_laptop_state()
-    r2_request("POST", "/create", json_body={"room_id": BRIDGE_ROOM_ID, "title": "Laptop Bridge", "text": json.dumps({"ok": True, **init_state})})
+    r2_request("POST", "/create", json_body={"room_id": BRIDGE_ROOM_ID, "title": "Laptop Bridge", "text": json.dumps({"ok": True, "ts": time.time(), **init_state})})
     while True:
         try:
+            now = time.time()
+            if now - last_hb > 20.0:
+                last_hb = now
+                cur_state = load_laptop_state()
+                r2_request("POST", f"/{BRIDGE_ROOM_ID}/text", json_body={"text": json.dumps({"ok": True, "ts": now, **cur_state}, ensure_ascii=False)}, timeout=8)
             res = r2_request("GET", f"/{BRIDGE_ROOM_ID}", timeout=10)
             if res.get("ok") and isinstance(res.get("data"), dict):
                 notes = res["data"].get("notes") or []
@@ -605,6 +610,7 @@ def r2_relay_poller_loop():
                             last_cmd_id = cmd_id
                             result = execute_bridge_command(cmd_obj)
                             result["cmd_id"] = cmd_id
+                            result["ts"] = time.time()
                             result["completed_at"] = time.time()
                             r2_request(
                                 "POST",

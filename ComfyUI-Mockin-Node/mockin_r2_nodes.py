@@ -621,10 +621,12 @@ def r2_build_folder_zip_bytes(
 
     bio = io.BytesIO()
     packed_count = 0
-    with zipfile.ZipFile(bio, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+    store_exts = (".zip", ".7z", ".gz", ".rar", ".tar", ".safetensors", ".ckpt", ".gguf", ".mp4", ".mov", ".mkv", ".png", ".jpg", ".jpeg", ".webp")
+    with zipfile.ZipFile(bio, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as zf:
         for arcname, local_cache_path, _ in cached_items:
             if os.path.exists(local_cache_path):
-                zf.write(local_cache_path, arcname=arcname)
+                comp = zipfile.ZIP_STORED if local_cache_path.lower().endswith(store_exts) else zipfile.ZIP_DEFLATED
+                zf.write(local_cache_path, arcname=arcname, compress_type=comp)
                 packed_count += 1
 
     zip_fname = f"{folder_base or room_id}.zip"
@@ -633,10 +635,25 @@ def r2_build_folder_zip_bytes(
 
 def build_laptop_sync_agent_ps1_content(api_base: str = DEFAULT_R2_API_BASE, code: str = DEFAULT_R2_CODE) -> str:
     ps_script = r"""
+$ProgressPreference = 'SilentlyContinue'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+function Fast-Download($url, $dest, $roomCode) {
+    $curlExe = "$env:SystemRoot\System32\curl.exe"
+    if (Test-Path $curlExe) {
+        if ($roomCode) {
+            & $curlExe -4 -fL -sS -H "X-Room-Code: $roomCode" $url -o $dest
+        } else {
+            & $curlExe -4 -fL -sS $url -o $dest
+        }
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $dest) -and ((Get-Item $dest).Length -gt 0)) { return }
+    }
+    $hdr = if ($roomCode) { @{ "X-Room-Code" = $roomCode } } else { @{} }
+    Invoke-WebRequest -Uri $url -Headers $hdr -OutFile $dest -UseBasicParsing -TimeoutSec 180
+}
 
 $StateFile = Join-Path $env:USERPROFILE ".mockin_laptop_sync.json"
 $DefaultDir = Join-Path ([Environment]::GetFolderPath("Desktop")) "Mockin_Sync"
@@ -746,7 +763,7 @@ while ($listener.IsListening) {
             $skCount = 0
             $unpackedViaZip = $false
 
-            if ($bodyObj.h200_zip_url -and $bodyObj.mode -ne "file") {
+            if ($bodyObj.h200_zip_url -and $bodyObj.mode -ne "file" -and $false) {
                 try {
                     $tmpZip = Join-Path $env:TEMP ("mockin_sync_" + [guid]::NewGuid().ToString("N") + ".zip")
                     Invoke-WebRequest -Uri $bodyObj.h200_zip_url -OutFile $tmpZip -UseBasicParsing -TimeoutSec 180
@@ -777,7 +794,10 @@ while ($listener.IsListening) {
 
             if (-not $unpackedViaZip) {
                 $mfUrl = "$apiBase/$roomId/fs/manifest?path=$([uri]::EscapeDataString($remPath))"
-                $mfResp = Invoke-RestMethod -Uri $mfUrl -Headers @{ "X-Room-Code" = $code } -Method Get -TimeoutSec 30
+                $tmpMf = Join-Path $env:TEMP ("mockin_mf_" + [guid]::NewGuid().ToString("N") + ".json")
+                Fast-Download $mfUrl $tmpMf $code
+                $mfResp = Get-Content $tmpMf -Raw -Encoding UTF8 | ConvertFrom-Json
+                Remove-Item $tmpMf -Force -ErrorAction SilentlyContinue
                 $files = $mfResp.files
                 $folderBase = if ($remPath) { Split-Path $remPath -Leaf } else { "" }
 
@@ -798,8 +818,8 @@ while ($listener.IsListening) {
                         }
                     }
                     $dlUrl = if ($f.direct_download_url) { $f.direct_download_url } else { "$apiBase/$roomId/fs/download?path=$([uri]::EscapeDataString($fPath))" }
-                    $hdrs = if ($f.direct_download_url) { @{} } else { @{ "X-Room-Code" = $code } }
-                    Invoke-WebRequest -Uri $dlUrl -Headers $hdrs -OutFile $destFile -UseBasicParsing -TimeoutSec 180
+                    $useCode = if ($f.direct_download_url) { "" } else { $code }
+                    Fast-Download $dlUrl $destFile $useCode
                     $dlCount++
                     Write-Host "  + $rel" -ForegroundColor Gray
                 }
@@ -1047,6 +1067,8 @@ try:
                 disp_type = "inline" if inline else "attachment"
                 headers = {
                     "Content-Disposition": f'{disp_type}; filename="{fname}"',
+                    "Content-Length": str(len(file_bytes)),
+                    "Access-Control-Expose-Headers": "Content-Length, Content-Disposition",
                     "Cache-Control": "no-cache",
                 }
                 return web.Response(body=file_bytes, content_type=ctype.split(";")[0], headers=headers)
@@ -1079,7 +1101,9 @@ try:
                 )
                 headers = {
                     "Content-Disposition": f'attachment; filename="{zip_fname}"',
+                    "Content-Length": str(len(zip_bytes)),
                     "X-File-Count": str(packed_count),
+                    "Access-Control-Expose-Headers": "Content-Length, X-File-Count, Content-Disposition",
                     "Cache-Control": "no-cache",
                 }
                 return web.Response(body=zip_bytes, content_type="application/zip", headers=headers)
