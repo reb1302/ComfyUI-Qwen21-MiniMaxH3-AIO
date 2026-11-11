@@ -12521,8 +12521,8 @@ class outpaint_pad_huy:
     """
     Nới khung giống Huy_screenx_outpain_mask (cùng khung đồ họa kéo mép), có thêm context để LTX nhìn thấy trong cùng một lần gen.
     Context (cảnh rộng, cảnh khác cùng bối cảnh, ảnh tĩnh) nối SAU video gốc: khung 0 của video gốc không dính chỗ nối, tiếng gốc vẫn khớp từ đầu.
-    Có context thì video gốc được kéo dài bằng khung cuối tới 8k+1 khung, context tới bội số 8,
-    để chỗ nối rơi đúng ranh giới nhóm 8 khung của latent LTX và tổng số khung vẫn là 8k+1.
+    Video gốc luôn được kéo dài bằng khung cuối tới 8k+1 khung để LTX không cắt mất khung cuối; huy_mix_match cắt lại đúng số khung gốc.
+    Context được kéo tới bội số 8, để chỗ nối rơi đúng ranh giới nhóm 8 khung của latent LTX và tổng số khung vẫn là 8k+1.
     Context được thu vừa khung rộng và đặt giữa: chỗ có hình thật mask = 0, phần đệm xám mask = 1.
     """
 
@@ -12558,8 +12558,7 @@ class outpaint_pad_huy:
         canvas_w = left + width + right
         preview = _save_screenx_preview(image[0])
 
-        if context is not None:
-            image = torch.cat([image, image[-1:].repeat((1 - frames) % 8, 1, 1, 1)])
+        image = torch.cat([image, image[-1:].repeat((1 - frames) % 8, 1, 1, 1)])
         canvas = image.new_full((image.shape[0], canvas_h, canvas_w, channels), 0.5)
         canvas[:, top : top + height, left : left + width, :] = image
         mask = image.new_ones((canvas_h, canvas_w))
