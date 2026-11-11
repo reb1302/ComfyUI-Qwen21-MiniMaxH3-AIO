@@ -12660,6 +12660,8 @@ if comfy_io is not None:
         Đưa video gen về đúng khổ khung đã nới của outpaint_pad_huy rồi comp plate gốc chồng lên giữa.
         Khổ khung và chỗ đặt plate lấy từ mask của outpaint_pad_huy: ô mask = 0 ở khung đầu là chỗ của video gốc.
         Số khung theo video gốc: khung dư (đệm 8k+1, context) bị bỏ; LTX trả thiếu khung thì phần nới giữ khung gen cuối.
+        Workflow LTX thu khung rồi cắt giữa về bội số 64 (scale to multiple), nên video gen được phóng đều theo chiều không bị cắt
+        và đặt lại vào giữa; dải mép đã bị cắt trước khi gen không có hình nên lặp pixel mép.
         """
 
         @classmethod
@@ -12690,12 +12692,21 @@ if comfy_io is not None:
                 raise ValueError(f"Ô mask = 0 không khớp video gốc {width}x{height}: hãy nối mask của chính outpaint_pad_huy đã nới video này.")
             top, left = rows[0], cols[0]
 
+            gen_h, gen_w = image.shape[1], image.shape[2]
+            scale = max(gen_w / canvas_w, gen_h / canvas_h)
+            fit_w = min(canvas_w, round(gen_w / scale))
+            fit_h = min(canvas_h, round(gen_h / scale))
+            x = (canvas_w - fit_w) // 2
+            y = (canvas_h - fit_h) // 2
+            edge = (x, canvas_w - fit_w - x, y, canvas_h - fit_h - y)
+
             out = original.new_empty((frames, canvas_h, canvas_w, channels))
             last = image.shape[0] - 1
             for start in range(0, frames, 8):
                 picked = image[[min(i, last) for i in range(start, min(start + 8, frames))]]
-                resized = comfy.utils.common_upscale(picked[..., :channels].movedim(-1, 1), canvas_w, canvas_h, "bicubic", "disabled")
-                out[start : start + picked.shape[0]] = resized.movedim(1, -1).clamp(0.0, 1.0).to(out)
+                resized = comfy.utils.common_upscale(picked[..., :channels].movedim(-1, 1), fit_w, fit_h, "bicubic", "disabled")
+                resized = F.pad(resized.clamp(0.0, 1.0), edge, mode="replicate")
+                out[start : start + picked.shape[0]] = resized.movedim(1, -1).to(out)
             out[:, top : top + height, left : left + width, :] = original
             return comfy_io.NodeOutput(out)
 
