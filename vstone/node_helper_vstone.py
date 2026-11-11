@@ -5698,6 +5698,7 @@ function createEditor(node) {
     domWidget.serialize = false;
 
     let frame = null;
+    let frameCount = "";
     let drag = null;
 
     const frameSize = () => ({
@@ -5805,7 +5806,7 @@ function createEditor(node) {
             ctx.fillStyle = "#ff6b6b";
             ctx.fillText("Không có vùng xám: LTX sẽ gen lại y hệt", 8, viewH - 11);
         } else {
-            ctx.fillText(`Khung ${g.canvasW}×${g.canvasH}   Ảnh ${g.width}×${g.height}`, 8, viewH - 11);
+            ctx.fillText(`Khung ${g.canvasW}×${g.canvasH}   Ảnh ${g.width}×${g.height}${frameCount}`, 8, viewH - 11);
         }
     }
 
@@ -5950,6 +5951,12 @@ function createEditor(node) {
             node.properties.frameHeight = height;
             render();
         },
+        setFrameCount(info) {
+            // Chỉ outpaint_pad_huy gửi số khung: khung gốc → khung sau khi kéo tới 8k+1 (+ context).
+            frameCount = info.frames_in === undefined ? "" : `   Frame ${info.frames_in} → ${info.frames_out}`;
+            if (info.context_frames) frameCount += ` + context ${info.context_frames}`;
+            render();
+        },
     };
 }
 
@@ -5985,6 +5992,7 @@ app.registerExtension({
             onExecuted?.apply(this, arguments);
             const info = message?.huy_preview?.[0];
             if (!info) return;
+            this.screenxEditor?.setFrameCount(info);
             const image = new Image();
             image.onload = () => this.screenxEditor?.setFrame(image, info.width, info.height);
             const query = new URLSearchParams({ filename: info.filename, subfolder: info.subfolder, type: info.type, rand: String(Math.random()) });
@@ -12559,6 +12567,8 @@ class outpaint_pad_huy:
         preview = _save_screenx_preview(image[0])
 
         image = torch.cat([image, image[-1:].repeat((1 - frames) % 8, 1, 1, 1)])
+        preview["frames_in"] = frames
+        preview["frames_out"] = image.shape[0]
         canvas = image.new_full((image.shape[0], canvas_h, canvas_w, channels), 0.5)
         canvas[:, top : top + height, left : left + width, :] = image
         mask = image.new_ones((canvas_h, canvas_w))
@@ -12567,6 +12577,7 @@ class outpaint_pad_huy:
 
         if context is not None:
             context = torch.cat([context, context[-1:].repeat(-context.shape[0] % 8, 1, 1, 1)])
+            preview["context_frames"] = context.shape[0]
             scale = min(canvas_w / context.shape[2], canvas_h / context.shape[1])
             fit_w = min(canvas_w, round(context.shape[2] * scale))
             fit_h = min(canvas_h, round(context.shape[1] * scale))
