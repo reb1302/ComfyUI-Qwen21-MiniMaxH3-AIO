@@ -12645,6 +12645,50 @@ if comfy_io is not None:
                 sheet[:, y : y + h, x : x + w, :] = fitted
             return comfy_io.NodeOutput(sheet)
 
+    class huy_mix_match(comfy_io.ComfyNode):
+        """
+        Đưa video gen về đúng khổ khung đã nới của outpaint_pad_huy rồi comp plate gốc chồng lên giữa.
+        Khổ khung và chỗ đặt plate lấy từ mask của outpaint_pad_huy: ô mask = 0 ở khung đầu là chỗ của video gốc.
+        Số khung theo video gốc: khung dư (đệm 8k+1, context) bị bỏ; LTX trả thiếu khung thì phần nới giữ khung gen cuối.
+        """
+
+        @classmethod
+        def define_schema(cls):
+            return comfy_io.Schema(
+                node_id="huy_mix_match",
+                display_name="huy mix match",
+                category="stoneV",
+                description="Đưa video gen về đúng khổ outpaint_pad_huy, đúng số khung video gốc, và comp plate gốc chồng lên giữa.",
+                inputs=[
+                    comfy_io.Image.Input("image", tooltip="Các khung sau khi gen."),
+                    comfy_io.Image.Input("original", tooltip="Các khung video gốc, đúng video đã đưa vào outpaint_pad_huy."),
+                    comfy_io.Mask.Input("mask", tooltip="Mask của outpaint_pad_huy."),
+                ],
+                outputs=[comfy_io.Image.Output()],
+            )
+
+        @classmethod
+        def execute(cls, image, original, mask) -> comfy_io.NodeOutput:
+            import comfy.utils
+
+            frames, height, width, channels = original.shape
+            canvas_h, canvas_w = mask.shape[-2:]
+            hole = mask.reshape(-1, canvas_h, canvas_w)[0] < 0.5
+            rows = hole.any(dim=1).nonzero().flatten().tolist()
+            cols = hole.any(dim=0).nonzero().flatten().tolist()
+            if not rows or rows[-1] - rows[0] + 1 != height or cols[-1] - cols[0] + 1 != width:
+                raise ValueError(f"Ô mask = 0 không khớp video gốc {width}x{height}: hãy nối mask của chính outpaint_pad_huy đã nới video này.")
+            top, left = rows[0], cols[0]
+
+            out = original.new_empty((frames, canvas_h, canvas_w, channels))
+            last = image.shape[0] - 1
+            for start in range(0, frames, 8):
+                picked = image[[min(i, last) for i in range(start, min(start + 8, frames))]]
+                resized = comfy.utils.common_upscale(picked[..., :channels].movedim(-1, 1), canvas_w, canvas_h, "bicubic", "disabled")
+                out[start : start + picked.shape[0]] = resized.movedim(1, -1).clamp(0.0, 1.0).to(out)
+            out[:, top : top + height, left : left + width, :] = original
+            return comfy_io.NodeOutput(out)
+
 
 # ==============================================================================
 # RTX Video Super Resolution Pro & AI 4x-UltraSharp 16K Upscaler
@@ -14955,6 +14999,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
 
 if comfy_io is not None:
     VSTONE_NODE_CLASS_MAPPINGS["refsheet_huy"] = refsheet_huy
+    VSTONE_NODE_CLASS_MAPPINGS["huy_mix_match"] = huy_mix_match
 
 for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
     try:
