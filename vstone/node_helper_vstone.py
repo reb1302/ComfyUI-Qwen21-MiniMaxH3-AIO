@@ -5665,7 +5665,7 @@ HUY_SCREENX_EDITOR_JS = r"""
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
-const NODE_ID = "Huy_screenx_outpain_mask";
+const NODE_IDS = ["Huy_screenx_outpain_mask", "outpaint_pad_huy"];
 const GRID = 64;
 const MAX_PAD = 8192;
 const EDGE_GRAB_PX = 9;
@@ -5956,7 +5956,7 @@ function createEditor(node) {
 app.registerExtension({
     name: "vstone.HuyScreenxOutpainMask",
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== NODE_ID) return;
+        if (!NODE_IDS.includes(nodeData.name)) return;
 
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -12517,6 +12517,135 @@ class Huy_screenx_outpain_mask:
         }
 
 
+class outpaint_pad_huy:
+    """
+    Nới khung giống Huy_screenx_outpain_mask (cùng khung đồ họa kéo mép), có thêm context để LTX nhìn thấy trong cùng một lần gen.
+    Context (cảnh rộng, cảnh khác cùng bối cảnh, ảnh tĩnh) nối SAU video gốc: khung 0 của video gốc không dính chỗ nối, tiếng gốc vẫn khớp từ đầu.
+    Có context thì video gốc được kéo dài bằng khung cuối tới 8k+1 khung, context tới bội số 8,
+    để chỗ nối rơi đúng ranh giới nhóm 8 khung của latent LTX và tổng số khung vẫn là 8k+1.
+    Context được thu vừa khung rộng và đặt giữa: chỗ có hình thật mask = 0, phần đệm xám mask = 1.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        pad_input = {"min": 0, "max": 8192, "step": SCREENX_PAINT_MULTIPLE}
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "left": ("INT", {"default": 1024, **pad_input}),
+                "top": ("INT", {"default": 0, **pad_input}),
+                "right": ("INT", {"default": 1024, **pad_input}),
+                "bottom": ("INT", {"default": 0, **pad_input}),
+            },
+            "optional": {
+                "context": ("IMAGE",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_NAMES = ("image", "mask")
+    FUNCTION = "prepare"
+    OUTPUT_NODE = True  # chạy riêng node này để xem khung thật trên node trước khi gen
+    CATEGORY = "stoneV"
+
+    def prepare(self, image, left=1024, top=0, right=1024, bottom=0, context=None):
+        import comfy.utils
+
+        frames, height, width, channels = image.shape
+        left, right = _round_screenx_pad(width, left, right)
+        top, bottom = _round_screenx_pad(height, top, bottom)
+        canvas_h = top + height + bottom
+        canvas_w = left + width + right
+        preview = _save_screenx_preview(image[0])
+
+        if context is not None:
+            image = torch.cat([image, image[-1:].repeat((1 - frames) % 8, 1, 1, 1)])
+        canvas = image.new_full((image.shape[0], canvas_h, canvas_w, channels), 0.5)
+        canvas[:, top : top + height, left : left + width, :] = image
+        mask = image.new_ones((canvas_h, canvas_w))
+        mask[top : top + height, left : left + width] = 0.0
+        mask = mask.repeat(image.shape[0], 1, 1)
+
+        if context is not None:
+            context = torch.cat([context, context[-1:].repeat(-context.shape[0] % 8, 1, 1, 1)])
+            scale = min(canvas_w / context.shape[2], canvas_h / context.shape[1])
+            fit_w = min(canvas_w, round(context.shape[2] * scale))
+            fit_h = min(canvas_h, round(context.shape[1] * scale))
+            x = (canvas_w - fit_w) // 2
+            y = (canvas_h - fit_h) // 2
+            fitted = comfy.utils.common_upscale(context.movedim(-1, 1), fit_w, fit_h, "bilinear", "disabled").movedim(1, -1)
+            context_canvas = canvas.new_full((context.shape[0], canvas_h, canvas_w, channels), 0.5)
+            context_canvas[:, y : y + fit_h, x : x + fit_w, :] = fitted[..., :channels]
+            context_mask = mask.new_ones((context.shape[0], canvas_h, canvas_w))
+            context_mask[:, y : y + fit_h, x : x + fit_w] = 0.0
+            canvas = torch.cat([canvas, context_canvas])
+            mask = torch.cat([mask, context_mask])
+
+        return {"ui": {"huy_preview": [preview]}, "result": (canvas, mask)}
+
+
+try:
+    from comfy_api.latest import io as comfy_io
+except ImportError:
+    comfy_io = None  # chỉ khi helper được nạp ngoài ComfyUI
+
+if comfy_io is not None:
+
+    class refsheet_huy(comfy_io.ComfyNode):
+        """
+        Gom ảnh và video context thành 1 tấm reference sheet cho IC-LoRA Ingredients.
+        Tấm sheet lấy đúng khổ của khung đã nới, vì guide của LTX kéo giãn ảnh cho vừa khổ latent:
+        xếp sẵn đúng khổ thì từng ảnh giữ nguyên tỉ lệ, không bị méo.
+        Mỗi video lấy `frames` khung đầu, mỗi ảnh là 1 ô. Các ô xếp theo lưới, số hàng chọn sao cho ít chỗ trống nhất, nền trắng.
+        """
+
+        @classmethod
+        def define_schema(cls):
+            return comfy_io.Schema(
+                node_id="refsheet_huy",
+                display_name="refsheet huy",
+                category="stoneV",
+                description="Gom ảnh và video context thành 1 tấm reference sheet đúng khổ khung đã nới, cho IC-LoRA Ingredients.",
+                inputs=[
+                    comfy_io.Image.Input("canvas", tooltip="Khung đã nới từ outpaint_pad_huy. Tấm sheet lấy đúng khổ này."),
+                    comfy_io.Int.Input("frames", default=1, min=1, max=64, tooltip="Số khung đầu lấy từ mỗi video context."),
+                    comfy_io.Autogrow.Input("contexts", template=comfy_io.Autogrow.TemplatePrefix(
+                        comfy_io.Image.Input("context"), prefix="context", min=1, max=50,
+                    )),
+                ],
+                outputs=[comfy_io.Image.Output(display_name="sheet")],
+            )
+
+        @classmethod
+        def execute(cls, canvas, frames, contexts) -> comfy_io.NodeOutput:
+            import comfy.utils
+
+            sheet_h, sheet_w = canvas.shape[1], canvas.shape[2]
+            tiles = []
+            for name in sorted(contexts, key=lambda name: int(name.removeprefix("context"))):
+                if contexts[name] is not None:
+                    tiles.extend(contexts[name][:frames])
+
+            def covered_area(rows):
+                cols = math.ceil(len(tiles) / rows)
+                cell_w, cell_h = sheet_w // cols, sheet_h // rows
+                return sum(min(cell_w / t.shape[1], cell_h / t.shape[0]) ** 2 * t.shape[0] * t.shape[1] for t in tiles)
+
+            rows = max(range(1, len(tiles) + 1), key=covered_area)
+            cols = math.ceil(len(tiles) / rows)
+            cell_w, cell_h = sheet_w // cols, sheet_h // rows
+            sheet = canvas.new_ones((1, sheet_h, sheet_w, 3))
+            for i, tile in enumerate(tiles):
+                scale = min(cell_w / tile.shape[1], cell_h / tile.shape[0])
+                w = max(1, round(tile.shape[1] * scale))
+                h = max(1, round(tile.shape[0] * scale))
+                fitted = comfy.utils.common_upscale(tile[None, :, :, :3].movedim(-1, 1), w, h, "bilinear", "disabled").movedim(1, -1)
+                x = (i % cols) * cell_w + (cell_w - w) // 2
+                y = (i // cols) * cell_h + (cell_h - h) // 2
+                sheet[:, y : y + h, x : x + w, :] = fitted
+            return comfy_io.NodeOutput(sheet)
+
+
 # ==============================================================================
 # RTX Video Super Resolution Pro & AI 4x-UltraSharp 16K Upscaler
 # ==============================================================================
@@ -14778,6 +14907,7 @@ VSTONE_NODE_CLASS_MAPPINGS = {
     "stoneV_Video_Outpaint_Prepare": stoneV_Video_Outpaint_Prepare,
     "stoneV_ScreenX_Cut": stoneV_ScreenX_Cut,
     "Huy_screenx_outpain_mask": Huy_screenx_outpain_mask,
+    "outpaint_pad_huy": outpaint_pad_huy,
     "stoneV_Panorama360_AutoLoop": stoneV_Panorama360_AutoLoop,
     "stoneV_Panorama_Stitch2": stoneV_Panorama_Stitch2,
     "VStone_ExtendLeft_1xWidth": stoneV_ExtendLeft_1xWidth,
@@ -14809,6 +14939,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "stoneV_Video_Outpaint_Prepare": "stoneV: Video Outpaint Prepare",
     "stoneV_ScreenX_Cut": "stoneV: ScreenX Cut (Cánh + Ảnh Giữa)",
     "Huy_screenx_outpain_mask": "Huy_screenx outpain mask",
+    "outpaint_pad_huy": "outpaint_pad_huy",
     "stoneV_Panorama360_AutoLoop": "stoneV Panorama 360: Auto-Loop Multi-Ref & Height Expand",
     "stoneV_Panorama_Stitch2": "stoneV Panorama: Stitch & Feather 2 Plates",
     "VStone_ExtendLeft_1xWidth": "stoneV 1A: Extend Left (Half-Crop + 1.3x Pad)",
@@ -14821,6 +14952,9 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
     "VStone_Panorama360_AutoLoop": "stoneV Panorama 360: Auto-Loop Multi-Ref & Height Expand",
     "VStone_Panorama_Stitch2": "stoneV Panorama: Stitch & Feather 2 Plates",
 }
+
+if comfy_io is not None:
+    VSTONE_NODE_CLASS_MAPPINGS["refsheet_huy"] = refsheet_huy
 
 for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
     try:

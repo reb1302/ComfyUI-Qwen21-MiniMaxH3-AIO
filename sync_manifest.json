@@ -771,6 +771,7 @@
     "workflows/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/ltx_2.5/LTX-2.5_ICLoRA_Inpaint_Two_Stage_Distilled.json",
     "workflows/ltx_2.5/outpaint_pad_huy_LTX25_1frame_context.json",
+    "workflows/ltx_2.5/refsheet_huy_LTX25_first_frame_ingredients.json",
     "workflows/minimax_h3/huy_minhmax_paintout_fun.json",
     "workflows/minimax_h3/video_minimax_h3_i2v_latent_upscaler.json",
     "workflows/minimax_h3/video_minimax_h3_r2v_latent_upscaler.json",
