@@ -7044,9 +7044,7 @@
             "id": "d698bb1d-cd73-462f-aba9-ed166549acca",
             "name": "audio",
             "type": "AUDIO",
-            "linkIds": [
-              13856
-            ],
+            "linkIds": [],
             "label": "reference audio",
             "pos": [
               63.70501999049314,
@@ -7580,36 +7578,30 @@
           },
           {
             "id": 5389,
-            "type": "VAEEncodeAudio",
+            "type": "LTXVEmptyLatentAudio",
             "pos": [
               170.02728561549316,
               306.73005188887305
             ],
             "size": [
-              272.05628592405526,
-              46
+              272,
+              106
             ],
             "flags": {},
             "order": 6,
             "mode": 0,
             "inputs": [
               {
-                "localized_name": "audio",
-                "name": "audio",
-                "type": "AUDIO",
-                "link": 13856
-              },
-              {
-                "localized_name": "vae",
-                "name": "vae",
+                "localized_name": "audio_vae",
+                "name": "audio_vae",
                 "type": "VAE",
                 "link": 13855
               }
             ],
             "outputs": [
               {
-                "localized_name": "LATENT",
-                "name": "LATENT",
+                "localized_name": "Latent",
+                "name": "Latent",
                 "type": "LATENT",
                 "links": [
                   13853
@@ -7617,9 +7609,18 @@
               }
             ],
             "properties": {
-              "Node name for S&R": "VAEEncodeAudio",
-              "cnr_id": "comfy-core",
-              "ver": "0.24.0"
+              "Node name for S&R": "LTXVEmptyLatentAudio",
+              "cnr_id": "comfy-core"
+            },
+            "widgets_values": [
+              1,
+              24,
+              1
+            ],
+            "widgets_values_named": {
+              "frames_number": 1,
+              "frame_rate": 24,
+              "batch_size": 1
             }
           },
           {
@@ -7913,16 +7914,8 @@
             "origin_id": -10,
             "origin_slot": 7,
             "target_id": 5389,
-            "target_slot": 1,
-            "type": "VAE"
-          },
-          {
-            "id": 13856,
-            "origin_id": -10,
-            "origin_slot": 8,
-            "target_id": 5389,
             "target_slot": 0,
-            "type": "AUDIO"
+            "type": "VAE"
           },
           {
             "id": 13857,
