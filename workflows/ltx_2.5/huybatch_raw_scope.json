@@ -1221,7 +1221,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 14010
+          "link": 13995
         },
         {
           "name": "audio",
@@ -1305,7 +1305,6 @@
           "type": "MASK",
           "links": [
             13971,
-            14009,
             14013
           ]
         },
@@ -1462,7 +1461,6 @@
           "links": [
             13999,
             14004,
-            14008,
             14012
           ]
         },
@@ -1657,57 +1655,6 @@
         "batch_index": 0,
         "length": 1
       }
-    },
-    {
-      "id": 9052,
-      "type": "huy_mix_match",
-      "pos": [
-        -2080,
-        3640
-      ],
-      "size": [
-        330,
-        126
-      ],
-      "flags": {},
-      "order": 9052,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 13995
-        },
-        {
-          "name": "original",
-          "type": "IMAGE",
-          "link": 14008
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "link": 14009
-        },
-        {
-          "name": "ref",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14010
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "huy_mix_match"
-      },
-      "widgets_values": []
     },
     {
       "id": 9053,
@@ -2158,7 +2105,7 @@
       13995,
       9005,
       0,
-      9052,
+      9039,
       0,
       "IMAGE"
     ],
@@ -2224,30 +2171,6 @@
       0,
       5408,
       3,
-      "IMAGE"
-    ],
-    [
-      14008,
-      9047,
-      0,
-      9052,
-      1,
-      "IMAGE"
-    ],
-    [
-      14009,
-      9041,
-      1,
-      9052,
-      2,
-      "MASK"
-    ],
-    [
-      14010,
-      9052,
-      0,
-      9039,
-      0,
       "IMAGE"
     ],
     [
