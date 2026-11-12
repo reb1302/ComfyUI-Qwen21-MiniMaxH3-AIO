@@ -544,10 +544,10 @@
         "Node name for S&R": "PrimitiveStringMultiline"
       },
       "widgets_values": [
-        "Seamless wide extension of the same shot, one continuous frame. The original scene stays unchanged in the center. The left and right sides continue only the surrounding background environment at its natural scale and correct perspective, with the same lighting, color grading, depth of field and camera movement as the center. Sharp focus, crisp fine detail and texture, clean high-resolution footage, film grain matching the original. Each element appears once; the background on both sides is plain and natural, with no extra people or objects."
+        ""
       ],
       "widgets_values_named": {
-        "value": "Seamless wide extension of the same shot, one continuous frame. The original scene stays unchanged in the center. The left and right sides continue only the surrounding background environment at its natural scale and correct perspective, with the same lighting, color grading, depth of field and camera movement as the center. Sharp focus, crisp fine detail and texture, clean high-resolution footage, film grain matching the original. Each element appears once; the background on both sides is plain and natural, with no extra people or objects."
+        "value": ""
       },
       "color": "#232",
       "bgcolor": "#353"
