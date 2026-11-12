@@ -12313,7 +12313,7 @@ if comfy_io is not None:
                 while start > 0 and line[start - 1]:
                     start -= 1
                 end = center
-                while end < line.shape[0] - 1 and line[end + 1]:
+                while end < len(line) - 1 and line[end + 1]:
                     end += 1
                 return start, end + 1
 
