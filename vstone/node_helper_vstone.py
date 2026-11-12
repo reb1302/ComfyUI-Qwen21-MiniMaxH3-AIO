@@ -38,6 +38,33 @@ GITHUB_BRANCH = "main"
 GITHUB_RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}"
 GITHUB_API_TREE = f"https://api.github.com/repos/{GITHUB_REPO}/git/trees/{GITHUB_BRANCH}?recursive=1"
 
+# ComfyUI chính của VStone trên H200. Một ComfyUI khác trên cùng máy dùng chung thư mục custom_nodes
+# (thư mục khác, port khác) thì helper không làm gì cả: không đăng ký node, không vá, không chạy ngầm.
+HOME_COMFY_ROOT = "/home/rnd/Workspace/Application/AI/RND_AI/ComfyUI"
+HOME_COMFY_PORT = 8189
+
+
+def _is_foreign_comfy() -> bool:
+    try:
+        import folder_paths
+        root = os.path.realpath(folder_paths.base_path)
+    except Exception:
+        return False
+    if root == os.path.realpath(HOME_COMFY_ROOT):
+        return False
+    try:
+        from comfy.cli_args import args as _cli_args
+        if int(getattr(_cli_args, "port", 0) or 0) == HOME_COMFY_PORT:
+            return False
+    except Exception:
+        pass
+    return True
+
+
+VSTONE_FOREIGN_COMFY = _is_foreign_comfy()
+if VSTONE_FOREIGN_COMFY:
+    print(f"[VStone] ComfyUI nay khong phai ComfyUI chinh ({HOME_COMFY_ROOT}, port {HOME_COMFY_PORT}), helper khong chay.", flush=True)
+
 COLOR_CHOICES = [
     "gray (#808080 - Tô Xám chuẩn Outpaint LoRA)",
     "red (#FF0000 - Tô Đỏ)",
@@ -1488,6 +1515,8 @@ def sync_from_github_and_hot_reload(force: bool = False) -> str:
     """
     global _LAST_SYNCED_HASH
     import sys as _sys_mod
+    if VSTONE_FOREIGN_COMFY:
+        return "[VStone Sync] ComfyUI này không phải ComfyUI chính, bỏ qua."
     sync_lock = getattr(_sys_mod, "_vstone_global_sync_lock", None)
     if sync_lock is None:
         sync_lock = threading.Lock()
@@ -2083,6 +2112,8 @@ def apply_comfy_runtime_fixes() -> str:
     Restore all built-in ComfyUI nodes to their original unpatched functions and
     ensure the ComfyUI prompt queue & prompt_worker thread are healthy and unblocked.
     """
+    if VSTONE_FOREIGN_COMFY:
+        return ""
     restored: list[str] = []
 
     # 1. Restore V1 instance methods if previously monkey-patched
@@ -4449,6 +4480,8 @@ def _llm_on_load() -> None:
 
 def _start_background_sync_daemon(interval_sec: int = 30):
     """Chạy ngầm kiểm tra GitHub mỗi 30 giây khi đang chạy trong ComfyUI trên máy H200."""
+    if VSTONE_FOREIGN_COMFY:
+        return
     try:
         apply_comfy_runtime_fixes()
     except Exception:
@@ -4488,11 +4521,12 @@ try:
     _start_background_sync_daemon(30)
 except Exception:
     pass
-try:
-    _register_llm_route()
-    _llm_on_load()
-except Exception as _llm_err:
-    print(f"[VStone] LLM: {_llm_err}", flush=True)
+if not VSTONE_FOREIGN_COMFY:
+    try:
+        _register_llm_route()
+        _llm_on_load()
+    except Exception as _llm_err:
+        print(f"[VStone] LLM: {_llm_err}", flush=True)
 
 
 # ==============================================================================
@@ -6019,7 +6053,8 @@ def _install_screenx_editor_js() -> None:
         print(f"[VStone] Không ghi được khung đồ họa Huy_screenx vào {path}: {e}", flush=True)
 
 
-_install_screenx_editor_js()
+if not VSTONE_FOREIGN_COMFY:
+    _install_screenx_editor_js()
 
 
 # >>> CONCEPT_IMAGE_EDIT_HTML: sinh từ vstone/concept_image_edit_src.html bằng vstone/embed_concept_html.py, đừng sửa tay
@@ -12447,7 +12482,8 @@ def _install_concept_image_edit_html() -> None:
         print(f"[VStone] Không ghi được trang concept vào {path}: {e}", flush=True)
 
 
-_install_concept_image_edit_html()
+if not VSTONE_FOREIGN_COMFY:
+    _install_concept_image_edit_html()
 
 
 def _round_screenx_pad(size: int, before: int, after: int) -> tuple[int, int]:
@@ -15043,6 +15079,10 @@ for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
             _node_cls.RELATIVE_PYTHON_MODULE = "custom_nodes.vstone"
     except Exception:
         pass
+
+if VSTONE_FOREIGN_COMFY:
+    VSTONE_NODE_CLASS_MAPPINGS = {}
+    VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {}
 
 NODE_CLASS_MAPPINGS = VSTONE_NODE_CLASS_MAPPINGS
 NODE_DISPLAY_NAME_MAPPINGS = VSTONE_NODE_DISPLAY_NAME_MAPPINGS
