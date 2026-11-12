@@ -5365,8 +5365,10 @@ const snap = (value) => Math.min(MAX_PAD, Math.max(0, Math.round(value / GRID) *
 function roundPad(size, before, after, even) {
     const total = size + before + after;
     const extra = Math.ceil(total / GRID) * GRID - total;
+    if (before > 0 && after === 0) return [before + extra, after];
+    if (even && before === 0 && after > 0) return [before, after + extra];
     if (even) return [before + Math.floor(extra / 2), after + extra - Math.floor(extra / 2)];
-    return before > 0 && after === 0 ? [before + extra, after] : [before, after + extra];
+    return [before, after + extra];
 }
 
 function createEditor(node, even) {
@@ -5397,7 +5399,10 @@ function createEditor(node, even) {
     function geometry(pad) {
         const { width, height } = frameSize();
         const fromRef = refLinked() && refPad;
-        const [left, right] = fromRef ? [refPad[0], refPad[2]] : roundPad(width, pad.left, pad.right, even);
+        const crop = field("crop")?.value;
+        const padLeft = crop === "right" ? 0 : pad.left;
+        const padRight = crop === "left" ? 0 : pad.right;
+        const [left, right] = fromRef ? [refPad[0], refPad[2]] : roundPad(width, padLeft, padRight, even);
         const [top, bottom] = fromRef ? [refPad[1], refPad[3]] : roundPad(height, pad.top, pad.bottom, even);
         const canvasW = left + width + right;
         const canvasH = top + height + bottom;
@@ -5613,8 +5618,9 @@ function createEditor(node, even) {
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
 
-    for (const name of PAD_NAMES) {
+    for (const name of [...PAD_NAMES, "crop"]) {
         const widget = field(name);
+        if (!widget) continue;
         const callback = widget.callback;
         widget.callback = function (...args) {
             const result = callback?.apply(this, args);
@@ -11956,9 +11962,16 @@ def _round_screenx_pad(size: int, before: int, after: int) -> tuple[int, int]:
 
 
 def _round_screenx_pad_even(size: int, before: int, after: int) -> tuple[int, int]:
-    """Làm tròn tổng kích thước lên bội số 64, phần dư chia đều hai phía để plate không lệch về một bên."""
+    """
+    Làm tròn tổng kích thước lên bội số 64, phần dư chia đều hai phía để plate không lệch về một bên.
+    Chỉ nới một phía (crop left/right) thì dồn hết phần dư vào phía đó, để plate vẫn sát mép cắt.
+    """
     total = size + before + after
     extra = math.ceil(total / SCREENX_PAINT_MULTIPLE) * SCREENX_PAINT_MULTIPLE - total
+    if before > 0 and after == 0:
+        return before + extra, after
+    if before == 0 and after > 0:
+        return before, after + extra
     return before + extra // 2, after + extra - extra // 2
 
 
@@ -12039,6 +12052,8 @@ class outpaint_pad_huy:
     Context được thu vừa khung rộng và đặt giữa: chỗ có hình thật mask = 0, phần đệm xám mask = 1.
     Nối ref (concept vẽ quanh 1 khung cắt từ video, không resize, plate nằm giữa) thì số nới lấy theo khổ ref, bỏ qua 4 ô nới:
     trái = phải = (ref rộng - gốc rộng) / 2, trên = dưới = (ref cao - gốc cao) / 2. Phần thêm cho chia hết 64 cũng chia đều hai phía.
+    crop left: chỉ gen cạnh trái, khung cắt ở mép phải plate; crop right: chỉ gen cạnh phải, khung cắt ở mép trái plate.
+    Ảnh ref bị cắt đúng chỗ đó và trả ra ngõ ref, để nối vào huy_mix_match.
     """
 
     @classmethod
@@ -12051,6 +12066,7 @@ class outpaint_pad_huy:
                 "top": ("INT", {"default": 0, **pad_input}),
                 "right": ("INT", {"default": 1024, **pad_input}),
                 "bottom": ("INT", {"default": 0, **pad_input}),
+                "crop": (["none", "left", "right"], {"default": "none", "tooltip": "none: gen cả hai bên. left: chỉ gen cạnh trái, cắt khung ở mép phải plate. right: chỉ gen cạnh phải, cắt khung ở mép trái plate. Ảnh ref bị cắt cùng chỗ."}),
             },
             "optional": {
                 "context": ("IMAGE",),
@@ -12058,13 +12074,14 @@ class outpaint_pad_huy:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("image", "mask")
+    RETURN_TYPES = ("IMAGE", "MASK", "IMAGE")
+    RETURN_NAMES = ("image", "mask", "ref")
+    OUTPUT_TOOLTIPS = ("Khung đã nới.", "Mask: 1 ở vùng cần gen, 0 ở plate.", "Ảnh ref đã cắt theo crop; nối vào ô ref của huy_mix_match. Không nối ref thì trống.")
     FUNCTION = "prepare"
     OUTPUT_NODE = True  # chạy riêng node này để xem khung thật trên node trước khi gen
     CATEGORY = "stoneV"
 
-    def prepare(self, image, left=1024, top=0, right=1024, bottom=0, context=None, ref=None):
+    def prepare(self, image, left=1024, top=0, right=1024, bottom=0, crop="none", context=None, ref=None):
         import comfy.utils
 
         frames, height, width, channels = image.shape
@@ -12074,6 +12091,14 @@ class outpaint_pad_huy:
                 raise ValueError(f"Ảnh ref {ref.shape[2]}x{ref.shape[1]} nhỏ hơn video gốc {width}x{height}.")
             left, right = pad_x // 2, pad_x - pad_x // 2
             top, bottom = pad_y // 2, pad_y - pad_y // 2
+            if crop == "left":
+                ref = ref[:, :, : left + width]
+            elif crop == "right":
+                ref = ref[:, :, left:]
+        if crop == "left":
+            right = 0
+        elif crop == "right":
+            left = 0
         left, right = _round_screenx_pad_even(width, left, right)
         top, bottom = _round_screenx_pad_even(height, top, bottom)
         canvas_h = top + height + bottom
@@ -12107,7 +12132,7 @@ class outpaint_pad_huy:
             canvas = torch.cat([canvas, context_canvas])
             mask = torch.cat([mask, context_mask])
 
-        return {"ui": {"huy_preview": [preview]}, "result": (canvas, mask)}
+        return {"ui": {"huy_preview": [preview]}, "result": (canvas, mask, ref)}
 
 
 try:
@@ -12180,6 +12205,7 @@ if comfy_io is not None:
         và đặt lại vào giữa; dải mép đã bị cắt trước khi gen không có hình nên lặp pixel mép.
         Phần outpaint_pad_huy nới thêm (dưới 64 px, chia đều hai phía) cho khung chia hết 64 bị cắt bỏ: khung ra đúng bằng video gốc + số nới đã nhập,
         hoặc đúng bằng ảnh ref nếu nối ref, để khi đặt chồng lên video gốc thì plate nằm đúng chỗ.
+        crop left/right của outpaint_pad_huy: plate sát mép cắt, khung ra là phần đã gen một bên + plate.
         """
 
         @classmethod
@@ -12193,7 +12219,7 @@ if comfy_io is not None:
                     comfy_io.Image.Input("image", tooltip="Các khung sau khi gen."),
                     comfy_io.Image.Input("original", tooltip="Các khung video gốc, đúng video đã đưa vào outpaint_pad_huy."),
                     comfy_io.Mask.Input("mask", tooltip="Mask của outpaint_pad_huy."),
-                    comfy_io.Image.Input("ref", optional=True, tooltip="Ảnh ref đã nối vào outpaint_pad_huy, nếu có: khung ra đúng bằng ảnh ref."),
+                    comfy_io.Image.Input("ref", optional=True, tooltip="Ngõ ra ref của outpaint_pad_huy (ảnh ref đã cắt theo crop), nếu có: khung ra đúng bằng ảnh này."),
                 ],
                 outputs=[comfy_io.Image.Output()],
             )
@@ -12220,17 +12246,17 @@ if comfy_io is not None:
             edge = (x, canvas_w - fit_w - x, y, canvas_h - fit_h - y)
 
             def cut(start, size, canvas, target):
-                if target is None:
-                    # Số nới nhập tay là bội số 64, nên phần dư theo 64 là phần _round_screenx_pad_even chia đều hai phía.
-                    extra = (canvas - size) % SCREENX_PAINT_MULTIPLE
-                    return extra // 2, extra - extra // 2
-                before = start - (target - size) // 2
-                return before, canvas - target - before
+                # Phần dư là phần _round_screenx_pad_even thêm cho chia hết 64: không có ref thì số nới nhập tay là bội số 64,
+                # nên phần dư là số lẻ theo 64. Plate sát một mép (crop) thì phần dư nằm hết ở phía kia, còn lại chia đều.
+                extra = (canvas - size) % SCREENX_PAINT_MULTIPLE if target is None else canvas - target
+                end = canvas - start - size
+                before = extra if end == 0 else 0 if start == 0 else extra // 2
+                if extra < 0 or before > start or extra - before > end:
+                    raise ValueError("Ảnh ref không khớp khung của outpaint_pad_huy: hãy nối ngõ ra ref của chính outpaint_pad_huy đó.")
+                return before, extra - before
 
             cut_left, cut_right = cut(left, width, canvas_w, None if ref is None else ref.shape[2])
             cut_top, cut_bottom = cut(top, height, canvas_h, None if ref is None else ref.shape[1])
-            if min(cut_left, cut_right, cut_top, cut_bottom) < 0:
-                raise ValueError("Ảnh ref không khớp khung của outpaint_pad_huy: hãy nối đúng ảnh ref đã nối vào outpaint_pad_huy.")
             out_h = canvas_h - cut_top - cut_bottom
             out_w = canvas_w - cut_left - cut_right
 
