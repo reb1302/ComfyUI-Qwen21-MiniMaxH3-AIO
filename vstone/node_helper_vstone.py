@@ -12273,6 +12273,92 @@ if comfy_io is not None:
             out[:, top : top + height, left : left + width, :] = original
             return comfy_io.NodeOutput(out)
 
+    class final_mask_huy(comfy_io.ComfyNode):
+        """
+        Ra khung cuối theo scope mask (vd. ScreenX 8720x2400). Plate gốc đặt vừa khít màn giữa. Video gen phóng đúng tỉ lệ plate → màn giữa
+        và căn theo chỗ plate trong khung đã nới (lấy từ mask của outpaint_pad_huy), nên hai bên không méo và liền với plate.
+        Khung đã nới chỉ cần phủ phần tường nhìn thấy; chỗ khung gen không phủ tới thì kéo dài mép gen. Vùng đen của scope mask thành đen.
+        Số khung theo video gốc: khung dư (đệm 8k+1) bị bỏ, LTX trả thiếu khung thì giữ khung gen cuối.
+        Màn giữa dò từ scope mask: dải trắng chứa tâm ảnh, theo hàng giữa và cột giữa.
+        """
+
+        @classmethod
+        def define_schema(cls):
+            return comfy_io.Schema(
+                node_id="final_mask_huy",
+                display_name="final mask huy",
+                category="stoneV",
+                description="Cắt về đúng số khung gốc, đặt plate gốc vừa màn giữa, phóng video gen cùng tỉ lệ và căn theo plate, rồi comp theo scope mask.",
+                inputs=[
+                    comfy_io.Image.Input("image", tooltip="Các khung sau khi gen (khung đã nới)."),
+                    comfy_io.Image.Input("original", tooltip="Các khung video gốc."),
+                    comfy_io.Mask.Input("mask", tooltip="Mask của outpaint_pad_huy: cho biết plate nằm đâu trong khung đã nới."),
+                    comfy_io.Mask.Input("scope_mask", tooltip="Ngõ mask của Load Image nạp file scope mask (vùng trong suốt = giữ, vùng đen đục = tô đen). Màn giữa là vùng giữ chứa tâm ảnh."),
+                ],
+                outputs=[comfy_io.Image.Output(display_name="image"), comfy_io.Mask.Output(display_name="mask")],
+            )
+
+        @classmethod
+        def execute(cls, image, original, mask, scope_mask) -> comfy_io.NodeOutput:
+            import comfy.utils
+
+            keep = scope_mask.reshape(-1, *scope_mask.shape[-2:])[0] > 0.5
+            out_h, out_w = keep.shape
+            cy, cx = out_h // 2, out_w // 2
+            if not keep[cy, cx]:
+                raise ValueError("Tâm scope mask đang đen: không tìm được màn giữa.")
+
+            def run(line, center):
+                start = center
+                while start > 0 and line[start - 1]:
+                    start -= 1
+                end = center
+                while end < line.shape[0] - 1 and line[end + 1]:
+                    end += 1
+                return start, end + 1
+
+            x0, x1 = run(keep[cy].tolist(), cx)
+            y0, y1 = run(keep[:, cx].tolist(), cy)
+            frames, height, width, channels = original.shape
+
+            canvas_h, canvas_w = mask.shape[-2:]
+            hole = mask.reshape(-1, canvas_h, canvas_w)[0] < 0.5
+            rows = hole.any(dim=1).nonzero().flatten().tolist()
+            cols = hole.any(dim=0).nonzero().flatten().tolist()
+            if not rows or rows[-1] - rows[0] + 1 != height or cols[-1] - cols[0] + 1 != width:
+                raise ValueError(f"Ô mask = 0 không khớp video gốc {width}x{height}: hãy nối mask của chính outpaint_pad_huy đã nới video này.")
+            top, left = rows[0], cols[0]
+
+            # Khung gen là khung đã nới thu nhỏ, LTX có thể cắt bớt hai mép cho chia hết 64: tìm phần khung đã nới mà nó phủ.
+            gen_h, gen_w = image.shape[1], image.shape[2]
+            scale = max(gen_w / canvas_w, gen_h / canvas_h)
+            fit_w = min(canvas_w, round(gen_w / scale))
+            fit_h = min(canvas_h, round(gen_h / scale))
+            fit_x = (canvas_w - fit_w) // 2
+            fit_y = (canvas_h - fit_h) // 2
+
+            # Khung đã nới → scope: cùng tỉ lệ plate → màn giữa, plate trùng màn giữa.
+            sx = (x1 - x0) / width
+            sy = (y1 - y0) / height
+            place_w, place_h = round(fit_w * sx), round(fit_h * sy)
+            place_x = x0 - round((left - fit_x) * sx)
+            place_y = y0 - round((top - fit_y) * sy)
+            pad = (max(0, place_x), max(0, out_w - place_x - place_w), max(0, place_y), max(0, out_h - place_y - place_h))
+            crop_x, crop_y = max(0, -place_x), max(0, -place_y)
+            weight = keep.to(original.dtype)[None, :, :, None]
+
+            out = original.new_empty((frames, out_h, out_w, channels))
+            last = image.shape[0] - 1
+            for start in range(0, frames, 8):
+                stop = min(start + 8, frames)
+                picked = image[[min(i, last) for i in range(start, stop)]][..., :channels].movedim(-1, 1)
+                gen = comfy.utils.common_upscale(picked, place_w, place_h, "bicubic", "disabled").clamp(0.0, 1.0)
+                gen = F.pad(gen, pad, mode="replicate")[:, :, crop_y : crop_y + out_h, crop_x : crop_x + out_w].movedim(1, -1)
+                plate = comfy.utils.common_upscale(original[start:stop].movedim(-1, 1), x1 - x0, y1 - y0, "bicubic", "disabled")
+                gen[:, y0:y1, x0:x1, :] = plate.clamp(0.0, 1.0).movedim(1, -1).to(gen)
+                out[start:stop] = gen.to(out) * weight
+            return comfy_io.NodeOutput(out, keep.to(original.dtype)[None].repeat(frames, 1, 1))
+
 
 # ==============================================================================
 # RTX Video Super Resolution Pro & AI 4x-UltraSharp 16K Upscaler
@@ -14584,6 +14670,7 @@ VSTONE_NODE_DISPLAY_NAME_MAPPINGS = {
 if comfy_io is not None:
     VSTONE_NODE_CLASS_MAPPINGS["refsheet_huy"] = refsheet_huy
     VSTONE_NODE_CLASS_MAPPINGS["huy_mix_match"] = huy_mix_match
+    VSTONE_NODE_CLASS_MAPPINGS["final_mask_huy"] = final_mask_huy
 
 for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
     try:
