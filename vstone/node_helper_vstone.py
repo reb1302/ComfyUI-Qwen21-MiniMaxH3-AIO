@@ -5361,14 +5361,15 @@ const PAD_NAMES = ["left", "top", "right", "bottom"];
 
 const snap = (value) => Math.min(MAX_PAD, Math.max(0, Math.round(value / GRID) * GRID));
 
-// Giống _round_screenx_pad trong node Python.
-function roundPad(size, before, after) {
+// Giống _round_screenx_pad (Huy_screenx_outpain_mask) và _round_screenx_pad_even (outpaint_pad_huy) trong node Python.
+function roundPad(size, before, after, even) {
     const total = size + before + after;
     const extra = Math.ceil(total / GRID) * GRID - total;
+    if (even) return [before + Math.floor(extra / 2), after + extra - Math.floor(extra / 2)];
     return before > 0 && after === 0 ? [before + extra, after] : [before, after + extra];
 }
 
-function createEditor(node) {
+function createEditor(node, even) {
     const field = (name) => node.widgets.find((widget) => widget.name === name);
     const readPad = () => Object.fromEntries(PAD_NAMES.map((name) => [name, Number(field(name).value) || 0]));
 
@@ -5383,7 +5384,10 @@ function createEditor(node) {
 
     let frame = null;
     let frameCount = "";
+    let refPad = null;
     let drag = null;
+    // Nối ref thì số nới do node Python đo theo khổ ref; khung chỉ hiện số đo được ở lần chạy gần nhất, không kéo tay.
+    const refLinked = () => node.inputs?.some((input) => input.name === "ref" && input.link != null) ?? false;
 
     const frameSize = () => ({
         width: node.properties?.frameWidth ?? PLACEHOLDER_SIZE.width,
@@ -5392,8 +5396,9 @@ function createEditor(node) {
 
     function geometry(pad) {
         const { width, height } = frameSize();
-        const [left, right] = roundPad(width, pad.left, pad.right);
-        const [top, bottom] = roundPad(height, pad.top, pad.bottom);
+        const fromRef = refLinked() && refPad;
+        const [left, right] = fromRef ? [refPad[0], refPad[2]] : roundPad(width, pad.left, pad.right, even);
+        const [top, bottom] = fromRef ? [refPad[1], refPad[3]] : roundPad(height, pad.top, pad.bottom, even);
         const canvasW = left + width + right;
         const canvasH = top + height + bottom;
         let scale, originX, originY;
@@ -5485,7 +5490,9 @@ function createEditor(node) {
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         ctx.fillStyle = "#ffffff";
-        ctx.fillText(`Trái ${g.left}   Phải ${g.right}   Trên ${g.top}   Dưới ${g.bottom} px`, 8, viewH - 29);
+        const pads = `Trái ${g.left}   Phải ${g.right}   Trên ${g.top}   Dưới ${g.bottom} px`;
+        if (!refLinked()) ctx.fillText(pads, 8, viewH - 29);
+        else ctx.fillText(refPad ? `Theo ref: ${pads}` : "Đang nối ref: chạy node 1 lần để đo khung", 8, viewH - 29);
         if (g.left + g.right + g.top + g.bottom === 0) {
             ctx.fillStyle = "#ff6b6b";
             ctx.fillText("Không có vùng xám: LTX sẽ gen lại y hệt", 8, viewH - 11);
@@ -5516,6 +5523,7 @@ function createEditor(node) {
     };
 
     function hitTest({ x, y }) {
+        if (refLinked()) return null;
         const g = geometry(readPad());
         const x0 = g.originX;
         const y0 = g.originY;
@@ -5639,6 +5647,7 @@ function createEditor(node) {
             // Chỉ outpaint_pad_huy gửi số khung: khung gốc → khung sau khi kéo tới 8k+1 (+ context).
             frameCount = info.frames_in === undefined ? "" : `   Frame ${info.frames_in} → ${info.frames_out}`;
             if (info.context_frames) frameCount += ` + context ${info.context_frames}`;
+            refPad = info.pads ?? null;
             render();
         },
     };
@@ -5652,7 +5661,7 @@ app.registerExtension({
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
             const result = onNodeCreated?.apply(this, arguments);
-            this.screenxEditor = createEditor(this);
+            this.screenxEditor = createEditor(this, nodeData.name === "outpaint_pad_huy");
             const [width, height] = this.computeSize();
             this.setSize([Math.max(width, 480), Math.max(height, 480)]);
             return result;
@@ -5669,6 +5678,13 @@ app.registerExtension({
         nodeType.prototype.onRemoved = function () {
             this.screenxEditor?.disconnect();
             return onRemoved?.apply(this, arguments);
+        };
+
+        const onConnectionsChange = nodeType.prototype.onConnectionsChange;
+        nodeType.prototype.onConnectionsChange = function () {
+            const result = onConnectionsChange?.apply(this, arguments);
+            this.screenxEditor?.render();
+            return result;
         };
 
         const onExecuted = nodeType.prototype.onExecuted;
@@ -11939,6 +11955,13 @@ def _round_screenx_pad(size: int, before: int, after: int) -> tuple[int, int]:
     return (before + extra, after) if before > 0 and after == 0 else (before, after + extra)
 
 
+def _round_screenx_pad_even(size: int, before: int, after: int) -> tuple[int, int]:
+    """Làm tròn tổng kích thước lên bội số 64, phần dư chia đều hai phía để plate không lệch về một bên."""
+    total = size + before + after
+    extra = math.ceil(total / SCREENX_PAINT_MULTIPLE) * SCREENX_PAINT_MULTIPLE - total
+    return before + extra // 2, after + extra - extra // 2
+
+
 def _save_screenx_preview(frame: torch.Tensor) -> dict[str, Any]:
     """Lưu frame đầu vào thư mục temp để khung đồ họa trên node hiển thị."""
     import folder_paths
@@ -12014,6 +12037,8 @@ class outpaint_pad_huy:
     Video gốc luôn được kéo dài bằng khung cuối tới 8k+1 khung để LTX không cắt mất khung cuối; huy_mix_match cắt lại đúng số khung gốc.
     Context được kéo tới bội số 8, để chỗ nối rơi đúng ranh giới nhóm 8 khung của latent LTX và tổng số khung vẫn là 8k+1.
     Context được thu vừa khung rộng và đặt giữa: chỗ có hình thật mask = 0, phần đệm xám mask = 1.
+    Nối ref (concept vẽ quanh 1 khung cắt từ video, không resize, plate nằm giữa) thì số nới lấy theo khổ ref, bỏ qua 4 ô nới:
+    trái = phải = (ref rộng - gốc rộng) / 2, trên = dưới = (ref cao - gốc cao) / 2. Phần thêm cho chia hết 64 cũng chia đều hai phía.
     """
 
     @classmethod
@@ -12029,6 +12054,7 @@ class outpaint_pad_huy:
             },
             "optional": {
                 "context": ("IMAGE",),
+                "ref": ("IMAGE", {"tooltip": "Concept vẽ quanh 1 khung cắt từ video (không resize, plate nằm giữa). Nối vào thì số nới lấy theo khổ ảnh này, bỏ qua 4 ô nới."}),
             },
         }
 
@@ -12038,15 +12064,23 @@ class outpaint_pad_huy:
     OUTPUT_NODE = True  # chạy riêng node này để xem khung thật trên node trước khi gen
     CATEGORY = "stoneV"
 
-    def prepare(self, image, left=1024, top=0, right=1024, bottom=0, context=None):
+    def prepare(self, image, left=1024, top=0, right=1024, bottom=0, context=None, ref=None):
         import comfy.utils
 
         frames, height, width, channels = image.shape
-        left, right = _round_screenx_pad(width, left, right)
-        top, bottom = _round_screenx_pad(height, top, bottom)
+        if ref is not None:
+            pad_x, pad_y = ref.shape[2] - width, ref.shape[1] - height
+            if pad_x < 0 or pad_y < 0:
+                raise ValueError(f"Ảnh ref {ref.shape[2]}x{ref.shape[1]} nhỏ hơn video gốc {width}x{height}.")
+            left, right = pad_x // 2, pad_x - pad_x // 2
+            top, bottom = pad_y // 2, pad_y - pad_y // 2
+        left, right = _round_screenx_pad_even(width, left, right)
+        top, bottom = _round_screenx_pad_even(height, top, bottom)
         canvas_h = top + height + bottom
         canvas_w = left + width + right
         preview = _save_screenx_preview(image[0])
+        if ref is not None:
+            preview["pads"] = [left, top, right, bottom]
 
         image = torch.cat([image, image[-1:].repeat((1 - frames) % 8, 1, 1, 1)])
         preview["frames_in"] = frames
@@ -12144,8 +12178,8 @@ if comfy_io is not None:
         Số khung theo video gốc: khung dư (đệm 8k+1, context) bị bỏ; LTX trả thiếu khung thì phần nới giữ khung gen cuối.
         Workflow LTX thu khung rồi cắt giữa về bội số 64 (scale to multiple), nên video gen được phóng đều theo chiều không bị cắt
         và đặt lại vào giữa; dải mép đã bị cắt trước khi gen không có hình nên lặp pixel mép.
-        Phần outpaint_pad_huy nới thêm (dưới 64 px) cho khung chia hết 64 bị cắt bỏ: khung ra đúng bằng video gốc + số nới đã nhập,
-        để khi đặt chồng lên video gốc thì plate nằm đúng chỗ.
+        Phần outpaint_pad_huy nới thêm (dưới 64 px, chia đều hai phía) cho khung chia hết 64 bị cắt bỏ: khung ra đúng bằng video gốc + số nới đã nhập,
+        hoặc đúng bằng ảnh ref nếu nối ref, để khi đặt chồng lên video gốc thì plate nằm đúng chỗ.
         """
 
         @classmethod
@@ -12159,12 +12193,13 @@ if comfy_io is not None:
                     comfy_io.Image.Input("image", tooltip="Các khung sau khi gen."),
                     comfy_io.Image.Input("original", tooltip="Các khung video gốc, đúng video đã đưa vào outpaint_pad_huy."),
                     comfy_io.Mask.Input("mask", tooltip="Mask của outpaint_pad_huy."),
+                    comfy_io.Image.Input("ref", optional=True, tooltip="Ảnh ref đã nối vào outpaint_pad_huy, nếu có: khung ra đúng bằng ảnh ref."),
                 ],
                 outputs=[comfy_io.Image.Output()],
             )
 
         @classmethod
-        def execute(cls, image, original, mask) -> comfy_io.NodeOutput:
+        def execute(cls, image, original, mask, ref=None) -> comfy_io.NodeOutput:
             import comfy.utils
 
             frames, height, width, channels = original.shape
@@ -12184,13 +12219,18 @@ if comfy_io is not None:
             y = (canvas_h - fit_h) // 2
             edge = (x, canvas_w - fit_w - x, y, canvas_h - fit_h - y)
 
-            # Số nới nhập vào là bội số 64, nên phần dư theo 64 chính là phần _round_screenx_pad thêm vào, nằm ở bên có số nới lẻ.
-            def rounding(after, size, canvas):
-                extra = (canvas - size) % SCREENX_PAINT_MULTIPLE
-                return (0, extra) if after % SCREENX_PAINT_MULTIPLE == extra else (extra, 0)
+            def cut(start, size, canvas, target):
+                if target is None:
+                    # Số nới nhập tay là bội số 64, nên phần dư theo 64 là phần _round_screenx_pad_even chia đều hai phía.
+                    extra = (canvas - size) % SCREENX_PAINT_MULTIPLE
+                    return extra // 2, extra - extra // 2
+                before = start - (target - size) // 2
+                return before, canvas - target - before
 
-            cut_left, cut_right = rounding(canvas_w - left - width, width, canvas_w)
-            cut_top, cut_bottom = rounding(canvas_h - top - height, height, canvas_h)
+            cut_left, cut_right = cut(left, width, canvas_w, None if ref is None else ref.shape[2])
+            cut_top, cut_bottom = cut(top, height, canvas_h, None if ref is None else ref.shape[1])
+            if min(cut_left, cut_right, cut_top, cut_bottom) < 0:
+                raise ValueError("Ảnh ref không khớp khung của outpaint_pad_huy: hãy nối đúng ảnh ref đã nối vào outpaint_pad_huy.")
             out_h = canvas_h - cut_top - cut_bottom
             out_w = canvas_w - cut_left - cut_right
 
