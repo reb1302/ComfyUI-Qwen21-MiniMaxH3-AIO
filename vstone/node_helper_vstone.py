@@ -4077,9 +4077,10 @@ def install_portable_workflow_pack(unique_id: Any = None, allow_restart: bool = 
 # ------------------------------------------------------------------------------
 # LLM (vLLM) đã gỡ ngày 2026-11-12. Bản cũ tự bật vLLM ngay trên card của ComfyUI và giữ chỗ đến 40% VRAM.
 # vLLM chạy phiên riêng nên không tắt theo ComfyUI: hàm này tắt bản cũ còn sống, chỉ những tiến trình
-# chạy từ thư mục <ComfyUI>/vstone_llm (hoặc con của chúng). Thư mục vstone_llm trên đĩa vẫn giữ nguyên.
+# chạy từ thư mục <ComfyUI>/vstone_llm (hoặc con của chúng), rồi xoá thư mục đó (model ~29 GB + venv vLLM).
+# Người dùng đồng ý xoá ngày 2026-11-12.
 # ------------------------------------------------------------------------------
-def _stop_old_vllm() -> None:
+def _remove_old_llm() -> None:
     try:
         root = _get_comfy_root()
         base = os.path.join(root, "vstone_llm") if root else ""
@@ -4108,26 +4109,32 @@ def _stop_old_vllm() -> None:
                     found[child.pid] = child
             except Exception:
                 pass
-        if not found:
-            return
-        for p in found.values():
-            try:
-                p.terminate()
-            except Exception:
-                pass
-        _, alive = psutil.wait_procs(list(found.values()), timeout=20)
-        for p in alive:
-            try:
-                p.kill()
-            except Exception:
-                pass
-        try:
-            os.remove(os.path.join(base, "vllm.pid"))
-        except OSError:
-            pass
-        print(f"[VStone] Da tat vLLM cu ({len(found)} tien trinh), tra VRAM cho ComfyUI.", flush=True)
+        if found:
+            for p in found.values():
+                try:
+                    p.terminate()
+                except Exception:
+                    pass
+            _, alive = psutil.wait_procs(list(found.values()), timeout=20)
+            for p in alive:
+                try:
+                    p.kill()
+                except Exception:
+                    pass
+            psutil.wait_procs(alive, timeout=10)
+            print(f"[VStone] Da tat vLLM cu ({len(found)} tien trinh), tra VRAM cho ComfyUI.", flush=True)
     except Exception as e:
         print(f"[VStone] Khong tat duoc vLLM cu: {e}", flush=True)
+        return
+    try:
+        if os.path.islink(base):
+            print(f"[VStone] {base} la symlink, khong xoa.", flush=True)
+            return
+        size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(base) for f in fs if not os.path.islink(os.path.join(d, f)))
+        shutil.rmtree(base)
+        print(f"[VStone] Da xoa thu muc LLM cu {base} ({size / 1024 ** 3:.1f} GB).", flush=True)
+    except Exception as e:
+        print(f"[VStone] Khong xoa duoc {base}: {e}", flush=True)
 
 
 def _start_background_sync_daemon(interval_sec: int = 30):
@@ -4173,9 +4180,9 @@ try:
     _start_background_sync_daemon(30)
 except Exception:
     pass
-if not VSTONE_FOREIGN_COMFY and not getattr(sys, "_vstone_old_vllm_stopped", False):
-    setattr(sys, "_vstone_old_vllm_stopped", True)
-    threading.Thread(target=_stop_old_vllm, name="VStoneStopOldVLLM", daemon=True).start()
+if not VSTONE_FOREIGN_COMFY and not getattr(sys, "_vstone_old_llm_removed", False):
+    setattr(sys, "_vstone_old_llm_removed", True)
+    threading.Thread(target=_remove_old_llm, name="VStoneRemoveOldLLM", daemon=True).start()
 
 
 # ==============================================================================
