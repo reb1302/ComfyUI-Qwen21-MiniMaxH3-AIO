@@ -4075,407 +4075,59 @@ def install_portable_workflow_pack(unique_id: Any = None, allow_restart: bool = 
 
 
 # ------------------------------------------------------------------------------
-# LLM Qwen3.8-27B (Huihui Abliterated FP8) chạy bằng vLLM trong môi trường riêng (vLLM kéo torch riêng, không được đụng torch của ComfyUI).
-# vLLM nghe ở cổng nội bộ, trang HTML gọi qua /vstone/llm trên chính cổng của ComfyUI, nên không cần mở thêm cổng.
+# LLM (vLLM) đã gỡ ngày 2026-11-12. Bản cũ tự bật vLLM ngay trên card của ComfyUI và giữ chỗ đến 40% VRAM.
+# vLLM chạy phiên riêng nên không tắt theo ComfyUI: hàm này tắt bản cũ còn sống, chỉ những tiến trình
+# chạy từ thư mục <ComfyUI>/vstone_llm (hoặc con của chúng). Thư mục vstone_llm trên đĩa vẫn giữ nguyên.
 # ------------------------------------------------------------------------------
-LLM_ROUTE = "/vstone/llm"
-LLM_MODEL_REPO = "munekazu/Huihui-Qwen3.8-27B-abliterated-FP8"
-LLM_MODEL_DIR = "Huihui-Qwen3.8-27B-abliterated-FP8"
-LLM_SERVED_NAME = "qwen3.8-27b-abliterated"
-LLM_LEGACY_NAME = "qwen3.6-35b-a3b"
-LLM_PORT = 8010
-LLM_GPU_SHARE = 0.4
-LLM_MAX_LEN = 65536
-LLM_RESTARTED_ENV = "VSTONE_LLM_ROUTE_RESTARTED"
-
-
-def _llm_paths(root: str) -> dict[str, str]:
-    base = os.path.join(root, "vstone_llm")
-    venv = os.path.join(base, "venv")
-    python = os.path.join(venv, "Scripts", "python.exe") if os.name == "nt" else os.path.join(venv, "bin", "python")
-    return {
-        "base": base,
-        "venv": venv,
-        "python": python,
-        "vllm_ok": os.path.join(venv, ".vllm_installed"),
-        "model": os.path.join(base, LLM_MODEL_DIR),
-        "model_ok": os.path.join(base, LLM_MODEL_DIR, ".download_complete"),
-        "setup_log": os.path.join(base, "setup.log"),
-        "server_log": os.path.join(base, "vllm.log"),
-        "pid": os.path.join(base, "vllm.pid"),
-    }
-
-
-def _llm_state() -> dict[str, Any]:
-    state = getattr(sys, "_vstone_llm_state", None)
-    if state is None:
-        state = {"stage": "", "error": "", "gpu": None, "busy": False}
-        setattr(sys, "_vstone_llm_state", state)
-    return state
-
-
-def _llm_alive() -> bool:
+def _stop_old_vllm() -> None:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{LLM_PORT}/v1/models", timeout=2) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-            return resp.status == 200 and (LLM_SERVED_NAME in body or LLM_MODEL_DIR in body)
-    except Exception:
-        return False
-
-
-def _llm_pick_gpu() -> tuple[int, int, int]:
-    """Ưu tiên card phụ (GPU > 0) nếu đủ bộ nhớ để tách khỏi ComfyUI ở GPU 0; nếu không thì chọn card trống nhất."""
-    try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=index,memory.free,memory.total", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=20, check=True).stdout
-        rows = [[int(v) for v in line.split(",")] for line in out.strip().splitlines() if line.strip()]
-        best = max(rows, key=lambda r: (r[0] > 0 and r[1] >= int(r[2] * LLM_GPU_SHARE) + 2048, r[1], r[0]))
-        return best[0], best[1], best[2]
-    except Exception:
-        return 0, 0, 0
-
-
-# Model FP8 khoảng 29 GB, cộng KV cache và phần đệm. Dưới mức này thì không bật, báo card đang bận.
-LLM_MIN_GIB = 36
-LLM_START_GRACE_SEC = 600
-
-
-def _llm_pid_running(paths: dict[str, str]) -> tuple[int, float] | None:
-    """vLLM do helper bật trước đó (kể cả trước khi ComfyUI khởi động lại) mà còn sống: (pid, lúc bật)."""
-    try:
-        with open(paths["pid"], encoding="utf-8") as f:
-            pid_text, started_text = f.read().split()
-        pid, started = int(pid_text), float(started_text)
-        os.kill(pid, 0)
-        return pid, started
-    except Exception:
-        return None
-
-
-def _llm_stop(paths: dict[str, str]) -> None:
-    """Tắt mọi tiến trình vLLM và EngineCore mồ côi (trên Linux venv/bin/python là symlink nên phải dò cả cmdline và tên tiến trình)."""
-    killed = []
-    try:
-        import psutil
-        venv = paths["venv"]
-        venv_real = os.path.realpath(venv)
-        base = paths["base"]
-        me = os.getpid()
-        for p in psutil.process_iter(["pid", "name", "cmdline", "exe"]):
-            if p.pid == me:
-                continue
-            cmdline = " ".join(p.info.get("cmdline") or [])
-            name = p.info.get("name") or ""
-            exe = p.info.get("exe") or ""
-            if (
-                base in cmdline
-                or venv in cmdline
-                or venv_real in cmdline
-                or venv_real in exe
-                or "VLLM::EngineCore" in cmdline
-                or "VLLM::EngineCore" in name
-                or f"--port {LLM_PORT}" in cmdline
-            ):
-                try:
-                    for child in p.children(recursive=True):
-                        child.terminate()
-                        killed.append(child)
-                except Exception:
-                    pass
-                p.terminate()
-                killed.append(p)
-        psutil.wait_procs(killed, timeout=20)
-        for p in killed:
-            if p.is_running():
-                p.kill()
-    except Exception as e:
-        print(f"[VStone] LLM: không tắt được vLLM cũ: {e}", flush=True)
-    if killed:
-        time.sleep(5)
-    try:
-        os.remove(paths["pid"])
-    except OSError:
-        pass
-
-
-def _log_tail(path: str, lines: int = 6) -> str:
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            rows = [line.strip() for line in f.read().replace("\r", "\n").splitlines() if line.strip()]
-            return "\n".join(rows[-lines:])
-    except OSError:
-        return ""
-
-
-LLM_RUN_MARK = "=== VStone: bật vLLM"
-LLM_ERROR_WORDS = ("Segfault", "Assertion", "Error", "error:", "Exception", "CUDA", "memory", "OOM", "not supported", "No such file", "Traceback")
-
-
-def _llm_root_cause(path: str, limit: int = 15) -> str:
-    """Lỗi gốc của lần bật gần nhất: dòng cuối của log chỉ là "Engine core initialization failed", lỗi thật nằm phía trên."""
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            lines = f.read().splitlines()
-    except OSError:
-        return ""
-    start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=0)
-    run = lines[start:]
-    picked: list[str] = []
-    for line in run:
-        line = line.strip()
-        if line and any(word in line for word in LLM_ERROR_WORDS) and line not in picked:
-            picked.append(line[:300])
-    head = run[0] if run and run[0].startswith(LLM_RUN_MARK) else ""
-    return "\n".join(([head] if head else []) + picked[-limit:] + [f"(Log đầy đủ: {path})"])
-
-
-LLM_STEPS = (
-    ("Application startup complete", "Đã mở cổng, sẵn sàng nhận câu hỏi"),
-    ("Capturing CUDA graph", "Chụp CUDA graph, bước cuối"),
-    ("Initial profiling/warmup", "Đã chạy thử (warmup), chuẩn bị mở cổng"),
-    ("torch.compile", "Biên dịch kernel (torch.compile)"),
-    ("KV cache", "Tính chỗ cho KV cache"),
-    ("Memory profiling", "Đo bộ nhớ"),
-    ("Loading weights took", "Đã nạp xong trọng số"),
-    ("Loading safetensors", "Đang nạp trọng số model"),
-    ("Starting to load model", "Bắt đầu nạp model"),
-    ("Initializing a V1 LLM engine", "Khởi tạo engine"),
-    ("non-default args", "Đọc cấu hình"),
-)
-
-
-def _llm_progress(path: str) -> str:
-    """vLLM đang làm gì trong lần bật gần nhất: đã chạy bao lâu, bước gần nhất, vài dòng log cuối không kèm tiền tố."""
-    import re
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            lines = f.read().splitlines()
-    except OSError:
-        return ""
-    start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=0)
-    run = lines[start:]
-    elapsed = ""
-    stamp = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", run[0]) if run else None
-    if stamp:
-        seconds = time.time() - time.mktime(time.strptime(stamp.group(1), "%Y-%m-%d %H:%M:%S"))
-        elapsed = f"Đã chạy {int(seconds // 60)} phút {int(seconds % 60)} giây. "
-    step = next((vi for key, vi in LLM_STEPS if any(key in line for line in run)), "Đang chuẩn bị")
-    clean = [re.sub(r"^\(\w+ pid=\d+\)\s*(INFO|WARNING|ERROR)?\s*[\d-]+ [\d:]+ \[[^\]]+\]\s*", "", line).strip()[:200]
-             for line in run[1:] if line.strip()]
-    return "\n".join([f"{elapsed}Bước: {step}."] + clean[-3:])
-
-
-def _llm_last_run_eager(path: str) -> bool:
-    """Kiểm tra lần chạy gần nhất trong log đã là model hiện tại (LLM_MODEL_DIR) và có cờ tăng tốc (--gdn-prefill-backend) chưa."""
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            lines = f.read().splitlines()
-        start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=-1)
-        return start >= 0 and "--gdn-prefill-backend" in lines[start] and LLM_MODEL_DIR in lines[start]
-    except OSError:
-        return False
-
-
-def _llm_spec_failed(path: str) -> bool:
-    """Nếu lần bật ngay trước đó có --speculative-config mà dừng sớm, lần bật lại tự bỏ cờ này để đảm bảo chạy được."""
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            lines = f.read().splitlines()
-        start = max((i for i, line in enumerate(lines) if line.startswith(LLM_RUN_MARK)), default=-1)
-        return start >= 0 and "--speculative-config" in lines[start] and LLM_MODEL_DIR in lines[start]
-    except OSError:
-        return False
-
-
-def _llm_start_server(root: str) -> None:
-    paths, state = _llm_paths(root), _llm_state()
-    # Chỉ một vLLM: bản đang chạy hoặc đang nạp (với cấu hình tăng tốc mới) thì để yên, bản cũ hoặc treo quá lâu thì tắt.
-    running = _llm_pid_running(paths)
-    if running and _llm_last_run_eager(paths["server_log"]) and (_llm_alive() or time.time() - running[1] < LLM_START_GRACE_SEC):
-        state["stage"] = "Khởi động vLLM"
-        return
-    use_mtp = not (_llm_spec_failed(paths["server_log"]) and not _llm_alive())
-    _llm_stop(paths)
-    gpu, free_mib, total_mib = _llm_pick_gpu()
-    share, max_len = LLM_GPU_SHARE, LLM_MAX_LEN
-    if total_mib:
-        share = min(LLM_GPU_SHARE, round((free_mib - 1536) / total_mib - 0.005, 2))
-        if share * total_mib / 1024 < LLM_MIN_GIB:
-            state.update(stage="", error=f"Card trống nhất (GPU {gpu}) chỉ còn {free_mib / 1024:.0f} GB, LLM cần ít nhất {LLM_MIN_GIB} GB. "
-                                         "Đợi các job ComfyUI xong hoặc giải phóng bộ nhớ rồi thử lại.")
+        root = _get_comfy_root()
+        base = os.path.join(root, "vstone_llm") if root else ""
+        if not base or not os.path.isdir(base):
             return
-        if share < LLM_GPU_SHARE:
-            max_len = 32768
-    # DeepGEMM dịch kernel lúc chạy và đòi nvcc >= 12.9, CUDA trên H200 cũ hơn (log 2026-11-06).
-    # --enforce-eager + MTP speculative decoding (đoán 2 token/bước từ tầng BF16 mtp sẵn có) + Triton GDN prefill + Prefix caching.
-    env = dict(os.environ, CUDA_DEVICE_ORDER="PCI_BUS_ID", CUDA_VISIBLE_DEVICES=str(gpu),
-               VLLM_USE_DEEP_GEMM="0", VLLM_MOE_USE_DEEP_GEMM="0")
-    cmd = [
-        paths["python"], "-m", "vllm.entrypoints.openai.api_server",
-        "--model", paths["model"], "--served-model-name", LLM_SERVED_NAME, LLM_LEGACY_NAME,
-        "--host", "127.0.0.1", "--port", str(LLM_PORT),
-        "--gpu-memory-utilization", str(share), "--max-model-len", str(max_len),
-        "--enforce-eager",
-        "--enable-prefix-caching",
-        "--gdn-prefill-backend", "triton",
-        "--safetensors-load-strategy", "prefetch",
-        "--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
-    ]
-    if use_mtp:
-        cmd.extend(["--speculative-config", '{"method": "mtp", "num_speculative_tokens": 2}'])
-    log = open(paths["server_log"], "a", encoding="utf-8")
-    log.write(f"\n{LLM_RUN_MARK} {time.strftime('%Y-%m-%d %H:%M:%S')} trên GPU {gpu}: {' '.join(cmd[3:])}\n")
-    log.flush()
-    # Phiên riêng: vLLM sống sót khi ComfyUI tự khởi động lại bằng os.execv.
-    proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
-    with open(paths["pid"], "w", encoding="utf-8") as f:
-        f.write(f"{proc.pid} {time.time()}")
-    state.update(gpu=gpu, proc=proc, stage="Khởi động vLLM")
+        import psutil
 
+        def _ours(p) -> bool:
+            cmdline = " ".join(p.info.get("cmdline") or [])
+            if base in cmdline:
+                return True
+            if "VLLM" not in cmdline and "VLLM" not in (p.info.get("name") or ""):
+                return False
+            try:
+                return any(m.path.startswith(base) for m in p.memory_maps())
+            except Exception:
+                return False
 
-def _llm_setup(root: str) -> None:
-    state, paths = _llm_state(), _llm_paths(root)
-    os.makedirs(paths["base"], exist_ok=True)
-    # Tắt vLLM của model cũ (nếu đang chạy) để giải phóng VRAM trước khi tải/bật model mới.
-    _llm_stop(paths)
-    steps = []
-    if not os.path.isfile(paths["vllm_ok"]):
-        if not os.path.isfile(paths["python"]):
-            steps.append(("Tạo môi trường riêng", [sys.executable, "-m", "venv", paths["venv"]], None))
-        steps.append(("Cập nhật pip", [paths["python"], "-m", "pip", "install", "-U", "pip"], None))
-        steps.append(("Cài vLLM, khoảng 10 phút", [paths["python"], "-m", "pip", "install", "-U", "vllm"], paths["vllm_ok"]))
-    if not os.path.isfile(paths["model_ok"]):
-        download = f"from huggingface_hub import snapshot_download; snapshot_download({LLM_MODEL_REPO!r}, local_dir={paths['model']!r})"
-        steps.append((f"Tải model {LLM_MODEL_DIR} (khoảng 29 GB)", [paths["python"], "-c", download], paths["model_ok"]))
-    try:
-        with open(paths["setup_log"], "a", encoding="utf-8") as log:
-            for label, cmd, marker in steps:
-                state["stage"] = label
-                log.write(f"\n=== {label}: {' '.join(cmd)}\n")
-                log.flush()
-                res = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, check=False)
-                if res.returncode != 0:
-                    state["error"] = f"{label} lỗi (mã {res.returncode})."
-                    return
-                if marker:
-                    os.makedirs(os.path.dirname(marker), exist_ok=True)
-                    with open(marker, "w", encoding="utf-8") as f:
-                        f.write(time.strftime("%Y-%m-%d %H:%M:%S"))
-        state["stage"] = "Khởi động vLLM"
-        if not _llm_alive():
-            _llm_start_server(root)
-    except Exception as e:
-        state["error"] = str(e)
-    finally:
-        state["busy"] = False
-
-
-def _llm_ready(root: str) -> bool:
-    paths = _llm_paths(root)
-    return os.path.isfile(paths["vllm_ok"]) and os.path.isfile(paths["model_ok"])
-
-
-def install_llm(unique_id: Any = None) -> str:
-    """Cài và chạy LLM ngầm, mỗi lần Queue báo tiến độ. Dòng đầu của báo cáo là kết luận."""
-    root = _get_comfy_root()
-    if not root:
-        return "❌ Không tìm thấy thư mục ComfyUI."
-    state, paths = _llm_state(), _llm_paths(root)
-    if _llm_alive() and _llm_last_run_eager(paths["server_log"]):
-        if not getattr(sys, "_vstone_llm_route", False):
-            if os.environ.get(LLM_RESTARTED_ENV) == "1":
-                return "❌ vLLM đang chạy nhưng ComfyUI chưa mở được đường dẫn /vstone/llm. Xem log khởi động."
-            os.environ[LLM_RESTARTED_ENV] = "1"
-            _restart_comfyui_after(5.0)
-            return "🔄 vLLM đã chạy. ComfyUI khởi động lại một lần để mở đường dẫn /vstone/llm. Chờ 1-2 phút, F5, rồi bấm Queue lần nữa."
-        gpu = state.get("gpu")
-        return (f"✅ LLM {LLM_MODEL_DIR} (tăng tốc MTP + Triton GDN) đang chạy{f' trên GPU {gpu}' if gpu is not None else ''}. "
-                f"Gọi qua {LLM_ROUTE}/v1/chat/completions trên cổng ComfyUI.")
-    if state["busy"]:
-        detail = _llm_progress(paths["server_log"]) if state["stage"] == "Khởi động vLLM" else _log_tail(paths["setup_log"], 3)
-        return "\n".join([f"⏳ Đang làm: {state['stage']}. Bấm Queue lại để xem tiến độ.", detail])
-    if state["error"]:
-        report = "\n".join([f"❌ {state['error']} Bấm Queue lần nữa để thử lại.", _log_tail(paths["setup_log"])])
-        state["error"] = ""
-        return report
-    if _llm_ready(root) and _llm_last_run_eager(paths["server_log"]) and (state["stage"] == "Khởi động vLLM" or _llm_pid_running(paths) is not None):
-        proc = state.get("proc")
-        # Sau khi ComfyUI khởi động lại thì không còn proc trong RAM, xem file pid thay thế.
-        dead = proc.poll() is not None if proc is not None else _llm_pid_running(paths) is None
-        if not dead:
-            state["stage"] = "Khởi động vLLM"
-            return "\n".join(["⏳ vLLM đang khởi động, thường 1-2 phút. Bấm Queue lại để xem tiến độ.", _llm_progress(paths["server_log"])])
-        state.update(stage="", proc=None)
-        if _llm_last_run_eager(paths["server_log"]):
-            return "\n".join(["❌ vLLM dừng khi khởi động. Gửi các dòng dưới đây để sửa, rồi bấm Queue để thử lại.",
-                              _llm_root_cause(paths["server_log"])])
-    if _llm_ready(root):
-        _llm_start_server(root)
-        if state["error"]:
-            err = state["error"]
-            state["error"] = ""
-            return f"❌ {err}"
-        gpu = state.get("gpu")
-        return "\n".join([
-            f"⏳ Đã bật vLLM ({LLM_MODEL_DIR}) trên GPU {gpu if gpu is not None else 0}, thường mất 1-2 phút nạp 6 phần trọng số. Bấm Queue lại sau 30 giây để xem % tiến độ.",
-            _llm_progress(paths["server_log"]),
-        ])
-    state.update(busy=True, error="", stage="Chuẩn bị")
-    threading.Thread(target=_llm_setup, args=(root,), name="VStoneLLMSetup", daemon=True).start()
-    return (f"⏳ Bắt đầu tải và bật LLM mới ({LLM_MODEL_DIR}, khoảng 29 GB). "
-            "Môi trường vLLM đã có sẵn nên chỉ cần tải model. ComfyUI vẫn dùng bình thường. Bấm Queue lại để xem tiến độ.")
-
-
-def _register_llm_route() -> None:
-    """Chuyển /vstone/llm/<đường dẫn> sang vLLM nội bộ, kể cả trả lời dạng stream. Chỉ đăng ký được lúc ComfyUI khởi động."""
-    if globals().get("_DISABLE_DAEMON_ON_EXEC") or getattr(sys, "_vstone_llm_route", False):
-        return
-    try:
-        from aiohttp import ClientSession, ClientTimeout, web
-        from server import PromptServer
-        routes = PromptServer.instance.routes
-    except Exception:
-        return
-
-    @routes.route("*", LLM_ROUTE + "/{tail:.*}")
-    async def _vstone_llm_proxy(request):
-        url = f"http://127.0.0.1:{LLM_PORT}/{request.match_info['tail']}"
-        if request.query_string:
-            url += "?" + request.query_string
-        body = await request.read()
+        found: dict[int, Any] = {}
+        for p in psutil.process_iter(["pid", "name", "cmdline"]):
+            if p.pid == os.getpid() or not _ours(p):
+                continue
+            found[p.pid] = p
+            try:
+                for child in p.children(recursive=True):
+                    found[child.pid] = child
+            except Exception:
+                pass
+        if not found:
+            return
+        for p in found.values():
+            try:
+                p.terminate()
+            except Exception:
+                pass
+        _, alive = psutil.wait_procs(list(found.values()), timeout=20)
+        for p in alive:
+            try:
+                p.kill()
+            except Exception:
+                pass
         try:
-            async with ClientSession(timeout=ClientTimeout(total=None, sock_connect=5)) as session:
-                async with session.request(request.method, url, data=body,
-                                           headers={"Content-Type": request.headers.get("Content-Type", "application/json")}) as upstream:
-                    resp = web.StreamResponse(status=upstream.status,
-                                              headers={"Content-Type": upstream.headers.get("Content-Type", "application/json")})
-                    await resp.prepare(request)
-                    async for chunk in upstream.content.iter_any():
-                        await resp.write(chunk)
-                    await resp.write_eof()
-                    return resp
-        except Exception as e:
-            return web.json_response({"error": f"LLM chưa chạy ({e}). Chạy mục 7 của node stoneV_CloudSyncHub."}, status=503)
-
-    setattr(sys, "_vstone_llm_route", True)
-
-
-def _llm_on_load() -> None:
-    """Đã cài xong thì tự bật lại vLLM khi ComfyUI khởi động, nếu nó chưa chạy."""
-    if globals().get("_DISABLE_DAEMON_ON_EXEC") or getattr(sys, "_vstone_llm_autostart", False):
-        return
-    root = _get_comfy_root()
-    if not root or not _llm_ready(root):
-        return
-    setattr(sys, "_vstone_llm_autostart", True)
-
-    def _later():
-        time.sleep(20)
-        if not _llm_alive():
-            _llm_state()["stage"] = "Khởi động vLLM"
-            _llm_start_server(root)
-
-    threading.Thread(target=_later, name="VStoneLLMAutostart", daemon=True).start()
+            os.remove(os.path.join(base, "vllm.pid"))
+        except OSError:
+            pass
+        print(f"[VStone] Da tat vLLM cu ({len(found)} tien trinh), tra VRAM cho ComfyUI.", flush=True)
+    except Exception as e:
+        print(f"[VStone] Khong tat duoc vLLM cu: {e}", flush=True)
 
 
 def _start_background_sync_daemon(interval_sec: int = 30):
@@ -4521,12 +4173,9 @@ try:
     _start_background_sync_daemon(30)
 except Exception:
     pass
-if not VSTONE_FOREIGN_COMFY:
-    try:
-        _register_llm_route()
-        _llm_on_load()
-    except Exception as _llm_err:
-        print(f"[VStone] LLM: {_llm_err}", flush=True)
+if not VSTONE_FOREIGN_COMFY and not getattr(sys, "_vstone_old_vllm_stopped", False):
+    setattr(sys, "_vstone_old_vllm_stopped", True)
+    threading.Thread(target=_stop_old_vllm, name="VStoneStopOldVLLM", daemon=True).start()
 
 
 # ==============================================================================
@@ -5364,7 +5013,6 @@ class stoneV_CloudSyncHub:
                     "4. Cài pack AusBoss cho outpaint Qwen (tự khởi động lại)",
                     "5. Cài AnyAngle Studio để xoay vật thể (tự khởi động lại)",
                     "6. Cài pack cho BFS đổi mặt / đổi nhân vật (tự khởi động lại)",
-                    "7. Cài LLM Qwen3.6 (vLLM)",
                     "8. Cài Portable Workflow Pack (22 Custom Nodes + Patch VOID, tự khởi động lại)",
                 ], {
                     "default": "3. Pull Code + Download Model (Cập nhật tất cả)"
@@ -5452,11 +5100,6 @@ class stoneV_CloudSyncHub:
 
         if action.startswith("5."):
             report = install_anyangle_studio(unique_id)
-            _vstone_ui_status(unique_id, report)
-            return {"ui": {"text": [report]}, "result": (report,)}
-
-        if action.startswith("7."):
-            report = install_llm(unique_id)
             _vstone_ui_status(unique_id, report)
             return {"ui": {"text": [report]}, "result": (report,)}
 
@@ -6272,19 +5915,6 @@ textarea.field{display:block;resize:none;height:76px;font:400 12px/1.45 var(--fo
 .imgpick.over{border-color:var(--paper)}
 
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
-.chat{position:absolute;inset:0;z-index:1;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;padding:8px}
-.chatlog{overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px}
-.msg{max-width:min(760px,92%);padding:10px 12px;border-radius:6px;white-space:pre-wrap;word-break:break-word;line-height:1.45;position:relative}
-.msg.user{align-self:flex-end;background:var(--paper);color:var(--paper-ink)}
-.msg.bot{align-self:flex-start;background:var(--raised);border:1px solid var(--line);padding-right:40px}
-.msg.bot .msgcopy{position:absolute;top:4px;right:4px;opacity:.6}
-.msg.err{color:var(--warn)}
-.msgthink{margin-bottom:8px;padding:6px 8px;background:var(--well);border:1px solid var(--line);border-radius:4px;font-size:12px;color:var(--ink-2)}
-.msgthink summary{cursor:pointer;font-weight:600;user-select:none}
-.msgthink div{margin-top:6px;max-height:220px;overflow-y:auto;white-space:pre-wrap}
-.chatempty{margin:auto;color:var(--ink-2);text-align:center}
-.chatin{display:flex;gap:8px;align-items:flex-end}
-.chatin textarea{flex:1;min-height:44px;max-height:200px;resize:vertical}
 .size{display:flex;align-items:center;gap:7px}
 .size input{width:150px;accent-color:var(--paper)}
 .size span{display:block;background:var(--ink-2);border-radius:50%}
@@ -6379,7 +6009,6 @@ a.btn{color:inherit;text-decoration:none}
     <button class="tab" id="tabRotate" type="button" role="tab" aria-selected="false">Xoay</button>
     <button class="tab" id="tabSwap" type="button" role="tab" aria-selected="false">Đổi người</button>
     <button class="tab" id="tabUpscale" type="button" role="tab" aria-selected="false">Upscale</button>
-    <button class="tab" id="tabChat" type="button" role="tab" aria-selected="false">Chat</button>
   </div>
   <div class="main" id="main">
     <nav class="strip" id="strip" aria-label="Cọ và công cụ">
@@ -6419,16 +6048,6 @@ a.btn{color:inherit;text-decoration:none}
       </div>
       <div class="sheetslots rotslots" id="rotateSlots"></div>
       <p class="envhint" id="rotHint"></p>
-    </section>
-
-    <section class="sheetpanel" id="chatPanel" aria-label="Chat" hidden>
-      <div class="viewchips" id="chatMode" role="group" aria-label="Việc cần làm"></div>
-      <p class="envhint" id="chatHint"></p>
-      <div class="viewchips">
-        <button class="viewchip" id="chatThink" type="button" aria-pressed="false" title="Bật hoặc tắt suy nghĩ từng bước trước khi trả lời">Suy nghĩ sâu</button>
-        <button class="viewchip" id="chatClear" type="button">Cuộc trò chuyện mới</button>
-      </div>
-      <p class="envhint">Model Qwen3.8-27B (Huihui Abliterated FP8) chạy trên H200.</p>
     </section>
 
     <section class="sheetpanel" id="swapPanel" aria-label="Đổi người" hidden>
@@ -6489,13 +6108,6 @@ a.btn{color:inherit;text-decoration:none}
             <button class="viewchip" id="rotReset" type="button">Chính diện</button>
             <button class="viewchip" id="rotRetry" type="button" hidden>Dựng lại</button>
           </div>
-        </div>
-      </div>
-      <div class="chat" id="chat" hidden>
-        <div class="chatlog" id="chatLog" aria-live="polite"><p class="chatempty" id="chatEmpty">Gõ hoặc dán nội dung bên dưới</p></div>
-        <div class="chatin">
-          <textarea class="field" id="chatInput" placeholder="Nhập nội dung, Enter để gửi, Shift+Enter xuống dòng" aria-label="Nội dung chat"></textarea>
-          <button class="btn" id="chatSend" type="button">Gửi</button>
         </div>
       </div>
       <div class="swap" id="swap" hidden>
@@ -9447,7 +9059,6 @@ function syncStage() {
   $('rot').hidden = S.tab !== 'rotate';
   $('swap').hidden = S.tab !== 'swap';
   $('upscale').hidden = S.tab !== 'upscale';
-  $('chat').hidden = S.tab !== 'chat';
 }
 function takeBase(file) {
   if (file && file.type.startsWith('image/')) loadFile(file, img => setBase(img, false));
@@ -10948,172 +10559,6 @@ function sampleSwapScene() {
   g.fill();
   return c;
 }
-// Tab Chat: gọi LLM qua /vstone/llm trên cổng ComfyUI (mục 7 của stoneV_CloudSyncHub), trả lời dạng stream.
-const CHAT_MODES = [
-  { id: 'ko2vi', label: 'Hàn → Việt', hint: 'Dán tiếng Hàn, nhận bản dịch tiếng Việt.', think: false,
-    system: 'Translate the user\'s Korean text into natural, accurate Vietnamese. Keep names, numbers, formatting and line breaks. Output only the translation.' },
-  { id: 'vi2ko', label: 'Việt → Hàn', hint: 'Dán tiếng Việt, nhận bản dịch tiếng Hàn.', think: false,
-    system: 'Translate the user\'s Vietnamese text into natural, accurate Korean suited to a professional film studio. Keep names, numbers, formatting and line breaks. Output only the translation.' },
-  { id: 'prompt', label: 'Viết prompt', hint: 'Tả bằng tiếng Việt, nhận prompt tiếng Anh cho Qwen Image.', think: false,
-    system: 'Turn the user\'s description into one clear English prompt for an image generation or editing model. Describe subject, setting, lighting, camera and style concretely. Output only the prompt.' },
-  { id: 'code', label: 'Code', hint: 'Hỏi về code, script, tiện ích.', think: false,
-    system: 'You are a concise coding assistant. Answer in Vietnamese, with complete, working code when code is needed.' },
-  { id: 'free', label: 'Tự do', hint: 'Hỏi gì cũng được.', think: false, system: '' },
-];
-const LLM_MODEL = 'qwen3.6-35b-a3b';
-const Chat = { mode: 'ko2vi', think: false, history: [], busy: false, abort: null };
-function chatBubble(role, content) {
-  $('chatEmpty').hidden = true;
-  const div = document.createElement('div');
-  div.className = `msg ${role}`;
-  if (role === 'bot') {
-    const body = document.createElement('div');
-    body.textContent = content;
-    const copy = iconButton('copy', 'Chép', () => copyText(body.textContent).then(ok => {
-      if (ok) { copy.innerHTML = icon('check'); setTimeout(() => { copy.innerHTML = icon('copy'); }, 1200); }
-    }));
-    copy.classList.add('msgcopy');
-    div.append(body, copy);
-  } else {
-    div.textContent = content;
-  }
-  $('chatLog').append(div);
-  $('chatLog').scrollTop = $('chatLog').scrollHeight;
-  return div;
-}
-function syncChat() {
-  $('chatMode').querySelectorAll('.viewchip').forEach(chip => chip.setAttribute('aria-pressed', String(chip.dataset.mode === Chat.mode)));
-  $('chatThink').setAttribute('aria-pressed', String(Chat.think));
-  $('chatHint').textContent = CHAT_MODES.find(m => m.id === Chat.mode).hint;
-  $('chatSend').textContent = Chat.busy ? 'Dừng' : 'Gửi';
-}
-async function sendChat() {
-  if (Chat.busy) { if (Chat.abort) Chat.abort.abort(); return; }
-  const content = $('chatInput').value.trim();
-  if (!content) return;
-  const mode = CHAT_MODES.find(m => m.id === Chat.mode);
-  const think = Chat.think;
-  $('chatInput').value = '';
-  chatBubble('user', content);
-  Chat.history.push({ role: 'user', content });
-  const bubble = chatBubble('bot', '…');
-  const textNode = bubble.firstChild;
-  if (!ON_COMFY) {
-    textNode.textContent = 'Bản xem trước: chưa nối LLM. Trên H200, câu trả lời sẽ hiện ở đây, chạy dần từng chữ.';
-    return;
-  }
-  Chat.busy = true;
-  Chat.abort = new AbortController();
-  syncChat();
-  let answer = '', thought = '', thinkBox = null, thinkSum = null, thinkBody = null;
-  try {
-    const sys = mode.system + (think ? ' Think briefly (under 150 words) before giving the final answer.' : '');
-    const messages = (sys ? [{ role: 'system', content: sys.trim() }] : []).concat(Chat.history.slice(-20));
-    const res = await fetch('/vstone/llm/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: Chat.abort.signal,
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages,
-        stream: true,
-        max_tokens: think ? 4096 : 2048,
-        temperature: think ? 0.6 : 0.3,
-        presence_penalty: 0.3,
-        chat_template_kwargs: { enable_thinking: think },
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.json().catch(() => ({}));
-      throw new Error(detail.error || (detail.message) || `LLM lỗi ${res.status}`);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    textNode.textContent = think ? 'Đang suy nghĩ…' : '';
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
-        const delta = (JSON.parse(line.slice(6)).choices[0] || {}).delta || {};
-        const r = delta.reasoning_content || delta.reasoning || '';
-        if (r) {
-          if (!thinkBox) {
-            thinkBox = document.createElement('details');
-            thinkBox.className = 'msgthink';
-            thinkBox.open = true;
-            thinkSum = document.createElement('summary');
-            thinkSum.textContent = 'Đang suy nghĩ…';
-            thinkBody = document.createElement('div');
-            thinkBox.append(thinkSum, thinkBody);
-            bubble.insertBefore(thinkBox, textNode);
-            textNode.textContent = '';
-          }
-          thought += r;
-          thinkBody.textContent = thought;
-          thinkBody.scrollTop = thinkBody.scrollHeight;
-          $('chatLog').scrollTop = $('chatLog').scrollHeight;
-        }
-        if (delta.content) {
-          if (thinkSum && thinkSum.textContent !== 'Quá trình suy nghĩ') {
-            thinkSum.textContent = 'Quá trình suy nghĩ';
-          }
-          answer += delta.content;
-          textNode.textContent = answer;
-          $('chatLog').scrollTop = $('chatLog').scrollHeight;
-        }
-      }
-    }
-    if (!answer) {
-      textNode.textContent = thought ? '(Đã suy nghĩ xong ở khung trên. Nếu muốn trả lời thẳng nhanh hơn, hãy tắt nút "Suy nghĩ sâu".)' : '(Không nhận được câu trả lời.)';
-    }
-    Chat.history.push({ role: 'assistant', content: answer || thought });
-  } catch (e) {
-    if (e.name === 'AbortError') {
-      textNode.textContent = answer || 'Đã dừng.';
-      if (answer) Chat.history.push({ role: 'assistant', content: answer });
-    } else {
-      bubble.classList.add('err');
-      textNode.textContent = `${e.message || e}. Nếu LLM chưa chạy, mở ComfyUI và chạy mục 7 của node stoneV_CloudSyncHub.`;
-      Chat.history.pop();
-    }
-  } finally {
-    Chat.busy = false;
-    Chat.abort = null;
-    syncChat();
-  }
-}
-function buildChatPanel() {
-  $('chatMode').innerHTML = CHAT_MODES.map(m => `<button class="viewchip" type="button" data-mode="${m.id}" aria-pressed="false">${m.label}</button>`).join('');
-  $('chatMode').addEventListener('click', e => {
-    const chip = e.target.closest('.viewchip');
-    if (!chip) return;
-    Chat.mode = chip.dataset.mode;
-    Chat.think = CHAT_MODES.find(m => m.id === Chat.mode).think;
-    syncChat();
-    $('chatInput').focus();
-  });
-  $('chatThink').addEventListener('click', () => {
-    Chat.think = !Chat.think;
-    syncChat();
-    $('chatInput').focus();
-  });
-  $('chatClear').addEventListener('click', () => {
-    if (Chat.abort) Chat.abort.abort();
-    Chat.history = [];
-    $('chatLog').querySelectorAll('.msg').forEach(m => m.remove());
-    $('chatEmpty').hidden = false;
-  });
-  $('chatSend').addEventListener('click', sendChat);
-  $('chatInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(); }
-  });
-  syncChat();
-}
 // Tab Upscale theo workflow Tiled Upscale của AusBoss (workflows/qwen_image_2.1/qwen_image_2_1_tiled_upscale_ausboss.json).
 // Qwen 2.1 vẽ lại ảnh theo từng ô khoảng 2 MP rồi ghép, Restore LoRA giữ sát ảnh gốc, mỗi ô khớp màu với ô gốc.
 // Prompt tiếng Anh là prompt gốc trong workflow của tác giả, giữ nguyên.
@@ -11441,10 +10886,6 @@ function switchTab(tab) {
   $('tabUpscale').setAttribute('aria-selected', String(tab === 'upscale'));
   $('upscalePanel').hidden = tab !== 'upscale';
   if (tab === 'upscale') syncUpscaleFromBase();
-  $('tabChat').setAttribute('aria-selected', String(tab === 'chat'));
-  $('chatPanel').hidden = tab !== 'chat';
-  document.querySelectorAll('.bar > :not(.grow)').forEach(el => { if (!el.classList.contains('edit-only')) el.hidden = tab === 'chat'; });
-  if (tab === 'chat') $('chatInput').focus();
 }
 
 function buildApiPrompt({ image1, refs, text, resolution, seed, lora, latent }) {
@@ -12368,7 +11809,6 @@ $('tabSheet').addEventListener('click', () => switchTab('sheet'));
 $('tabRotate').addEventListener('click', () => switchTab('rotate'));
 $('tabSwap').addEventListener('click', () => switchTab('swap'));
 $('tabUpscale').addEventListener('click', () => switchTab('upscale'));
-$('tabChat').addEventListener('click', () => switchTab('chat'));
 
 function sampleScene() {
   const c = document.createElement('canvas');
@@ -12415,7 +11855,6 @@ buildEnvBox();
 buildRotatePanel();
 buildSwapPanel();
 buildUpscalePanel();
-buildChatPanel();
 renderTiles();
 if (ON_COMFY) {
   clearBase();
