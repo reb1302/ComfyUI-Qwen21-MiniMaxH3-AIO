@@ -12220,12 +12220,16 @@ if comfy_io is not None:
                     comfy_io.Image.Input("original", tooltip="Các khung video gốc, đúng video đã đưa vào outpaint_pad_huy."),
                     comfy_io.Mask.Input("mask", tooltip="Mask của outpaint_pad_huy."),
                     comfy_io.Image.Input("ref", optional=True, tooltip="Ngõ ra ref của outpaint_pad_huy (ảnh ref đã cắt theo crop), nếu có: khung ra đúng bằng ảnh này."),
+                    comfy_io.Int.Input("feather", default=0, min=0, max=1024, optional=True,
+                                       tooltip="Số px hoà mép chỗ dán vào phần gen, để không thành 1 đường sọc. 0 = dán cứng. Chỉ hoà ở cạnh giáp phần gen."),
+                    comfy_io.Boolean.Input("paste_original", default=True, optional=True,
+                                           tooltip="Tắt: không dán video gốc, chỉ đưa video gen về đúng khổ khung và đúng số frame (không có đường nối)."),
                 ],
                 outputs=[comfy_io.Image.Output()],
             )
 
         @classmethod
-        def execute(cls, image, original, mask, ref=None) -> comfy_io.NodeOutput:
+        def execute(cls, image, original, mask, ref=None, feather=0, paste_original=True) -> comfy_io.NodeOutput:
             import comfy.utils
 
             frames, height, width, channels = original.shape
@@ -12268,9 +12272,25 @@ if comfy_io is not None:
                 resized = F.pad(resized.clamp(0.0, 1.0), edge, mode="replicate")
                 resized = resized[:, :, cut_top : cut_top + out_h, cut_left : cut_left + out_w]
                 out[start : start + picked.shape[0]] = resized.movedim(1, -1).to(out)
+            if paste_original is False:
+                return comfy_io.NodeOutput(out)
             top -= cut_top
             left -= cut_left
-            out[:, top : top + height, left : left + width, :] = original
+            feather = int(feather or 0)
+            if feather <= 0:
+                out[:, top : top + height, left : left + width, :] = original
+                return comfy_io.NodeOutput(out)
+            # Hoà mép chỗ dán sang phần gen (chỉ ở cạnh giáp phần gen), vào trong feather px, theo đường cong smoothstep.
+            ys = torch.arange(height, dtype=out.dtype).unsqueeze(1) + 0.5
+            xs = torch.arange(width, dtype=out.dtype).unsqueeze(0) + 0.5
+            weight = torch.ones((height, width), dtype=out.dtype)
+            for touches_gen, dist in ((left > 0, xs), (out_w - left - width > 0, width - xs), (top > 0, ys), (out_h - top - height > 0, height - ys)):
+                if touches_gen:
+                    weight = torch.minimum(weight, dist / feather)
+            weight = weight.clamp(0.0, 1.0)
+            weight = (weight * weight * (3 - 2 * weight))[None, :, :, None]
+            region = out[:, top : top + height, left : left + width, :]
+            out[:, top : top + height, left : left + width, :] = region * (1 - weight) + original.to(out) * weight
             return comfy_io.NodeOutput(out)
 
     class final_mask_huy(comfy_io.ComfyNode):

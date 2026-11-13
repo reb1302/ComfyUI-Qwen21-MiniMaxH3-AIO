@@ -1901,8 +1901,11 @@
       "properties": {
         "Node name for S&R": "huy_mix_match"
       },
-      "widgets_values": [],
-      "title": "BƯỚC 1 → M1 (dán plate gốc)"
+      "widgets_values": [
+        0,
+        false
+      ],
+      "title": "BƯỚC 1 → M1 (về khổ khung, KHÔNG dán plate)"
     },
     {
       "id": 9063,
@@ -2713,8 +2716,11 @@
       "properties": {
         "Node name for S&R": "huy_mix_match"
       },
-      "widgets_values": [],
-      "title": "BƯỚC 2 → KHUNG CUỐI (dán lại M1)"
+      "widgets_values": [
+        0,
+        false
+      ],
+      "title": "BƯỚC 2 → KHUNG CUỐI (về khổ khung, KHÔNG dán)"
     },
     {
       "id": 9086,

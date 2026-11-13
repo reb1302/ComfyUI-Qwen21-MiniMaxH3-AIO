@@ -1303,7 +1303,9 @@
       "mask": [
         "9041",
         1
-      ]
+      ],
+      "feather": 0,
+      "paste_original": false
     },
     "class_type": "huy_mix_match",
     "_meta": {
@@ -2356,7 +2358,9 @@
       "mask": [
         "9063",
         1
-      ]
+      ],
+      "feather": 0,
+      "paste_original": false
     },
     "class_type": "huy_mix_match",
     "_meta": {
