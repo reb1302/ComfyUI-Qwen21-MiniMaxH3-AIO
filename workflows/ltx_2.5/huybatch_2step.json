@@ -2,7 +2,7 @@
   "id": "93d1aec9-c1fe-4b64-95b8-2a11b9f88b14",
   "revision": 0,
   "last_node_id": 9086,
-  "last_link_id": 14108,
+  "last_link_id": 14059,
   "nodes": [
     {
       "id": 5409,
@@ -252,8 +252,7 @@
           "type": "STRING",
           "links": [
             13765,
-            14038,
-            14077
+            14034
           ]
         }
       ],
@@ -535,8 +534,7 @@
           "type": "STRING",
           "links": [
             51,
-            14031,
-            14070
+            14027
           ]
         }
       ],
@@ -719,8 +717,7 @@
           "type": "VAE",
           "links": [
             38,
-            14047,
-            14086
+            14043
           ]
         },
         {
@@ -730,10 +727,8 @@
           "links": [
             1,
             2,
-            14040,
-            14053,
-            14079,
-            14092
+            14036,
+            14049
           ]
         },
         {
@@ -742,8 +737,7 @@
           "type": "MODEL",
           "links": [
             3,
-            14049,
-            14088
+            14045
           ]
         },
         {
@@ -758,8 +752,7 @@
           "type": "CLIP",
           "links": [
             50,
-            14036,
-            14075
+            14032
           ]
         },
         {
@@ -768,8 +761,7 @@
           "type": "CLIP",
           "links": [
             5,
-            14032,
-            14071
+            14028
           ]
         },
         {
@@ -778,8 +770,7 @@
           "type": "*",
           "links": [
             13762,
-            14037,
-            14076
+            14033
           ]
         },
         {
@@ -919,7 +910,7 @@
           "links": [
             14001,
             14006,
-            14106
+            14057
           ]
         },
         {
@@ -927,8 +918,7 @@
           "type": "AUDIO",
           "links": [
             13944,
-            14026,
-            14065
+            14022
           ]
         },
         {
@@ -937,10 +927,8 @@
           "links": [
             13945,
             13948,
-            14027,
-            14030,
-            14066,
-            14069
+            14023,
+            14026
           ]
         },
         {
@@ -1245,7 +1233,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 14105
+          "link": 14056
         },
         {
           "name": "audio",
@@ -1665,10 +1653,8 @@
           "links": [
             14005,
             14007,
-            14033,
-            14039,
-            14072,
-            14078
+            14029,
+            14035
           ]
         }
       ],
@@ -1742,7 +1728,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 14107
+          "link": 14058
         },
         {
           "name": "original",
@@ -1752,7 +1738,7 @@
         {
           "name": "mask",
           "type": "MASK",
-          "link": 14108
+          "link": 14059
         },
         {
           "name": "scope_mask",
@@ -1908,9 +1894,7 @@
           "type": "IMAGE",
           "links": [
             14020,
-            14022,
-            14060,
-            14099
+            14054
           ]
         }
       ],
@@ -1918,174 +1902,7 @@
         "Node name for S&R": "huy_mix_match"
       },
       "widgets_values": [],
-      "title": "BƯỚC 1 → M1 (plate gốc dán giữa)"
-    },
-    {
-      "id": 9061,
-      "type": "GetImageSize",
-      "pos": [
-        -1700.0,
-        2810.0
-      ],
-      "size": [
-        270,
-        120
-      ],
-      "flags": {},
-      "order": 9061,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 14020
-        }
-      ],
-      "outputs": [
-        {
-          "name": "width",
-          "type": "INT",
-          "links": [
-            14021,
-            14104
-          ]
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": [
-            14023,
-            14061
-          ]
-        },
-        {
-          "name": "batch_size",
-          "type": "INT",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetImageSize"
-      },
-      "widgets_values": [],
-      "title": "Khổ M1"
-    },
-    {
-      "id": 9072,
-      "type": "ComfyMathExpression",
-      "pos": [
-        -1380,
-        2810
-      ],
-      "size": [
-        451,
-        128
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 9072,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "a",
-          "localized_name": "a",
-          "name": "values.a",
-          "type": "FLOAT,INT,BOOLEAN",
-          "link": 14021
-        },
-        {
-          "localized_name": "b",
-          "name": "values.b",
-          "shape": 7,
-          "type": "FLOAT,INT,BOOLEAN",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "localized_name": "FLOAT",
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": []
-        },
-        {
-          "localized_name": "INT",
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            14062
-          ]
-        },
-        {
-          "localized_name": "BOOL",
-          "name": "BOOL",
-          "type": "BOOLEAN",
-          "links": []
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.20.1",
-        "Node name for S&R": "ComfyMathExpression"
-      },
-      "widgets_values": [
-        "a - 1152"
-      ],
-      "widgets_values_named": {
-        "expression": "a - 1152"
-      },
-      "title": "x dải phải = rộng M1 - 1152"
-    },
-    {
-      "id": 9062,
-      "type": "ImageCrop",
-      "pos": [
-        -7233.758159486723,
-        9215.512589470825
-      ],
-      "size": [
-        300,
-        170
-      ],
-      "flags": {},
-      "order": 9062,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 14022
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "link": 14023,
-          "widget": {
-            "name": "height"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14024,
-            14058
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageCrop"
-      },
-      "widgets_values": [
-        1152,
-        1498,
-        0,
-        0
-      ],
-      "title": "BƯỚC 2 TRÁI: dải ngữ cảnh 1152 px của M1"
+      "title": "BƯỚC 1 → M1 (dán plate gốc)"
     },
     {
       "id": 9063,
@@ -2105,7 +1922,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 14024
+          "link": 14020
         },
         {
           "name": "context",
@@ -2125,15 +1942,15 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            14025
+            14021
           ]
         },
         {
           "name": "mask",
           "type": "MASK",
           "links": [
-            14028,
-            14059
+            14024,
+            14055
           ]
         },
         {
@@ -2148,11 +1965,11 @@
       "widgets_values": [
         1152,
         0,
+        1152,
         0,
-        0,
-        "left"
+        "none"
       ],
-      "title": "BƯỚC 2 TRÁI: nới thêm 1152"
+      "title": "BƯỚC 2: nới thêm 1152 trái/phải cho cả khung bước 1"
     },
     {
       "id": 9064,
@@ -2172,18 +1989,18 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 14025
+          "link": 14021
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 14026,
+          "link": 14022,
           "shape": 7
         },
         {
           "name": "fps",
           "type": "FLOAT",
-          "link": 14027,
+          "link": 14023,
           "widget": {
             "name": "fps"
           }
@@ -2194,7 +2011,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            14034
+            14030
           ]
         }
       ],
@@ -2227,7 +2044,7 @@
         {
           "name": "mask",
           "type": "MASK",
-          "link": 14028
+          "link": 14024
         }
       ],
       "outputs": [
@@ -2235,7 +2052,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14029
+            14025
           ]
         }
       ],
@@ -2262,7 +2079,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 14029
+          "link": 14025
         },
         {
           "name": "audio",
@@ -2273,7 +2090,7 @@
         {
           "name": "fps",
           "type": "FLOAT",
-          "link": 14030,
+          "link": 14026,
           "widget": {
             "name": "fps"
           }
@@ -2284,7 +2101,7 @@
           "name": "VIDEO",
           "type": "VIDEO",
           "links": [
-            14035
+            14031
           ]
         }
       ],
@@ -2323,7 +2140,7 @@
           "widget": {
             "name": "positive_prompt"
           },
-          "link": 14031
+          "link": 14027
         },
         {
           "label": "LTX API key",
@@ -2338,31 +2155,31 @@
           "label": "text encoder clip",
           "name": "encoder_clip",
           "type": "CLIP",
-          "link": 14032
+          "link": 14028
         },
         {
           "label": "start image (optional)",
           "name": "start_image",
           "type": "IMAGE",
-          "link": 14033
+          "link": 14029
         },
         {
           "label": "reference video",
           "name": "reference_video",
           "type": "VIDEO",
-          "link": 14034
+          "link": 14030
         },
         {
           "label": "mask video",
           "name": "mask_video",
           "type": "VIDEO",
-          "link": 14035
+          "link": 14031
         },
         {
           "label": "text enhancer clip",
           "name": "enhancer_clip",
           "type": "CLIP",
-          "link": 14036
+          "link": 14032
         },
         {
           "label": "ltx model ckpt path",
@@ -2371,7 +2188,7 @@
           "widget": {
             "name": "ckpt_name"
           },
-          "link": 14037
+          "link": 14033
         },
         {
           "label": "mask dilation radius",
@@ -2407,7 +2224,7 @@
           "widget": {
             "name": "Negative prompt"
           },
-          "link": 14038
+          "link": 14034
         },
         {
           "label": "enhancer_seed",
@@ -2423,7 +2240,7 @@
           "name": "image",
           "shape": 7,
           "type": "IMAGE",
-          "link": 14039
+          "link": 14035
         }
       ],
       "outputs": [
@@ -2432,7 +2249,7 @@
           "name": "negative_encoded",
           "type": "CONDITIONING",
           "links": [
-            14041
+            14037
           ]
         },
         {
@@ -2440,7 +2257,7 @@
           "name": "positive_encoded",
           "type": "CONDITIONING",
           "links": [
-            14042
+            14038
           ]
         },
         {
@@ -2448,7 +2265,7 @@
           "name": "resized start image",
           "type": "IMAGE",
           "links": [
-            14046
+            14042
           ]
         },
         {
@@ -2456,8 +2273,8 @@
           "name": "mask (stage 1)",
           "type": "MASK",
           "links": [
-            14044,
-            14056
+            14040,
+            14052
           ]
         },
         {
@@ -2477,7 +2294,7 @@
           "name": "reference frames (stage 1)",
           "type": "IMAGE",
           "links": [
-            14045
+            14041
           ]
         },
         {
@@ -2485,7 +2302,7 @@
           "name": "reference audio",
           "type": "AUDIO",
           "links": [
-            14048
+            14044
           ]
         },
         {
@@ -2505,7 +2322,7 @@
           "name": "bypass_i2v",
           "type": "BOOLEAN",
           "links": [
-            14043
+            14039
           ]
         }
       ],
@@ -2538,7 +2355,7 @@
         "resize_type.longer_size": 4096,
         "resize_type": "scale longer dimension"
       },
-      "title": "BƯỚC 2 TRÁI: Input Parameters"
+      "title": "BƯỚC 2: Input Parameters"
     },
     {
       "id": 9068,
@@ -2561,19 +2378,19 @@
           "label": "vae",
           "name": "vae",
           "type": "VAE",
-          "link": 14040
+          "link": 14036
         },
         {
           "label": "negative",
           "name": "negative",
           "type": "CONDITIONING",
-          "link": 14041
+          "link": 14037
         },
         {
           "label": "positive",
           "name": "positive",
           "type": "CONDITIONING",
-          "link": 14042
+          "link": 14038
         },
         {
           "label": "bypass start image",
@@ -2582,37 +2399,37 @@
           "widget": {
             "name": "bypass"
           },
-          "link": 14043
+          "link": 14039
         },
         {
           "label": "mask",
           "name": "mask",
           "type": "MASK",
-          "link": 14044
+          "link": 14040
         },
         {
           "label": "reference frames",
           "name": "images",
           "type": "IMAGE",
-          "link": 14045
+          "link": 14041
         },
         {
           "label": "start image",
           "name": "image",
           "type": "IMAGE",
-          "link": 14046
+          "link": 14042
         },
         {
           "label": "audio_vae",
           "name": "audio_vae",
           "type": "VAE",
-          "link": 14047
+          "link": 14043
         },
         {
           "label": "reference audio",
           "name": "audio",
           "type": "AUDIO",
-          "link": 14048
+          "link": 14044
         }
       ],
       "outputs": [
@@ -2621,7 +2438,7 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            14050
+            14046
           ]
         },
         {
@@ -2629,7 +2446,7 @@
           "name": "negative",
           "type": "CONDITIONING",
           "links": [
-            14051
+            14047
           ]
         },
         {
@@ -2637,7 +2454,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            14055
+            14051
           ]
         },
         {
@@ -2645,7 +2462,7 @@
           "name": "latent",
           "type": "LATENT",
           "links": [
-            14052
+            14048
           ]
         }
       ],
@@ -2660,7 +2477,7 @@
       "widgets_values_named": {
         "bypass": false
       },
-      "title": "BƯỚC 2 TRÁI: Preprocess"
+      "title": "BƯỚC 2: Preprocess"
     },
     {
       "id": 9069,
@@ -2683,25 +2500,25 @@
           "label": "model",
           "name": "model",
           "type": "MODEL",
-          "link": 14049
+          "link": 14045
         },
         {
           "label": "positive",
           "name": "positive",
           "type": "CONDITIONING",
-          "link": 14050
+          "link": 14046
         },
         {
           "label": "negative",
           "name": "negative",
           "type": "CONDITIONING",
-          "link": 14051
+          "link": 14047
         },
         {
           "label": "latent_image",
           "name": "latent_image",
           "type": "LATENT",
-          "link": 14052
+          "link": 14048
         }
       ],
       "outputs": [
@@ -2710,7 +2527,7 @@
           "name": "latent",
           "type": "LATENT",
           "links": [
-            14054
+            14050
           ]
         },
         {
@@ -2737,7 +2554,7 @@
         "ver": "0.44.0",
         "previewExposures": []
       },
-      "title": "BƯỚC 2 TRÁI: Generate"
+      "title": "BƯỚC 2: Generate"
     },
     {
       "id": 9070,
@@ -2760,25 +2577,25 @@
           "label": "vae",
           "name": "vae",
           "type": "VAE",
-          "link": 14053
+          "link": 14049
         },
         {
           "label": "video latent",
           "name": "samples",
           "type": "LATENT",
-          "link": 14054
+          "link": 14050
         },
         {
           "label": "blend reference",
           "name": "image_b",
           "type": "IMAGE",
-          "link": 14055
+          "link": 14051
         },
         {
           "label": "mask",
           "name": "mask",
           "type": "MASK",
-          "link": 14056
+          "link": 14052
         },
         {
           "label": "tile_size",
@@ -2823,7 +2640,7 @@
           "name": "image",
           "type": "IMAGE",
           "links": [
-            14057
+            14053
           ]
         }
       ],
@@ -2844,7 +2661,7 @@
         "temporal_size": 128,
         "temporal_overlap": 32
       },
-      "title": "BƯỚC 2 TRÁI: Decode & Blend"
+      "title": "BƯỚC 2: Decode & Blend"
     },
     {
       "id": 9071,
@@ -2864,17 +2681,17 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 14057
+          "link": 14053
         },
         {
           "name": "original",
           "type": "IMAGE",
-          "link": 14058
+          "link": 14054
         },
         {
           "name": "mask",
           "type": "MASK",
-          "link": 14059
+          "link": 14055
         },
         {
           "name": "ref",
@@ -2888,7 +2705,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            14101
+            14056,
+            14058
           ]
         }
       ],
@@ -2896,1041 +2714,14 @@
         "Node name for S&R": "huy_mix_match"
       },
       "widgets_values": [],
-      "title": "BƯỚC 2 TRÁI: dán dải ngữ cảnh gốc"
-    },
-    {
-      "id": 9073,
-      "type": "ImageCrop",
-      "pos": [
-        -7233.758159486723,
-        10715.512589470825
-      ],
-      "size": [
-        300,
-        170
-      ],
-      "flags": {},
-      "order": 9073,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 14060
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "link": 14061,
-          "widget": {
-            "name": "height"
-          }
-        },
-        {
-          "name": "x",
-          "type": "INT",
-          "link": 14062,
-          "widget": {
-            "name": "x"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14063,
-            14097
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageCrop"
-      },
-      "widgets_values": [
-        1152,
-        1498,
-        0,
-        0
-      ],
-      "title": "BƯỚC 2 PHẢI: dải ngữ cảnh 1152 px của M1"
-    },
-    {
-      "id": 9074,
-      "type": "outpaint_pad_huy",
-      "pos": [
-        -6783.758159486723,
-        10715.512589470825
-      ],
-      "size": [
-        685,
-        575
-      ],
-      "flags": {},
-      "order": 9074,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 14063
-        },
-        {
-          "name": "context",
-          "type": "IMAGE",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "ref",
-          "type": "IMAGE",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            14064
-          ]
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "links": [
-            14067,
-            14098
-          ]
-        },
-        {
-          "name": "ref",
-          "type": "IMAGE",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "outpaint_pad_huy"
-      },
-      "widgets_values": [
-        0,
-        0,
-        1152,
-        0,
-        "right"
-      ],
-      "title": "BƯỚC 2 PHẢI: nới thêm 1152"
-    },
-    {
-      "id": 9075,
-      "type": "CreateVideo",
-      "pos": [
-        -5470.437100063856,
-        9628.127647662388
-      ],
-      "size": [
-        270,
-        174
-      ],
-      "flags": {},
-      "order": 9075,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 14064
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": 14065,
-          "shape": 7
-        },
-        {
-          "name": "fps",
-          "type": "FLOAT",
-          "link": 14066,
-          "widget": {
-            "name": "fps"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "VIDEO",
-          "type": "VIDEO",
-          "links": [
-            14073
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CreateVideo"
-      },
-      "widgets_values": [
-        24,
-        8,
-        "sRGB",
-        "444",
-        "auto"
-      ]
-    },
-    {
-      "id": 9076,
-      "type": "MaskToImage",
-      "pos": [
-        -5547.096974067814,
-        10785.58277751644
-      ],
-      "size": [
-        270,
-        58
-      ],
-      "flags": {},
-      "order": 9076,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "mask",
-          "type": "MASK",
-          "link": 14067
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14068
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "MaskToImage"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 9077,
-      "type": "CreateVideo",
-      "pos": [
-        -4751.041739798775,
-        10167.016287083858
-      ],
-      "size": [
-        270,
-        174
-      ],
-      "flags": {},
-      "order": 9077,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 14068
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "fps",
-          "type": "FLOAT",
-          "link": 14069,
-          "widget": {
-            "name": "fps"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "VIDEO",
-          "type": "VIDEO",
-          "links": [
-            14074
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CreateVideo"
-      },
-      "widgets_values": [
-        24,
-        8,
-        "sRGB",
-        "444",
-        "none"
-      ]
-    },
-    {
-      "id": 9078,
-      "type": "c9a49931-8154-4596-8a93-d47126ad589a",
-      "pos": [
-        -3631.1712137080353,
-        9029.258538400773
-      ],
-      "size": [
-        329.208984375,
-        534
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 9078,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "Positive prompt",
-          "name": "positive_prompt",
-          "type": "STRING",
-          "widget": {
-            "name": "positive_prompt"
-          },
-          "link": 14070
-        },
-        {
-          "label": "LTX API key",
-          "name": "ltx_api_key",
-          "type": "STRING",
-          "widget": {
-            "name": "ltx_api_key"
-          },
-          "link": null
-        },
-        {
-          "label": "text encoder clip",
-          "name": "encoder_clip",
-          "type": "CLIP",
-          "link": 14071
-        },
-        {
-          "label": "start image (optional)",
-          "name": "start_image",
-          "type": "IMAGE",
-          "link": 14072
-        },
-        {
-          "label": "reference video",
-          "name": "reference_video",
-          "type": "VIDEO",
-          "link": 14073
-        },
-        {
-          "label": "mask video",
-          "name": "mask_video",
-          "type": "VIDEO",
-          "link": 14074
-        },
-        {
-          "label": "text enhancer clip",
-          "name": "enhancer_clip",
-          "type": "CLIP",
-          "link": 14075
-        },
-        {
-          "label": "ltx model ckpt path",
-          "name": "ckpt_name",
-          "type": "COMBO",
-          "widget": {
-            "name": "ckpt_name"
-          },
-          "link": 14076
-        },
-        {
-          "label": "mask dilation radius",
-          "name": "mask_dilation_radius",
-          "type": "INT",
-          "widget": {
-            "name": "mask_dilation_radius"
-          },
-          "link": null
-        },
-        {
-          "label": "use image input",
-          "name": "use image input",
-          "type": "BOOLEAN",
-          "widget": {
-            "name": "use image input"
-          },
-          "link": null
-        },
-        {
-          "label": "Enhance positive prompt",
-          "name": "Enhance positive prompt",
-          "type": "BOOLEAN",
-          "widget": {
-            "name": "Enhance positive prompt"
-          },
-          "link": null
-        },
-        {
-          "label": "Negative prompt",
-          "name": "Negative prompt",
-          "type": "STRING",
-          "widget": {
-            "name": "Negative prompt"
-          },
-          "link": 14077
-        },
-        {
-          "label": "enhancer_seed",
-          "name": "enhancer_seed",
-          "type": "INT",
-          "widget": {
-            "name": "enhancer_seed"
-          },
-          "link": null
-        },
-        {
-          "label": "promptimage",
-          "name": "image",
-          "shape": 7,
-          "type": "IMAGE",
-          "link": 14078
-        }
-      ],
-      "outputs": [
-        {
-          "label": "negative_encoded",
-          "name": "negative_encoded",
-          "type": "CONDITIONING",
-          "links": [
-            14080
-          ]
-        },
-        {
-          "label": "positive_encoded",
-          "name": "positive_encoded",
-          "type": "CONDITIONING",
-          "links": [
-            14081
-          ]
-        },
-        {
-          "label": "resized start image",
-          "name": "resized start image",
-          "type": "IMAGE",
-          "links": [
-            14085
-          ]
-        },
-        {
-          "label": "mask (stage 1)",
-          "name": "mask (stage 1)",
-          "type": "MASK",
-          "links": [
-            14083,
-            14095
-          ]
-        },
-        {
-          "label": "mask (stage 2)",
-          "name": "mask (stage 2)",
-          "type": "MASK",
-          "links": []
-        },
-        {
-          "label": "reference frames (stage 2)",
-          "name": "reference frames (stage 2)",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "label": "reference frames (stage 1)",
-          "name": "reference frames (stage 1)",
-          "type": "IMAGE",
-          "links": [
-            14084
-          ]
-        },
-        {
-          "label": "reference audio",
-          "name": "reference audio",
-          "type": "AUDIO",
-          "links": [
-            14087
-          ]
-        },
-        {
-          "label": "fps",
-          "name": "fps",
-          "type": "FLOAT",
-          "links": []
-        },
-        {
-          "label": "effective_positive_prompt",
-          "name": "effective_positive_prompt",
-          "type": "STRING",
-          "links": []
-        },
-        {
-          "label": "bypass_i2v",
-          "name": "bypass_i2v",
-          "type": "BOOLEAN",
-          "links": [
-            14082
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.44.0",
-        "previewExposures": []
-      },
-      "widgets_values": [
-        "",
-        "",
-        "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
-        15,
-        false,
-        false,
-        "pc game, console game, video game, cartoon, childish, ugly",
-        457289196,
-        4096,
-        "scale longer dimension"
-      ],
-      "widgets_values_named": {
-        "positive_prompt": "",
-        "ltx_api_key": "",
-        "ckpt_name": "ltx-2.5-22b-distilled-transformer-bf16.safetensors",
-        "mask_dilation_radius": 15,
-        "use image input": false,
-        "Enhance positive prompt": false,
-        "Negative prompt": "pc game, console game, video game, cartoon, childish, ugly",
-        "enhancer_seed": 457289196,
-        "resize_type.longer_size": 4096,
-        "resize_type": "scale longer dimension"
-      },
-      "title": "BƯỚC 2 PHẢI: Input Parameters"
-    },
-    {
-      "id": 9079,
-      "type": "e8498d2a-2b93-4e5f-b5bb-62240585529c",
-      "pos": [
-        -3019.121897080811,
-        9482.127647662388
-      ],
-      "size": [
-        330,
-        320
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 9079,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "vae",
-          "name": "vae",
-          "type": "VAE",
-          "link": 14079
-        },
-        {
-          "label": "negative",
-          "name": "negative",
-          "type": "CONDITIONING",
-          "link": 14080
-        },
-        {
-          "label": "positive",
-          "name": "positive",
-          "type": "CONDITIONING",
-          "link": 14081
-        },
-        {
-          "label": "bypass start image",
-          "name": "bypass",
-          "type": "BOOLEAN",
-          "widget": {
-            "name": "bypass"
-          },
-          "link": 14082
-        },
-        {
-          "label": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "link": 14083
-        },
-        {
-          "label": "reference frames",
-          "name": "images",
-          "type": "IMAGE",
-          "link": 14084
-        },
-        {
-          "label": "start image",
-          "name": "image",
-          "type": "IMAGE",
-          "link": 14085
-        },
-        {
-          "label": "audio_vae",
-          "name": "audio_vae",
-          "type": "VAE",
-          "link": 14086
-        },
-        {
-          "label": "reference audio",
-          "name": "audio",
-          "type": "AUDIO",
-          "link": 14087
-        }
-      ],
-      "outputs": [
-        {
-          "label": "positive",
-          "name": "positive",
-          "type": "CONDITIONING",
-          "links": [
-            14089
-          ]
-        },
-        {
-          "label": "negative",
-          "name": "negative",
-          "type": "CONDITIONING",
-          "links": [
-            14090
-          ]
-        },
-        {
-          "label": "blend reference",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            14094
-          ]
-        },
-        {
-          "label": "latent",
-          "name": "latent",
-          "type": "LATENT",
-          "links": [
-            14091
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.44.0",
-        "previewExposures": []
-      },
-      "widgets_values": [
-        false
-      ],
-      "widgets_values_named": {
-        "bypass": false
-      },
-      "title": "BƯỚC 2 PHẢI: Preprocess"
-    },
-    {
-      "id": 9080,
-      "type": "a0faecfd-06db-49d2-a37c-68822f750b66",
-      "pos": [
-        -2492.7379808942087,
-        9455.491284026024
-      ],
-      "size": [
-        330,
-        320
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 9080,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "model",
-          "name": "model",
-          "type": "MODEL",
-          "link": 14088
-        },
-        {
-          "label": "positive",
-          "name": "positive",
-          "type": "CONDITIONING",
-          "link": 14089
-        },
-        {
-          "label": "negative",
-          "name": "negative",
-          "type": "CONDITIONING",
-          "link": 14090
-        },
-        {
-          "label": "latent_image",
-          "name": "latent_image",
-          "type": "LATENT",
-          "link": 14091
-        }
-      ],
-      "outputs": [
-        {
-          "label": "video_latent",
-          "name": "latent",
-          "type": "LATENT",
-          "links": [
-            14093
-          ]
-        },
-        {
-          "label": "positive",
-          "name": "positive",
-          "type": "CONDITIONING",
-          "links": []
-        },
-        {
-          "label": "negative",
-          "name": "negative",
-          "type": "CONDITIONING",
-          "links": []
-        },
-        {
-          "label": "audio_latent",
-          "name": "audio_latent",
-          "type": "LATENT",
-          "links": []
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.44.0",
-        "previewExposures": []
-      },
-      "title": "BƯỚC 2 PHẢI: Generate"
-    },
-    {
-      "id": 9081,
-      "type": "f09a2fcf-1b11-4f77-b498-3cc2929dd325",
-      "pos": [
-        -2080,
-        9526.127647662388
-      ],
-      "size": [
-        330,
-        320
-      ],
-      "flags": {
-        "collapsed": false
-      },
-      "order": 9081,
-      "mode": 0,
-      "inputs": [
-        {
-          "label": "vae",
-          "name": "vae",
-          "type": "VAE",
-          "link": 14092
-        },
-        {
-          "label": "video latent",
-          "name": "samples",
-          "type": "LATENT",
-          "link": 14093
-        },
-        {
-          "label": "blend reference",
-          "name": "image_b",
-          "type": "IMAGE",
-          "link": 14094
-        },
-        {
-          "label": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "link": 14095
-        },
-        {
-          "label": "tile_size",
-          "name": "tile_size",
-          "type": "INT",
-          "widget": {
-            "name": "tile_size"
-          },
-          "link": null
-        },
-        {
-          "label": "overlap",
-          "name": "overlap",
-          "type": "INT",
-          "widget": {
-            "name": "overlap"
-          },
-          "link": null
-        },
-        {
-          "label": "temporal_size",
-          "name": "temporal_size",
-          "type": "INT",
-          "widget": {
-            "name": "temporal_size"
-          },
-          "link": null
-        },
-        {
-          "label": "temporal_overlap",
-          "name": "temporal_overlap",
-          "type": "INT",
-          "widget": {
-            "name": "temporal_overlap"
-          },
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "label": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            14096
-          ]
-        }
-      ],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.44.0",
-        "previewExposures": []
-      },
-      "widgets_values": [
-        512,
-        64,
-        128,
-        32
-      ],
-      "widgets_values_named": {
-        "tile_size": 512,
-        "overlap": 64,
-        "temporal_size": 128,
-        "temporal_overlap": 32
-      },
-      "title": "BƯỚC 2 PHẢI: Decode & Blend"
-    },
-    {
-      "id": 9082,
-      "type": "huy_mix_match",
-      "pos": [
-        -1660.0,
-        9526.127647662388
-      ],
-      "size": [
-        330,
-        126
-      ],
-      "flags": {},
-      "order": 9082,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 14096
-        },
-        {
-          "name": "original",
-          "type": "IMAGE",
-          "link": 14097
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "link": 14098
-        },
-        {
-          "name": "ref",
-          "type": "IMAGE",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14103
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "huy_mix_match"
-      },
-      "widgets_values": [],
-      "title": "BƯỚC 2 PHẢI: dán dải ngữ cảnh gốc"
-    },
-    {
-      "id": 9083,
-      "type": "ImagePadForOutpaint",
-      "pos": [
-        -2549.665693758295,
-        10729.258538400773
-      ],
-      "size": [
-        300,
-        180
-      ],
-      "flags": {},
-      "order": 9083,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 14099
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14100
-          ]
-        },
-        {
-          "name": "MASK",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImagePadForOutpaint"
-      },
-      "widgets_values": [
-        1152,
-        0,
-        1152,
-        0,
-        0
-      ],
-      "title": "GHÉP: M1 nới chỗ cho 2 dải"
-    },
-    {
-      "id": 9084,
-      "type": "ImageCompositeMasked",
-      "pos": [
-        -2149.665693758295,
-        10729.258538400773
-      ],
-      "size": [
-        300,
-        150
-      ],
-      "flags": {},
-      "order": 9084,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "destination",
-          "type": "IMAGE",
-          "link": 14100
-        },
-        {
-          "name": "source",
-          "type": "IMAGE",
-          "link": 14101
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14102
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageCompositeMasked"
-      },
-      "widgets_values": [
-        0,
-        0,
-        false
-      ],
-      "title": "GHÉP: dải trái"
-    },
-    {
-      "id": 9085,
-      "type": "ImageCompositeMasked",
-      "pos": [
-        -1749.6656937582952,
-        10729.258538400773
-      ],
-      "size": [
-        300,
-        170
-      ],
-      "flags": {},
-      "order": 9085,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "destination",
-          "type": "IMAGE",
-          "link": 14102
-        },
-        {
-          "name": "source",
-          "type": "IMAGE",
-          "link": 14103
-        },
-        {
-          "name": "mask",
-          "type": "MASK",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "x",
-          "type": "INT",
-          "link": 14104,
-          "widget": {
-            "name": "x"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            14105,
-            14107
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageCompositeMasked"
-      },
-      "widgets_values": [
-        0,
-        0,
-        false
-      ],
-      "title": "GHÉP: dải phải (x = rộng M1) → KHUNG CUỐI"
+      "title": "BƯỚC 2 → KHUNG CUỐI (dán lại M1)"
     },
     {
       "id": 9086,
       "type": "outpaint_pad_huy",
       "pos": [
-        -2549.665693758295,
-        11129.258538400773
+        -1180.0,
+        8026.127647662388
       ],
       "size": [
         685,
@@ -3943,7 +2734,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 14106
+          "link": 14057
         },
         {
           "name": "context",
@@ -3968,7 +2759,7 @@
           "name": "mask",
           "type": "MASK",
           "links": [
-            14108
+            14059
           ]
         },
         {
@@ -4379,116 +3170,84 @@
       14020,
       9060,
       0,
-      9061,
+      9063,
       0,
       "IMAGE"
     ],
     [
       14021,
-      9061,
-      0,
-      9072,
-      0,
-      "INT"
-    ],
-    [
-      14022,
-      9060,
-      0,
-      9062,
-      0,
-      "IMAGE"
-    ],
-    [
-      14023,
-      9061,
-      1,
-      9062,
-      1,
-      "INT"
-    ],
-    [
-      14024,
-      9062,
-      0,
-      9063,
-      0,
-      "IMAGE"
-    ],
-    [
-      14025,
       9063,
       0,
       9064,
+      0,
+      "IMAGE"
+    ],
+    [
+      14022,
+      9025,
+      1,
+      9064,
+      1,
+      "AUDIO"
+    ],
+    [
+      14023,
+      9025,
+      2,
+      9064,
+      2,
+      "FLOAT"
+    ],
+    [
+      14024,
+      9063,
+      1,
+      9065,
+      0,
+      "MASK"
+    ],
+    [
+      14025,
+      9065,
+      0,
+      9066,
       0,
       "IMAGE"
     ],
     [
       14026,
       9025,
-      1,
-      9064,
-      1,
-      "AUDIO"
-    ],
-    [
-      14027,
-      9025,
       2,
-      9064,
+      9066,
       2,
       "FLOAT"
     ],
     [
-      14028,
-      9063,
-      1,
-      9065,
+      14027,
+      5404,
       0,
-      "MASK"
+      9067,
+      0,
+      "STRING"
+    ],
+    [
+      14028,
+      5407,
+      5,
+      9067,
+      2,
+      "CLIP"
     ],
     [
       14029,
-      9065,
+      9051,
       0,
-      9066,
-      0,
+      9067,
+      3,
       "IMAGE"
     ],
     [
       14030,
-      9025,
-      2,
-      9066,
-      2,
-      "FLOAT"
-    ],
-    [
-      14031,
-      5404,
-      0,
-      9067,
-      0,
-      "STRING"
-    ],
-    [
-      14032,
-      5407,
-      5,
-      9067,
-      2,
-      "CLIP"
-    ],
-    [
-      14033,
-      9051,
-      0,
-      9067,
-      3,
-      "IMAGE"
-    ],
-    [
-      14034,
       9064,
       0,
       9067,
@@ -4496,7 +3255,7 @@
       "VIDEO"
     ],
     [
-      14035,
+      14031,
       9066,
       0,
       9067,
@@ -4504,7 +3263,7 @@
       "VIDEO"
     ],
     [
-      14036,
+      14032,
       5407,
       4,
       9067,
@@ -4512,7 +3271,7 @@
       "CLIP"
     ],
     [
-      14037,
+      14033,
       5407,
       6,
       9067,
@@ -4520,7 +3279,7 @@
       "*"
     ],
     [
-      14038,
+      14034,
       9008,
       0,
       9067,
@@ -4528,7 +3287,7 @@
       "STRING"
     ],
     [
-      14039,
+      14035,
       9051,
       0,
       9067,
@@ -4536,7 +3295,7 @@
       "IMAGE"
     ],
     [
-      14040,
+      14036,
       5407,
       1,
       9068,
@@ -4544,7 +3303,7 @@
       "VAE"
     ],
     [
-      14041,
+      14037,
       9067,
       0,
       9068,
@@ -4552,7 +3311,7 @@
       "CONDITIONING"
     ],
     [
-      14042,
+      14038,
       9067,
       1,
       9068,
@@ -4560,7 +3319,7 @@
       "CONDITIONING"
     ],
     [
-      14043,
+      14039,
       9067,
       10,
       9068,
@@ -4568,7 +3327,7 @@
       "BOOLEAN"
     ],
     [
-      14044,
+      14040,
       9067,
       3,
       9068,
@@ -4576,7 +3335,7 @@
       "MASK"
     ],
     [
-      14045,
+      14041,
       9067,
       6,
       9068,
@@ -4584,7 +3343,7 @@
       "IMAGE"
     ],
     [
-      14046,
+      14042,
       9067,
       2,
       9068,
@@ -4592,7 +3351,7 @@
       "IMAGE"
     ],
     [
-      14047,
+      14043,
       5407,
       0,
       9068,
@@ -4600,7 +3359,7 @@
       "VAE"
     ],
     [
-      14048,
+      14044,
       9067,
       7,
       9068,
@@ -4608,7 +3367,7 @@
       "AUDIO"
     ],
     [
-      14049,
+      14045,
       5407,
       2,
       9069,
@@ -4616,7 +3375,7 @@
       "MODEL"
     ],
     [
-      14050,
+      14046,
       9068,
       0,
       9069,
@@ -4624,7 +3383,7 @@
       "CONDITIONING"
     ],
     [
-      14051,
+      14047,
       9068,
       1,
       9069,
@@ -4632,7 +3391,7 @@
       "CONDITIONING"
     ],
     [
-      14052,
+      14048,
       9068,
       3,
       9069,
@@ -4640,7 +3399,7 @@
       "LATENT"
     ],
     [
-      14053,
+      14049,
       5407,
       1,
       9070,
@@ -4648,7 +3407,7 @@
       "VAE"
     ],
     [
-      14054,
+      14050,
       9069,
       0,
       9070,
@@ -4656,7 +3415,7 @@
       "LATENT"
     ],
     [
-      14055,
+      14051,
       9068,
       2,
       9070,
@@ -4664,7 +3423,7 @@
       "IMAGE"
     ],
     [
-      14056,
+      14052,
       9067,
       3,
       9070,
@@ -4672,7 +3431,7 @@
       "MASK"
     ],
     [
-      14057,
+      14053,
       9070,
       0,
       9071,
@@ -4680,15 +3439,15 @@
       "IMAGE"
     ],
     [
-      14058,
-      9062,
+      14054,
+      9060,
       0,
       9071,
       1,
       "IMAGE"
     ],
     [
-      14059,
+      14055,
       9063,
       1,
       9071,
@@ -4696,375 +3455,15 @@
       "MASK"
     ],
     [
-      14060,
-      9060,
-      0,
-      9073,
-      0,
-      "IMAGE"
-    ],
-    [
-      14061,
-      9061,
-      1,
-      9073,
-      1,
-      "INT"
-    ],
-    [
-      14062,
-      9072,
-      1,
-      9073,
-      2,
-      "INT"
-    ],
-    [
-      14063,
-      9073,
-      0,
-      9074,
-      0,
-      "IMAGE"
-    ],
-    [
-      14064,
-      9074,
-      0,
-      9075,
-      0,
-      "IMAGE"
-    ],
-    [
-      14065,
-      9025,
-      1,
-      9075,
-      1,
-      "AUDIO"
-    ],
-    [
-      14066,
-      9025,
-      2,
-      9075,
-      2,
-      "FLOAT"
-    ],
-    [
-      14067,
-      9074,
-      1,
-      9076,
-      0,
-      "MASK"
-    ],
-    [
-      14068,
-      9076,
-      0,
-      9077,
-      0,
-      "IMAGE"
-    ],
-    [
-      14069,
-      9025,
-      2,
-      9077,
-      2,
-      "FLOAT"
-    ],
-    [
-      14070,
-      5404,
-      0,
-      9078,
-      0,
-      "STRING"
-    ],
-    [
-      14071,
-      5407,
-      5,
-      9078,
-      2,
-      "CLIP"
-    ],
-    [
-      14072,
-      9051,
-      0,
-      9078,
-      3,
-      "IMAGE"
-    ],
-    [
-      14073,
-      9075,
-      0,
-      9078,
-      4,
-      "VIDEO"
-    ],
-    [
-      14074,
-      9077,
-      0,
-      9078,
-      5,
-      "VIDEO"
-    ],
-    [
-      14075,
-      5407,
-      4,
-      9078,
-      6,
-      "CLIP"
-    ],
-    [
-      14076,
-      5407,
-      6,
-      9078,
-      7,
-      "*"
-    ],
-    [
-      14077,
-      9008,
-      0,
-      9078,
-      11,
-      "STRING"
-    ],
-    [
-      14078,
-      9051,
-      0,
-      9078,
-      13,
-      "IMAGE"
-    ],
-    [
-      14079,
-      5407,
-      1,
-      9079,
-      0,
-      "VAE"
-    ],
-    [
-      14080,
-      9078,
-      0,
-      9079,
-      1,
-      "CONDITIONING"
-    ],
-    [
-      14081,
-      9078,
-      1,
-      9079,
-      2,
-      "CONDITIONING"
-    ],
-    [
-      14082,
-      9078,
-      10,
-      9079,
-      3,
-      "BOOLEAN"
-    ],
-    [
-      14083,
-      9078,
-      3,
-      9079,
-      4,
-      "MASK"
-    ],
-    [
-      14084,
-      9078,
-      6,
-      9079,
-      5,
-      "IMAGE"
-    ],
-    [
-      14085,
-      9078,
-      2,
-      9079,
-      6,
-      "IMAGE"
-    ],
-    [
-      14086,
-      5407,
-      0,
-      9079,
-      7,
-      "VAE"
-    ],
-    [
-      14087,
-      9078,
-      7,
-      9079,
-      8,
-      "AUDIO"
-    ],
-    [
-      14088,
-      5407,
-      2,
-      9080,
-      0,
-      "MODEL"
-    ],
-    [
-      14089,
-      9079,
-      0,
-      9080,
-      1,
-      "CONDITIONING"
-    ],
-    [
-      14090,
-      9079,
-      1,
-      9080,
-      2,
-      "CONDITIONING"
-    ],
-    [
-      14091,
-      9079,
-      3,
-      9080,
-      3,
-      "LATENT"
-    ],
-    [
-      14092,
-      5407,
-      1,
-      9081,
-      0,
-      "VAE"
-    ],
-    [
-      14093,
-      9080,
-      0,
-      9081,
-      1,
-      "LATENT"
-    ],
-    [
-      14094,
-      9079,
-      2,
-      9081,
-      2,
-      "IMAGE"
-    ],
-    [
-      14095,
-      9078,
-      3,
-      9081,
-      3,
-      "MASK"
-    ],
-    [
-      14096,
-      9081,
-      0,
-      9082,
-      0,
-      "IMAGE"
-    ],
-    [
-      14097,
-      9073,
-      0,
-      9082,
-      1,
-      "IMAGE"
-    ],
-    [
-      14098,
-      9074,
-      1,
-      9082,
-      2,
-      "MASK"
-    ],
-    [
-      14099,
-      9060,
-      0,
-      9083,
-      0,
-      "IMAGE"
-    ],
-    [
-      14100,
-      9083,
-      0,
-      9084,
-      0,
-      "IMAGE"
-    ],
-    [
-      14101,
+      14056,
       9071,
-      0,
-      9084,
-      1,
-      "IMAGE"
-    ],
-    [
-      14102,
-      9084,
-      0,
-      9085,
-      0,
-      "IMAGE"
-    ],
-    [
-      14103,
-      9082,
-      0,
-      9085,
-      1,
-      "IMAGE"
-    ],
-    [
-      14104,
-      9061,
-      0,
-      9085,
-      3,
-      "INT"
-    ],
-    [
-      14105,
-      9085,
       0,
       9039,
       0,
       "IMAGE"
     ],
     [
-      14106,
+      14057,
       9025,
       0,
       9086,
@@ -5072,15 +3471,15 @@
       "IMAGE"
     ],
     [
-      14107,
-      9085,
+      14058,
+      9071,
       0,
       9054,
       0,
       "IMAGE"
     ],
     [
-      14108,
+      14059,
       9086,
       1,
       9054,
@@ -5189,24 +3588,11 @@
     },
     {
       "id": 900,
-      "title": "BƯỚC 2 – TRÁI: gen dải 1152 px bên trái",
+      "title": "BƯỚC 2: nới thêm 1152 hai bên cho cả khung bước 1, 1 lượt gen",
       "bounding": [
-        -7293.758159486723,
+        -6843.758159486723,
         9135.512589470825,
-        6473.758159486723,
-        1250
-      ],
-      "color": "#3f789e",
-      "font_size": 48,
-      "flags": {}
-    },
-    {
-      "id": 901,
-      "title": "BƯỚC 2 – PHẢI: gen dải 1152 px bên phải",
-      "bounding": [
-        -7293.758159486723,
-        10635.512589470825,
-        6473.758159486723,
+        6023.758159486723,
         1250
       ],
       "color": "#3f789e",
