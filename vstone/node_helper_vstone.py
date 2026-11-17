@@ -12379,6 +12379,62 @@ if comfy_io is not None:
                 out[start:stop] = gen.to(out) * weight
             return comfy_io.NodeOutput(out, keep.to(original.dtype)[None].repeat(frames, 1, 1))
 
+    class huy_block_latent(comfy_io.ComfyNode):
+        """
+        Khoá latent ở vùng giữ lại (mask đen): video được mã hoá bằng VAE rồi ghi vào các ô latent của vùng đó, noise mask = 0 ở đó.
+        Ở mọi bước sampler giữ nguyên các ô này và model coi chúng là hình đã biết (timestep 0), như khung đầu khi LTX làm I2V,
+        nên chỉ vùng mask trắng được gen và phần gen bám theo video thật.
+        Một ô latent (32x32 px, khung 0 hoặc 8 khung) chỉ bị khoá khi cả ô nằm trong vùng giữ; ô vắt qua mép mask vẫn được gen.
+        Chỉ đụng các khung latent của video; các khung guide (IC-LoRA) gắn phía sau giữ nguyên.
+        """
+
+        @classmethod
+        def define_schema(cls):
+            return comfy_io.Schema(
+                node_id="huy_block_latent",
+                display_name="huy block latent",
+                category="stoneV",
+                description="Khoá các ô latent ở vùng mask đen bằng chính video đã mã hoá, chỉ gen vùng mask trắng.",
+                inputs=[
+                    comfy_io.Latent.Input("latent", tooltip="Latent sắp vào sampler: ngõ latent của LTXAddVideoICLoRAGuide, trước LTXVConcatAVLatent."),
+                    comfy_io.Vae.Input("vae", tooltip="VAE video của LTX."),
+                    comfy_io.Image.Input("images", tooltip="Các khung video đã nới, cùng video đưa vào LTXVInpaintPreprocess."),
+                    comfy_io.Mask.Input("mask", tooltip="Mask inpaint: trắng = gen, đen = giữ (bị khoá)."),
+                ],
+                outputs=[comfy_io.Latent.Output()],
+            )
+
+        @classmethod
+        def execute(cls, latent, vae, images, mask) -> comfy_io.NodeOutput:
+            import comfy.utils
+
+            samples = latent["samples"].clone()
+            batch, _, length, latent_h, latent_w = samples.shape
+            time_scale, height_scale, width_scale = vae.downscale_index_formula
+            height, width = latent_h * height_scale, latent_w * width_scale
+            if images.shape[1] != height or images.shape[2] != width:
+                images = comfy.utils.common_upscale(images.movedim(-1, 1), width, height, "bilinear", "center").movedim(1, -1)
+            encoded = vae.encode(images[:, :, :, :3]).to(samples)
+            frames = encoded.shape[2]
+            if frames > length:
+                raise ValueError(f"Video ra {frames} khung latent, nhiều hơn latent ({length}): hãy nối đúng video đã đưa vào LTXVInpaintPreprocess.")
+
+            gen = mask.reshape(-1, 1, mask.shape[-2], mask.shape[-1]).float()
+            if gen.shape[-2:] != (height, width):
+                gen = comfy.utils.common_upscale(gen, width, height, "bilinear", "center")
+            gen = (gen[[min(i, gen.shape[0] - 1) for i in range((frames - 1) * time_scale + 1)]] >= 0.5).float()
+            # Khung latent 0 là khung 0, khung latent t ≥ 1 gom 8 khung 1+8(t-1)..8t; ô có điểm ảnh nào cần gen thì không khoá.
+            per_latent = torch.cat([gen[:1], gen[1:].reshape(frames - 1, time_scale, 1, height, width).amax(dim=1)])
+            lock = F.max_pool2d(per_latent, kernel_size=(height_scale, width_scale)).reshape(1, 1, frames, latent_h, latent_w) < 0.5
+
+            samples[:, :, :frames] = torch.where(lock, encoded, samples[:, :, :frames])
+            noise_mask = latent.get("noise_mask")
+            if noise_mask is None:
+                noise_mask = torch.ones((batch, 1, length, 1, 1), dtype=torch.float32, device=samples.device)
+            noise_mask = comfy.utils.reshape_mask(noise_mask, (batch, 1, length, latent_h, latent_w)).clone()
+            noise_mask[:, :, :frames] = torch.where(lock, torch.zeros_like(noise_mask[:, :, :frames]), noise_mask[:, :, :frames])
+            return comfy_io.NodeOutput({**latent, "samples": samples, "noise_mask": noise_mask})
+
 
 # ==============================================================================
 # RTX Video Super Resolution Pro & AI 4x-UltraSharp 16K Upscaler
@@ -14691,6 +14747,7 @@ if comfy_io is not None:
     VSTONE_NODE_CLASS_MAPPINGS["refsheet_huy"] = refsheet_huy
     VSTONE_NODE_CLASS_MAPPINGS["huy_mix_match"] = huy_mix_match
     VSTONE_NODE_CLASS_MAPPINGS["final_mask_huy"] = final_mask_huy
+    VSTONE_NODE_CLASS_MAPPINGS["huy_block_latent"] = huy_block_latent
 
 for _node_cls in VSTONE_NODE_CLASS_MAPPINGS.values():
     try:
